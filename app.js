@@ -4,7 +4,9 @@ import {
   WETTER, newReport, newSite, newPerson, crewOf, entryHours, KATEGORIEN, kategorieOf, sortCrew, hoursByKategorie, workedHours, formatHours, formatDate, weekday, monthLabel, parseDate, toMarkdown, ARTEN, artLabel,
   ABRECHNUNG, MASCHINEN_VORSCHLAEGE, maschinenStunden, today, newId,
 } from './report.js';
-import { buildPdf, pdfFileName, buildStundenPdf, stundenPdfName } from './pdf.js';
+import {
+  buildPdf, pdfFileName, buildStundenPdf, stundenPdfName, buildSammelPdf, sammelPdfName,
+} from './pdf.js';
 import {
   TYPEN, typLabel, hatZeiten, newStunde, stundenOf, personKey, kw, summe, sortStunden, monatLabel, shiftMonth,
 } from './stunden.js';
@@ -12,7 +14,7 @@ import {
   isConfigured, syncAll, syncReport, testConnection, deleteRemote, loadAdminConfig, saveAdminConfig, loadStundenRemote,
 } from './sync.js';
 
-const APP_VERSION = '1.10.2';
+const APP_VERSION = '1.11.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -131,11 +133,13 @@ async function renderList() {
 
   appbar.innerHTML = `
     <h1>Tagesberichte</h1>
+    <button class="icon-btn" id="sum-btn" aria-label="Zusammenfassung als PDF">${ICON.doc}</button>
     <button class="icon-btn ${syncing ? 'spin' : ''}" id="sync-btn" aria-label="Jetzt hochladen">
       ${configured ? ICON.sync : ICON.cloud}
       ${pending && configured ? `<span class="badge">${pending}</span>` : ''}
     </button>`;
   $('#sync-btn').onclick = () => (configured ? runSync(true) : (location.hash = '#/einstellungen'));
+  $('#sum-btn').onclick = () => openZusammenfassung();
 
   // Kennzahlen: Stunden diese Woche, Berichte diesen Monat, offene Uploads
   const now = new Date();
@@ -918,6 +922,7 @@ async function renderSiteEditor(id) {
         <label class="switch"><input type="checkbox" id="archived" ${site.archived ? 'checked' : ''}><i></i></label></div>`}
     </form>
     <button class="btn primary block" id="save-site">${isNew ? 'Baustelle speichern' : 'Änderungen speichern'}</button>
+    ${reports.length ? `<button class="btn soft block" id="site-sum" style="margin-top:10px">${ICON.doc} Zusammenfassung als PDF</button>` : ''}
     ${reports.length ? `<div class="month"><span>Berichte</span><span>${formatHours(reports.reduce((s, r) => s + (workedHours(r) || 0), 0))}</span></div>
       <div class="card-list">${reports.map((r) => `<a class="rcard" href="#/bericht/${encodeURIComponent(r.id)}">
         <div class="date"><b>${parseDate(r.datum).getDate()}</b><span>${weekday(r.datum).slice(0, 2)}</span></div>
@@ -927,6 +932,8 @@ async function renderSiteEditor(id) {
       ? '<button class="btn danger block" id="delete-site" style="margin-top:20px">Baustelle löschen</button>'
       : '<p class="hint" style="margin-top:20px;text-align:center">Löschen darf nur der Administrator. Fertige Baustellen kannst du oben als abgeschlossen markieren.</p>'}`;
 
+  const siteSum = $('#site-sum');
+  if (siteSum) siteSum.onclick = () => openZusammenfassung({ baustelleId: site.id });
   $('#save-site').onclick = async () => {
     readSiteFields($('#site-form'), site);
     if (!site.name) {
@@ -1257,6 +1264,110 @@ async function migrateSites() {
     await db.putReport(r);
   }
   localStorage.setItem('tagesberichte.sitesMigrated', '1');
+}
+
+// ---------- Zusammenfassung ----------
+// Mehrere Berichte (Baustelle, Zeitraum, Art) in einem PDF mit Übersicht, Stunden und Material.
+
+function monatsGrenzen(delta) {
+  const d = new Date();
+  const a = new Date(d.getFullYear(), d.getMonth() + delta, 1);
+  const b = new Date(d.getFullYear(), d.getMonth() + delta + 1, 0);
+  const iso = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+  return [iso(a), iso(b)];
+}
+
+async function openZusammenfassung(preset = {}) {
+  const reports = await db.allReports();
+  if (!reports.length) { toast('Es gibt noch keine Berichte.'); return; }
+  const sites = await db.allSites();
+  const f = { baustelleId: preset.baustelleId || '', art: '', von: '', bis: '', gesamt: true };
+  // „Gesamter Zeitraum“ = erster bis letzter Bericht der gewählten Baustelle/Art
+  const gesamt = () => {
+    const d = reports.filter((r) => (!f.baustelleId || r.baustelleId === f.baustelleId) && (!f.art || (r.art || 'tagesbericht') === f.art)).map((r) => r.datum).sort();
+    if (d.length) { f.von = d[0]; f.bis = d[d.length - 1]; }
+  };
+  gesamt();
+  const siteName = (id) => sites.find((x) => x.id === id)?.name || reports.find((r) => r.baustelleId === id)?.baustelle || '';
+  const siteIds = [...new Set(reports.map((r) => r.baustelleId).filter(Boolean))].sort((a, b) => siteName(a).localeCompare(siteName(b), 'de'));
+  const { sheet, close } = openSheet(`
+    <h2>Zusammenfassung als PDF</h2>
+    <label class="field"><span>Baustelle</span><select id="z-site">
+      <option value="">Alle Baustellen</option>
+      ${siteIds.map((id) => `<option value="${esc(id)}" ${id === f.baustelleId ? 'selected' : ''}>${esc(siteName(id))}</option>`).join('')}
+    </select></label>
+    <div class="field"><span>Art</span><div class="seg three" id="z-art">
+      <button type="button" role="radio" data-art="" aria-checked="true">Alle</button>
+      <button type="button" role="radio" data-art="tagesbericht" aria-checked="false">Tagesberichte</button>
+      <button type="button" role="radio" data-art="rapport" aria-checked="false">Rapporte</button></div></div>
+    <div class="field"><span>Zeitraum</span><div class="chips" id="z-quick">
+      <button type="button" class="chip" data-q="alle">Gesamter Zeitraum</button>
+      <button type="button" class="chip" data-q="0">Dieser Monat</button>
+      <button type="button" class="chip" data-q="-1">Letzter Monat</button></div></div>
+    <div class="row">
+      <label class="field"><span>Von</span><input type="date" id="z-von" value="${f.von}"></label>
+      <label class="field"><span>Bis</span><input type="date" id="z-bis" value="${f.bis}"></label>
+    </div>
+    <div class="crew-sum" id="z-info"></div>
+    <button type="button" class="btn primary block" id="z-ok">${ICON.share} PDF erstellen</button>
+    <p class="hint" style="text-align:center">Enthält die Berichte, die auf diesem Handy gespeichert sind.</p>`);
+
+  const auswahl = () => reports.filter((r) => (!f.baustelleId || r.baustelleId === f.baustelleId)
+    && (!f.art || (r.art || 'tagesbericht') === f.art) && r.datum >= f.von && r.datum <= f.bis);
+  const draw = () => {
+    if (f.gesamt) gesamt();
+    $('#z-von', sheet).value = f.von;
+    $('#z-bis', sheet).value = f.bis;
+    $$('#z-quick .chip', sheet).forEach((c) => c.setAttribute('aria-pressed', c.dataset.q === 'alle' ? f.gesamt : !f.gesamt && monatsGrenzen(Number(c.dataset.q)).join() === `${f.von},${f.bis}`));
+    const l = auswahl();
+    const h = l.reduce((s, r) => s + (workedHours(r) || 0), 0);
+    $('#z-info', sheet).innerHTML = l.length
+      ? `<div class="kv total" style="border:0;margin:0;padding-top:4px"><span>${l.length} ${l.length === 1 ? 'Bericht' : 'Berichte'}</span><b>${formatHours(h)}</b></div>`
+      : '<div class="kv"><span>Keine Berichte in dieser Auswahl.</span></div>';
+    $('#z-ok', sheet).disabled = !l.length;
+  };
+  $('#z-site', sheet).onchange = (e) => { f.baustelleId = e.target.value; draw(); };
+  $$('#z-art button', sheet).forEach((b) => {
+    b.onclick = () => {
+      f.art = b.dataset.art;
+      $$('#z-art button', sheet).forEach((x) => x.setAttribute('aria-checked', x === b));
+      draw();
+    };
+  });
+  $$('#z-quick .chip', sheet).forEach((c) => {
+    c.onclick = () => {
+      f.gesamt = c.dataset.q === 'alle';
+      if (!f.gesamt) [f.von, f.bis] = monatsGrenzen(Number(c.dataset.q));
+      draw();
+    };
+  });
+  $('#z-von', sheet).onchange = (e) => { f.gesamt = false; f.von = e.target.value; draw(); };
+  $('#z-bis', sheet).onchange = (e) => { f.gesamt = false; f.bis = e.target.value; draw(); };
+  draw();
+
+  $('#z-ok', sheet).onclick = async () => {
+    const l = auswahl();
+    if (!l.length) return;
+    const btn = $('#z-ok', sheet);
+    btn.disabled = true;
+    btn.textContent = 'PDF wird erstellt …';
+    const artTitel = f.art === 'rapport' ? 'Rapporte' : f.art === 'tagesbericht' ? 'Tagesberichte' : 'Berichte';
+    const titel = f.baustelleId ? siteName(f.baustelleId) : f.art ? `Alle Baustellen (${artTitel})` : 'Alle Baustellen';
+    let file;
+    try {
+      const items = [];
+      for (const r of l) items.push({ r, files: await db.filesFor(r.id) });
+      const blob = await buildSammelPdf({ titel: f.baustelleId && f.art ? `${titel} (${artTitel})` : titel, von: f.von, bis: f.bis, items, author: settings.author });
+      file = new File([blob], sammelPdfName(titel, f.von, f.bis), { type: 'application/pdf' });
+    } catch (err) {
+      toast(`PDF konnte nicht erstellt werden: ${err.message}`, 4000);
+      btn.disabled = false;
+      btn.innerHTML = `${ICON.share} PDF erstellen`;
+      return;
+    }
+    close();
+    await sharePdfFile(file, `Zusammenfassung ${titel}`, []);
+  };
 }
 
 // ---------- Administrator ----------

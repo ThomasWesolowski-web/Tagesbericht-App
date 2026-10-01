@@ -140,7 +140,7 @@ body.editing .view { padding-bottom: calc(110px + var(--safe-b)); }
 
 .month { margin: 20px 4px 8px; font-size: .8rem; font-weight: 700; color: var(--ink-2); text-transform: uppercase; letter-spacing: .06em; display: flex; justify-content: space-between; }
 
-.card-list { display: grid; gap: 8px; }
+.card-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .rcard {
   display: flex; gap: 14px; align-items: center;
   background: var(--surface); border-radius: var(--radius); padding: 12px 14px;
@@ -474,3 +474,8 @@ body.editing .toast { bottom: calc(96px + var(--safe-b)); }
 button.fab { border: 0; font: inherit; font-weight: 750; cursor: pointer; }
 .stat b small { font-size: .7em; color: var(--ink-2); font-weight: 650; }
 .missing { outline: 2px solid #d64545; outline-offset: 3px; border-radius: 12px; transition: outline-color .3s; }
+
+/* Zusammenfassung */
+.seg.three { grid-template-columns: 1fr 1fr 1fr; margin-bottom: 0; }
+.seg.three button { padding: 9px 4px; font-size: .9rem; }
+select { width: 100%; font: inherit; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 12px; min-height: 48px; -webkit-appearance: none; appearance: none; }

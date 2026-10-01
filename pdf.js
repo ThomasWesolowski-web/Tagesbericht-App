@@ -114,6 +114,39 @@ async function briefkopf(doc, { W, M, font, color }) {
 export async function buildPdf(r, files, author) {
   const { jsPDF } = await loadJsPdf();
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  await drawReport(doc, r, files, author);
+  fusszeilen(doc, [{ von: 1, bis: doc.getNumberOfPages(), text: reportLabel(r) }]);
+  doc.setProperties({ title: reportLabel(r).replace(' · ', ' '), author: author || '' });
+  return doc.output('blob');
+}
+
+function reportLabel(r) {
+  return `${artLabel(r)} ${formatDate(r.datum)}${r.baustelle ? ` · ${r.baustelle}` : ''}`;
+}
+
+// Fußzeile mit Seitenzahl; ranges: [{ von, bis, text }]
+function fusszeilen(doc, ranges) {
+  const W = 210;
+  const H = 297;
+  const M = 16;
+  const pages = doc.getNumberOfPages();
+  for (const rg of ranges) {
+    for (let p = rg.von; p <= rg.bis; p++) {
+      doc.setPage(p);
+      doc.setDrawColor(...LINE);
+      doc.setLineWidth(0.2);
+      doc.line(M, H - 13, W - M, H - 13);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...MUTED);
+      doc.text(rg.text, M, H - 8.5);
+      doc.text(`Seite ${p} von ${pages}`, W - M, H - 8.5, { align: 'right' });
+      doc.text(FIRMA, W / 2, H - 4, { align: 'center' });
+    }
+  }
+}
+
+// Zeichnet einen Bericht ab einer neuen Seite in ein bestehendes PDF.
+async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
+  if (neueSeite) doc.addPage();
   const W = 210;
   const H = 297;
   const M = 16; // Rand
@@ -329,19 +362,6 @@ export async function buildPdf(r, files, author) {
     y += 2;
   }
 
-  // Fußzeile auf jeder Seite
-  const pages = doc.getNumberOfPages();
-  for (let p = 1; p <= pages; p++) {
-    doc.setPage(p);
-    doc.setDrawColor(...LINE);
-    doc.line(M, H - 13, W - M, H - 13);
-    font('normal', 8); color(MUTED);
-    doc.text(`${title} ${formatDate(r.datum)}${r.baustelle ? ` · ${r.baustelle}` : ''}`, M, H - 8.5);
-    doc.text(`Seite ${p} von ${pages}`, W - M, H - 8.5, { align: 'right' });
-    doc.text(FIRMA, W / 2, H - 4, { align: 'center' });
-  }
-  doc.setProperties({ title: `${title} ${formatDate(r.datum)} ${r.baustelle || ''}`.trim(), author: author || '' });
-  return doc.output('blob');
 }
 
 // Monatlicher Stundennachweis eines Mitarbeiters.
@@ -474,5 +494,178 @@ export async function buildStundenPdf(name, ym, entries) {
     doc.text(FIRMA, W / 2, H - 4, { align: 'center' });
   }
   doc.setProperties({ title: `Stundennachweis ${monatLabel(ym)} ${name}` });
+  return doc.output('blob');
+}
+
+export function sammelPdfName(titel, von, bis) {
+  return `Zusammenfassung_${slug(titel) || 'berichte'}_${von}_bis_${bis}.pdf`;
+}
+
+// Mehrere Berichte in einem PDF: Übersicht, Stunden nach Kategorie, Maschinen,
+// Materialliste und danach alle Einzelberichte. items: [{ r, files }]
+export async function buildSammelPdf({ titel, von, bis, items, author }) {
+  const { jsPDF } = await loadJsPdf();
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const W = 210;
+  const H = 297;
+  const M = 16;
+  const CW = W - 2 * M;
+  const BOTTOM = H - 18;
+  const color = (c) => doc.setTextColor(...c);
+  const font = (style = 'normal', size = 10) => { doc.setFont('helvetica', style); doc.setFontSize(size); };
+  let y = await briefkopf(doc, { W, M, font, color });
+  const newPage = () => { doc.addPage(); y = M + 4; };
+
+  const list = [...items].sort((a, b) => a.r.datum.localeCompare(b.r.datum));
+  const mehrereBaustellen = new Set(list.map((x) => x.r.baustelle)).size > 1;
+  const nT = list.filter((x) => x.r.art !== 'rapport').length;
+  const nR = list.length - nT;
+
+  y += 10;
+  font('bold', 20); color(INK);
+  doc.text(doc.splitTextToSize(`Zusammenfassung – ${titel}`, CW), M, y);
+  y += 7 * doc.splitTextToSize(`Zusammenfassung – ${titel}`, CW).length;
+  font('normal', 10.5); color(MUTED);
+  const arten = [nT ? `${nT} ${nT === 1 ? 'Tagesbericht' : 'Tagesberichte'}` : '', nR ? `${nR} ${nR === 1 ? 'Rapport' : 'Rapporte'}` : ''].filter(Boolean).join(', ');
+  const seiteHinweis = { page: doc.getNumberOfPages(), y };
+  y += 8;
+
+  const heading = (text, need = 20) => {
+    if (y + need > BOTTOM) newPage();
+    y += 4;
+    font('bold', 12); color(ACCENT);
+    doc.text(text, M, y);
+    y += 2;
+    doc.setDrawColor(...ACCENT);
+    doc.setLineWidth(0.4);
+    doc.line(M, y, M + CW, y);
+    doc.setLineWidth(0.2);
+    y += 6;
+  };
+
+  // Tabelle mit umbrechenden Zellen; cols: [{ label, w, align }]
+  const table = (cols, rows, { boldLast = false } = {}) => {
+    const head = () => {
+      doc.setFillColor(...SOFT);
+      doc.rect(M, y - 4.6, CW, 6.6, 'F');
+      font('bold', 8); color(MUTED);
+      let x = M;
+      for (const c of cols) {
+        doc.text(c.label, c.align === 'right' ? x + c.w - 2 : x + 2, y, { align: c.align === 'right' ? 'right' : 'left' });
+        x += c.w;
+      }
+      y += 6.6;
+    };
+    head();
+    rows.forEach((row, ri) => {
+      const last = boldLast && ri === rows.length - 1;
+      font(last ? 'bold' : 'normal', 9);
+      const cells = row.map((cell, ci) => doc.splitTextToSize(String(cell ?? ''), cols[ci].w - 4).slice(0, 4));
+      const h = Math.max(1, ...cells.map((c) => c.length)) * 4.2 + 2.4;
+      // Summenzeile nicht allein auf eine neue Seite stellen
+      const extra = boldLast && ri === rows.length - 2 ? 7 : 0;
+      if (y + h + extra > BOTTOM) { newPage(); head(); font(last ? 'bold' : 'normal', 9); }
+      color(INK);
+      let x = M;
+      cells.forEach((lines, ci) => {
+        const c = cols[ci];
+        doc.text(lines, c.align === 'right' ? x + c.w - 2 : x + 2, y, { align: c.align === 'right' ? 'right' : 'left' });
+        x += c.w;
+      });
+      doc.setDrawColor(...LINE);
+      doc.line(M, y + h - 4.2, M + CW, y + h - 4.2);
+      y += h;
+    });
+    y += 2;
+  };
+
+  // Übersicht
+  const cols = mehrereBaustellen
+    ? [{ label: 'Datum', w: 18 }, { label: 'Art', w: 24 }, { label: 'Baustelle', w: 32 }, { label: 'Personal', w: 30 }, { label: 'Ausgeführte Arbeiten', w: CW - 122 }, { label: 'Stunden', w: 18, align: 'right' }]
+    : [{ label: 'Datum', w: 18 }, { label: 'Art', w: 24 }, { label: 'Personal', w: 40 }, { label: 'Ausgeführte Arbeiten', w: CW - 100 }, { label: 'Stunden', w: 18, align: 'right' }];
+  let gesamt = 0;
+  const rows = list.map(({ r }) => {
+    const h = workedHours(r) || 0;
+    gesamt += h;
+    const crew = crewOf(r).map((e) => e.name).join(', ');
+    const t = (r.taetigkeiten || '').trim().replace(/\s+/g, ' ');
+    const kurz = t.length > 140 ? `${t.slice(0, 140)} …` : t;
+    const base = [formatDate(r.datum).slice(0, 6) + formatDate(r.datum).slice(8), artLabel(r)];
+    return mehrereBaustellen ? [...base, r.baustelle, crew, kurz, formatHours(h || null)] : [...base, crew, kurz, formatHours(h || null)];
+  });
+  rows.push(mehrereBaustellen ? ['Gesamt', '', '', '', '', formatHours(gesamt)] : ['Gesamt', '', '', '', formatHours(gesamt)]);
+  heading('Übersicht', 30);
+  table(cols, rows, { boldLast: true });
+
+  // Stunden nach Kategorie und Person
+  const kat = new Map();
+  for (const { r } of list) {
+    for (const e of crewOf(r)) {
+      const k = kategorieOf(e);
+      if (!kat.has(k)) kat.set(k, { personen: new Map(), stunden: 0 });
+      const g = kat.get(k);
+      const h = entryHours(e) || 0;
+      g.stunden += h;
+      g.personen.set(e.name, (g.personen.get(e.name) || 0) + h);
+    }
+  }
+  const ORDER = ['Meister', 'Facharbeiter', 'Helfer', 'Lehrling', 'Ohne Kategorie'];
+  const katRows = [];
+  for (const k of ORDER) {
+    const g = kat.get(k);
+    if (!g) continue;
+    katRows.push([k, [...g.personen].map(([n, h]) => `${n} (${formatHours(h)})`).join(', '), formatHours(g.stunden)]);
+  }
+  if (katRows.length) {
+    katRows.push(['Gesamt', '', formatHours(gesamt)]);
+    heading('Stunden nach Kategorie', 30);
+    table([{ label: 'Kategorie', w: 32 }, { label: 'Personen', w: CW - 54 }, { label: 'Stunden', w: 22, align: 'right' }], katRows, { boldLast: true });
+  }
+
+  // Maschinen (Rapporte)
+  const masch = new Map();
+  for (const { r } of list) {
+    if (r.art !== 'rapport') continue;
+    for (const m of r.maschinen || []) {
+      const h = Number(String(m.stunden).replace(',', '.')) || 0;
+      if (!m.bezeichnung && !h) continue;
+      const key = (m.bezeichnung || '–').trim();
+      masch.set(key, (masch.get(key) || 0) + h);
+    }
+  }
+  if (masch.size) {
+    const mRows = [...masch].map(([n, h]) => [n, formatHours(h || null)]);
+    mRows.push(['Gesamt', formatHours([...masch.values()].reduce((a, b) => a + b, 0))]);
+    heading('Maschinen und Fahrzeuge', 24);
+    table([{ label: 'Maschine / Fahrzeug', w: CW - 30 }, { label: 'Stunden', w: 30, align: 'right' }], mRows, { boldLast: true });
+  }
+
+  // Materialliste: jede Zeile aus „Material und Geräte“ mit Datum
+  const matRows = [];
+  for (const { r } of list) {
+    for (const line of (r.material || '').split(/\n+/).map((l) => l.trim()).filter(Boolean)) {
+      matRows.push([line, formatDate(r.datum).slice(0, 6), ...(mehrereBaustellen ? [r.baustelle] : [])]);
+    }
+  }
+  if (matRows.length) {
+    heading('Materialliste (verbraucht)', 24);
+    table(mehrereBaustellen
+      ? [{ label: 'Material', w: CW - 66 }, { label: 'Datum', w: 20 }, { label: 'Baustelle', w: 46 }]
+      : [{ label: 'Material', w: CW - 20 }, { label: 'Datum', w: 20 }], matRows);
+  }
+
+  const deckblattBis = doc.getNumberOfPages();
+  const ranges = [{ von: 1, bis: deckblattBis, text: `Zusammenfassung ${titel} · ${formatDate(von)} – ${formatDate(bis)}` }];
+  for (const { r, files } of list) {
+    const start = doc.getNumberOfPages() + 1;
+    await drawReport(doc, r, files, author, { neueSeite: true });
+    ranges.push({ von: start, bis: doc.getNumberOfPages(), text: reportLabel(r) });
+  }
+  // Seitenhinweis nachtragen
+  doc.setPage(seiteHinweis.page);
+  font('normal', 10.5); color(MUTED);
+  doc.text(`${formatDate(von)} bis ${formatDate(bis)} · ${arten} · Einzelberichte ab Seite ${deckblattBis + 1}`, M, seiteHinweis.y);
+  fusszeilen(doc, ranges);
+  doc.setProperties({ title: `Zusammenfassung ${titel}`, author: author || '' });
   return doc.output('blob');
 }
