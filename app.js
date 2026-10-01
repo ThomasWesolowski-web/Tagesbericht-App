@@ -2,10 +2,11 @@ import * as db from './db.js';
 import { prepareFile, formatBytes, MAX_FILE_BYTES } from './media.js';
 import {
   WETTER, newReport, newSite, newPerson, crewOf, entryHours, KATEGORIEN, kategorieOf, sortCrew, hoursByKategorie, workedHours, formatHours, formatDate, weekday, monthLabel, parseDate, toMarkdown, ARTEN, artLabel,
+  ABRECHNUNG, MASCHINEN_VORSCHLAEGE, maschinenStunden,
 } from './report.js';
 import { isConfigured, syncAll, syncReport, testConnection, deleteRemote } from './sync.js';
 
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.6.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -250,6 +251,9 @@ async function renderEditor(id) {
   // Es wird an einer Kopie gearbeitet; gespeichert wird erst mit „Speichern“.
   const report = structuredClone(stored);
   report.mitarbeiter = structuredClone(crewOf(report));
+  report.abrechnung ||= 'regie';
+  report.maschinen ||= [];
+  report.unterschrift ||= null;
   const isDraft = drafts.has(id);
   document.body.classList.add('editing');
 
@@ -279,6 +283,20 @@ async function renderEditor(id) {
         <button type="button" class="btn soft block" id="add-crew">${ICON.plus} Personal hinzufügen</button>
       </section>
 
+      <section class="section rapport-only">
+        <h2>Abrechnung</h2>
+        <div class="seg" id="abr-seg" role="radiogroup" aria-label="Abrechnung">${ABRECHNUNG.map((a) =>
+          `<button type="button" role="radio" data-abr="${a.id}" aria-checked="${report.abrechnung === a.id}">${a.label}</button>`).join('')}</div>
+      </section>
+
+      <section class="section rapport-only">
+        <h2>Maschinen und Fahrzeuge <span class="h-right" id="masch-sum"></span></h2>
+        <div id="maschinen" class="masch-list"></div>
+        <div class="chips" id="masch-quick">${MASCHINEN_VORSCHLAEGE.map((m) =>
+          `<button type="button" class="chip" data-masch="${esc(m)}">${ICON.plus} ${esc(m)}</button>`).join('')}
+          <button type="button" class="chip" data-masch="">${ICON.plus} Andere Maschine</button></div>
+      </section>
+
       <section class="section">
         <h2>Wetter</h2>
         <div class="chips" id="wetter">${wetterChips}</div>
@@ -298,6 +316,11 @@ async function renderEditor(id) {
       <section class="section">
         <h2>Bemerkungen</h2>
         <label class="field"><textarea data-field="bemerkungen" placeholder="Behinderungen, Mängel, Absprachen, besondere Vorkommnisse …" rows="3">${esc(report.bemerkungen)}</textarea></label>
+      </section>
+
+      <section class="section rapport-only">
+        <h2>Unterschrift Bauherr</h2>
+        <div id="sign-box"></div>
       </section>
 
       <section class="section">
@@ -412,8 +435,10 @@ async function renderEditor(id) {
   $('#site-pick').onclick = chooseSite;
   drawSite();
 
+  const showRapport = () => $$('.rapport-only').forEach((el) => { el.hidden = report.art !== 'rapport'; });
   const setArt = (art) => {
     report.art = art;
+    showRapport();
     $$('#art-seg button').forEach((b) => b.setAttribute('aria-checked', b.dataset.art === art));
     $('#head-title').textContent = `${isDraft ? 'Neuer ' : ''}${artLabel(report)}`;
     changed();
@@ -427,6 +452,62 @@ async function renderEditor(id) {
     $$('.pick', sheet).forEach((b) => { b.onclick = () => { close(); setArt(b.dataset.art); }; });
   };
   if (isDraft && !report.baustelleId) setTimeout(chooseSite, 150);
+  showRapport();
+
+  // Rapport: Abrechnung, Maschinenstunden, Unterschrift
+  $$('#abr-seg button').forEach((b) => {
+    b.onclick = () => {
+      report.abrechnung = b.dataset.abr;
+      $$('#abr-seg button').forEach((x) => x.setAttribute('aria-checked', x === b));
+      changed();
+    };
+  });
+  const drawMaschinenSum = () => {
+    const h = maschinenStunden(report);
+    $('#masch-sum').textContent = h ? `Summe ${formatHours(h)}` : '';
+  };
+  const drawMaschinen = () => {
+    const list = report.maschinen;
+    $('#maschinen').innerHTML = list.map((m, i) => `
+      <div class="masch" data-i="${i}">
+        <label class="field"><span>Maschine / Fahrzeug</span><input type="text" data-m="bezeichnung" value="${esc(m.bezeichnung)}" placeholder="z. B. Bagger"></label>
+        <label class="field"><span>Stunden</span><input type="text" inputmode="decimal" data-m="stunden" value="${esc(m.stunden)}" placeholder="0"></label>
+        <button type="button" class="icon-btn masch-remove" aria-label="Maschine entfernen">${ICON.x}</button>
+      </div>`).join('');
+    $$('#maschinen .masch').forEach((el) => {
+      const m = list[Number(el.dataset.i)];
+      $$('[data-m]', el).forEach((inp) => {
+        inp.oninput = () => { m[inp.dataset.m] = inp.value; drawMaschinenSum(); changed(); };
+      });
+      $('.masch-remove', el).onclick = () => { list.splice(Number(el.dataset.i), 1); drawMaschinen(); changed(); };
+    });
+    drawMaschinenSum();
+  };
+  $$('#masch-quick [data-masch]').forEach((b) => {
+    b.onclick = () => {
+      report.maschinen.push({ bezeichnung: b.dataset.masch, stunden: '' });
+      drawMaschinen();
+      changed();
+      const inputs = $$('#maschinen .masch');
+      $(`[data-m=${b.dataset.masch ? 'stunden' : 'bezeichnung'}]`, inputs[inputs.length - 1]).focus();
+    };
+  });
+  drawMaschinen();
+
+  const drawSign = () => {
+    const u = report.unterschrift;
+    $('#sign-box').innerHTML = u?.dataUrl
+      ? `<div class="sign-done"><img src="${u.dataUrl}" alt="Unterschrift">
+          <small>${esc(u.name || 'Ohne Namen')} · ${new Date(u.zeit).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })}</small></div>
+         <div class="row two"><button type="button" class="btn soft" id="sign-btn">Neu signieren</button>
+         <button type="button" class="btn ghost" id="sign-del">Entfernen</button></div>`
+      : `<p class="hint" style="margin:0 0 12px">Der Bauherr bestätigt den Rapport mit dem Finger.</p>
+         <button type="button" class="btn soft block" id="sign-btn">Unterschreiben lassen</button>`;
+    $('#sign-btn').onclick = () => openSignature(u?.name || '', (res) => { report.unterschrift = res; drawSign(); changed(); });
+    const del = $('#sign-del');
+    if (del) del.onclick = () => { if (confirm('Unterschrift entfernen?')) { report.unterschrift = null; drawSign(); changed(); } };
+  };
+  drawSign();
 
   const drawCrew = () => {
     const crew = report.mitarbeiter;
@@ -635,6 +716,8 @@ async function duplicate(report) {
   const copy = newReport();
   for (const k of ['art', 'baustelleId', 'baustelle', 'adresse', 'auftrag', 'taetigkeiten', 'material']) copy[k] = report[k];
   copy.mitarbeiter = structuredClone(report.mitarbeiter || []);
+  copy.abrechnung = report.abrechnung || 'regie';
+  copy.maschinen = structuredClone((report.maschinen || []).map((m) => ({ bezeichnung: m.bezeichnung, stunden: '' })));
   drafts.set(copy.id, copy);
   location.hash = `#/bericht/${copy.id}`;
 }
@@ -877,6 +960,76 @@ function bindKategorie(root) {
       $$('.chip', box).forEach((c) => c.setAttribute('aria-pressed', c === chip));
     };
   });
+}
+
+// Unterschrift mit dem Finger auf einer Zeichenfläche.
+function openSignature(name, onDone) {
+  const { sheet, close } = openSheet(`
+    <h2>Unterschrift Bauherr</h2>
+    <label class="field"><span>Name</span><input type="text" id="sign-name" value="${esc(name)}" placeholder="Vor- und Nachname"></label>
+    <div class="sign-pad"><canvas id="sign-canvas"></canvas><span class="sign-line">Hier unterschreiben</span></div>
+    <div class="row three sign-actions">
+      <button type="button" class="btn ghost" id="sign-cancel">Abbrechen</button>
+      <button type="button" class="btn ghost" id="sign-clear">Löschen</button>
+      <button type="button" class="btn primary" id="sign-ok">Übernehmen</button>
+    </div>`);
+  const canvas = $('#sign-canvas', sheet);
+  const ratio = window.devicePixelRatio || 1;
+  let ctx;
+  let drawn = false;
+  const setup = () => {
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.round(rect.width * ratio);
+    canvas.height = Math.round(rect.height * ratio);
+    ctx = canvas.getContext('2d');
+    ctx.scale(ratio, ratio);
+    ctx.lineWidth = 2.4;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#111';
+    drawn = false;
+  };
+  requestAnimationFrame(setup);
+  let last = null;
+  const pos = (e) => { const r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  canvas.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    canvas.setPointerCapture(e.pointerId);
+    last = pos(e);
+    ctx.beginPath();
+    ctx.arc(last[0], last[1], 1.2, 0, Math.PI * 2);
+    ctx.fillStyle = '#111';
+    ctx.fill();
+    drawn = true;
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!last) return;
+    e.preventDefault();
+    const p = pos(e);
+    ctx.beginPath();
+    ctx.moveTo(last[0], last[1]);
+    ctx.lineTo(p[0], p[1]);
+    ctx.stroke();
+    last = p;
+  });
+  const end = () => { last = null; };
+  canvas.addEventListener('pointerup', end);
+  canvas.addEventListener('pointercancel', end);
+  $('#sign-cancel', sheet).onclick = close;
+  $('#sign-clear', sheet).onclick = () => { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, canvas.width, canvas.height); setup(); };
+  $('#sign-ok', sheet).onclick = () => {
+    if (!drawn) { toast('Bitte zuerst unterschreiben.'); return; }
+    // Auf weißem Grund speichern, damit die Unterschrift auch im dunklen Modus lesbar ist.
+    const out = document.createElement('canvas');
+    out.width = canvas.width;
+    out.height = canvas.height;
+    const o = out.getContext('2d');
+    o.fillStyle = '#fff';
+    o.fillRect(0, 0, out.width, out.height);
+    o.drawImage(canvas, 0, 0);
+    onDone({ name: $('#sign-name', sheet).value.trim(), dataUrl: out.toDataURL('image/png'), zeit: Date.now() });
+    close();
+  };
 }
 
 function openSheet(html) {

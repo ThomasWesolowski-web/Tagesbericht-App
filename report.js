@@ -14,6 +14,19 @@ export const ARTEN = [
   { id: 'rapport', label: 'Rapport', hint: 'Arbeits- bzw. Regierapport' },
 ];
 
+export const ABRECHNUNG = [
+  { id: 'regie', label: 'Regie' },
+  { id: 'pauschal', label: 'Pauschal' },
+];
+
+// Häufige Fahrzeuge und Maschinen als Schnellauswahl beim Rapport.
+export const MASCHINEN_VORSCHLAEGE = ['LKW', 'Transporter'];
+
+export function maschinenStunden(r) {
+  const h = (r.maschinen || []).map((m) => Number(String(m.stunden).replace(',', '.'))).filter((n) => n > 0);
+  return h.length ? h.reduce((a, b) => a + b, 0) : null;
+}
+
 export function artLabel(r) {
   return r?.art === 'rapport' ? 'Rapport' : 'Tagesbericht';
 }
@@ -48,6 +61,10 @@ export function newReport() {
     taetigkeiten: '',
     material: '',
     bemerkungen: '',
+    // nur beim Rapport
+    abrechnung: 'regie',
+    maschinen: [], // { bezeichnung, stunden }
+    unterschrift: null, // { name, dataUrl, zeit }
     dirty: true,
     syncedAt: null,
     syncError: null,
@@ -174,6 +191,7 @@ function block(title, text) {
 }
 
 export function toMarkdown(r, files, author) {
+  const isRapport = r.art === 'rapport';
   const wetter = (r.wetter || [])
     .map((id) => WETTER.find((w) => w.id === id)?.label)
     .filter(Boolean)
@@ -183,6 +201,7 @@ export function toMarkdown(r, files, author) {
     ['Baustelle / Projekt', r.baustelle],
     ['Adresse', r.adresse],
     ['Auftragsnummer', r.auftrag],
+    ['Abrechnung', isRapport ? ABRECHNUNG.find((a) => a.id === (r.abrechnung || 'regie'))?.label : ''],
     ['Stunden gesamt', formatHours(workedHours(r))],
     ['Wetter', [wetter, r.temperatur ? `${r.temperatur} °C` : ''].filter(Boolean).join(', ')],
     ['Erstellt von', author],
@@ -202,8 +221,17 @@ export function toMarkdown(r, files, author) {
     md += `| **Gesamt** | **${crew.length}** | **${formatHours(workedHours(r))}** |\n`;
   }
   md += block('Ausgeführte Arbeiten', r.taetigkeiten);
+  const maschinen = isRapport ? (r.maschinen || []).filter((m) => m.bezeichnung || m.stunden) : [];
+  if (maschinen.length) {
+    md += '\n## Maschinen und Fahrzeuge\n\n| Maschine / Fahrzeug | Stunden |\n|---|---|\n';
+    for (const m of maschinen) md += `| ${(m.bezeichnung || '–').replace(/\|/g, '\\|')} | ${m.stunden ? formatHours(Number(String(m.stunden).replace(',', '.'))) : '–'} |\n`;
+    md += `| **Gesamt** | **${formatHours(maschinenStunden(r))}** |\n`;
+  }
   md += block('Material und Geräte', r.material);
   md += block('Bemerkungen / Besondere Vorkommnisse', r.bemerkungen);
+  if (isRapport && r.unterschrift?.dataUrl) {
+    md += `\n## Unterschrift Bauherr\n\n${r.unterschrift.name || 'Ohne Namen'}, unterschrieben am ${new Date(r.unterschrift.zeit).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })}\n\n![Unterschrift](unterschrift.png)\n`;
+  }
 
   if (files.length) {
     md += '\n## Fotos und Dokumente\n\n';
@@ -217,7 +245,16 @@ export function toMarkdown(r, files, author) {
 
 // Maschinenlesbare Fassung, damit Berichte später ausgewertet werden können.
 export function toJson(r, files, author) {
-  const { dirty, syncError, remoteFiles, ...data } = r;
+  const { dirty, syncError, remoteFiles, abrechnung, maschinen, unterschrift, ...data } = r;
+  const rapport = r.art === 'rapport'
+    ? {
+        abrechnung: abrechnung || 'regie',
+        maschinen: (maschinen || []).filter((m) => m.bezeichnung || m.stunden)
+          .map((m) => ({ bezeichnung: m.bezeichnung, stunden: Number(String(m.stunden).replace(',', '.')) || null })),
+        maschinenStunden: maschinenStunden(r),
+        unterschrift: unterschrift?.dataUrl ? { name: unterschrift.name, zeit: new Date(unterschrift.zeit).toISOString(), datei: 'unterschrift.png' } : null,
+      }
+    : {};
   return JSON.stringify(
     {
       ...data,
@@ -225,6 +262,7 @@ export function toJson(r, files, author) {
       mitarbeiter: crewOf(r).map((e) => ({ ...e, kategorie: kategorieOf(e), stunden: entryHours(e) })),
       stundenNachKategorie: Object.fromEntries(hoursByKategorie(r).map((k) => [k.kategorie, k.stunden])),
       stunden: workedHours(r),
+      ...rapport,
       erstelltVon: author || undefined,
       anhaenge: files.map((f) => ({ name: f.name, datei: f.remoteName, typ: f.type, groesse: f.size })),
     },

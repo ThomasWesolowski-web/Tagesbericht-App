@@ -150,7 +150,7 @@ export async function syncReport(settings, reportId) {
   const files = await db.filesFor(reportId);
 
   // Jeder Anhang bekommt einmal einen festen Dateinamen im Repo.
-  const taken = new Set(['bericht.md', 'bericht.json', ...files.map((f) => f.remoteName).filter(Boolean)]);
+  const taken = new Set(['bericht.md', 'bericht.json', 'unterschrift.png', ...files.map((f) => f.remoteName).filter(Boolean)]);
   for (const f of files) {
     if (!f.remoteName) {
       f.remoteName = safeFileName(f.name, taken);
@@ -170,6 +170,11 @@ export async function syncReport(settings, reportId) {
     if (f.uploadedPath !== path) entries.push({ path, blob: f.blob, file: f });
   }
   const wanted = new Set([`${dir}/bericht.md`, `${dir}/bericht.json`, ...files.map((f) => `${dir}/${f.remoteName}`)]);
+  if (report.art === 'rapport' && report.unterschrift?.dataUrl) {
+    const blob = await (await fetch(report.unterschrift.dataUrl)).blob();
+    entries.push({ path: `${dir}/unterschrift.png`, blob });
+    wanted.add(`${dir}/unterschrift.png`);
+  }
   for (const old of report.remoteFiles || []) {
     if (!wanted.has(old)) entries.push({ path: old, delete: true });
   }

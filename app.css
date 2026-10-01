@@ -443,3 +443,19 @@ body.editing .toast { bottom: calc(96px + var(--safe-b)); }
 .art-choice .pick { min-height: 72px; }
 .art-choice .pick > svg { width: 26px; height: 26px; color: var(--accent); }
 .art-choice .pick b { font-size: 1.05rem; }
+
+/* Rapport: Maschinen und Unterschrift */
+.masch { display: grid; grid-template-columns: minmax(0, 1fr) 84px 40px; gap: 8px; align-items: end; margin-bottom: 10px; }
+.masch .field { margin: 0; }
+.masch .icon-btn { margin-bottom: 4px; }
+#masch-quick { margin-top: 4px; }
+.sign-pad { position: relative; height: 180px; border: 1.5px dashed var(--line); border-radius: 12px; background: #fff; margin: 8px 0 14px; overflow: hidden; }
+.sign-pad canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+.sign-line { position: absolute; left: 16px; right: 16px; bottom: 34px; border-top: 1px solid #ccc; font-size: 12px; color: #999; padding-top: 4px; pointer-events: none; }
+.sign-actions { grid-template-columns: 1fr 1fr 1.3fr; }
+.sign-done { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 8px; margin-bottom: 12px; text-align: center; }
+.sign-done img { max-width: 100%; max-height: 140px; display: block; margin: 0 auto; }
+.sign-done small { color: #555; }
+#masch-quick .chip { display: inline-flex; align-items: center; gap: 4px; }
+#masch-quick .chip svg { width: 16px; height: 16px; flex: none; }
+#abr-seg { margin-bottom: 0; }
