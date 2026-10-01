@@ -14,7 +14,7 @@ import {
   isConfigured, syncAll, syncReport, testConnection, deleteRemote, loadAdminConfig, saveAdminConfig, loadStundenRemote,
 } from './sync.js';
 
-const APP_VERSION = '1.12.0';
+const APP_VERSION = '1.13.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -98,7 +98,8 @@ function syncPill(r) {
 async function route() {
   releaseUrls();
   closeMenu();
-  $$('.sheet-backdrop').forEach((el) => el.remove());
+  $$('.sheet-backdrop, .pdf-view').forEach((el) => el.remove());
+  document.body.classList.remove('no-scroll');
   document.body.classList.remove('editing');
   const hash = location.hash || '#/';
   $$('.tabbar a[data-tab]').forEach((a) => a.classList.toggle('active',
@@ -759,6 +760,16 @@ async function shareReport(report) {
   await sharePdfFile(file, title, extras);
 }
 
+// PDF erst in der App ansehen; Teilen/Speichern über den Knopf unten.
+let pdfjs = null;
+async function loadPdfJs() {
+  if (!pdfjs) {
+    pdfjs = await import('./vendor/pdf.min.js');
+    pdfjs.GlobalWorkerOptions.workerSrc = new URL('./vendor/pdf.worker.min.js', location.href).href;
+  }
+  return pdfjs;
+}
+
 async function sharePdfFile(file, title, extras) {
   const share = async () => {
     const all = [file, ...extras];
@@ -766,23 +777,48 @@ async function sharePdfFile(file, title, extras) {
     if (navigator.canShare?.({ files: list })) await navigator.share({ title, files: list });
     else openFile({ name: file.name, type: file.type, blob: file });
   };
+  const view = document.createElement('div');
+  view.className = 'pdf-view';
+  view.innerHTML = `
+    <header><button type="button" class="icon-btn" id="pdfv-close" aria-label="Schließen">${ICON.x}</button>
+      <div><b>${esc(title)}</b><small id="pdfv-info">${esc(formatBytes(file.size))}</small></div></header>
+    <div class="pdf-pages" id="pdfv-pages"><p class="hint" style="text-align:center;margin-top:40px">PDF wird geladen …</p></div>
+    <footer><button type="button" class="btn primary block" id="pdfv-share">${ICON.share} Teilen oder speichern</button></footer>`;
+  document.body.appendChild(view);
+  document.body.classList.add('no-scroll');
+  let closed = false;
+  const close = () => { closed = true; view.remove(); document.body.classList.remove('no-scroll'); };
+  $('#pdfv-close', view).onclick = close;
+  $('#pdfv-share', view).onclick = async () => {
+    try { await share(); } catch (e) { if (e.name !== 'AbortError') toast('Teilen hat nicht geklappt.'); }
+  };
+
+  const pages = $('#pdfv-pages', view);
   try {
-    await share();
+    const lib = await loadPdfJs();
+    const pdf = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+    if (closed) return;
+    pages.innerHTML = '';
+    $('#pdfv-info', view).textContent = `${pdf.numPages} ${pdf.numPages === 1 ? 'Seite' : 'Seiten'} · ${formatBytes(file.size)}`;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    for (let i = 1; i <= pdf.numPages && !closed; i++) {
+      const page = await pdf.getPage(i);
+      const base = page.getViewport({ scale: 1 });
+      const cssW = Math.min(pages.clientWidth - 16, 900);
+      const vp = page.getViewport({ scale: (cssW / base.width) * dpr });
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.floor(vp.width);
+      canvas.height = Math.floor(vp.height);
+      canvas.style.width = `${cssW}px`;
+      pages.appendChild(canvas);
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+      page.cleanup();
+    }
+    pdf.cleanup();
   } catch (err) {
-    if (err.name === 'AbortError') return;
-    // iOS erlaubt Teilen nur direkt nach einem Tippen; dann nochmal antippen lassen.
-    const { sheet, close } = openSheet(`
-      <h2>PDF ist fertig</h2>
-      <p class="hint">${esc(file.name)} · ${formatBytes(file.size)}</p>
-      <div class="row">
-        <button type="button" class="btn ghost" id="pdf-open">Ansehen</button>
-        <button type="button" class="btn primary" id="pdf-share">Teilen</button>
-      </div>`);
-    $('#pdf-open', sheet).onclick = () => { close(); openFile({ name: file.name, type: file.type, blob: file }); };
-    $('#pdf-share', sheet).onclick = async () => {
-      close();
-      try { await share(); } catch (e) { if (e.name !== 'AbortError') toast('Teilen hat nicht geklappt.'); }
-    };
+    // Vorschau geht nicht (z. B. sehr altes iOS): dann wie bisher teilen/öffnen
+    if (closed) return;
+    pages.innerHTML = `<p class="hint" style="text-align:center;margin-top:40px">Vorschau nicht möglich (${esc(err.message)}).<br>Tippe unten auf „Teilen oder speichern“.</p>`;
   }
 }
 
