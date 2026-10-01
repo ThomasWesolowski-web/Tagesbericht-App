@@ -717,17 +717,21 @@ async function openSitePicker(currentId, onSelect) {
   sheet.innerHTML = `
     <div class="sheet" role="dialog" aria-label="Baustelle auswählen">
       <div class="sheet-grip"></div>
-      <h2>Baustelle</h2>
-      <button class="btn primary block" id="sheet-new">${ICON.plus} Neue Baustelle erstellen</button>
-      <form id="sheet-form" class="section" hidden onsubmit="return false" style="margin-top:12px">
-        ${siteFields(newSite())}
-        <button class="btn primary block" id="sheet-save">Speichern und auswählen</button>
-      </form>
-      ${sites.length ? `${sites.length > 6 ? `<label class="search" style="margin-top:14px">${ICON.search}<input id="sheet-search" type="search" placeholder="Baustelle suchen …" autocomplete="off"></label>` : ''}
-        <div class="month"><span>Baustelle auswählen</span></div>
+      <h2>Baustelle auswählen</h2>
+      ${sites.length ? `${sites.length > 6 ? `<label class="search">${ICON.search}<input id="sheet-search" type="search" placeholder="Baustelle suchen …" autocomplete="off"></label>` : ''}
         <div class="pick-list">${sites.map((s) => `<button type="button" class="pick ${s.id === currentId ? 'current' : ''}" data-id="${s.id}">
           ${ICON.pin}<span><b>${esc(s.name)}</b>${s.adresse ? `<small>${esc(s.adresse)}</small>` : ''}</span></button>`).join('')}</div>`
-        : '<p class="hint" style="text-align:center;margin-top:14px">Noch keine Baustellen gespeichert.</p>'}
+        : '<p class="hint" style="text-align:center;margin:4px 0 0">Noch keine Baustellen gespeichert.</p>'}
+      <div class="sheet-or"><span>oder</span></div>
+      <button class="btn ghost block" id="sheet-new">${ICON.plus} Neue Baustelle erstellen</button>
+      <form id="sheet-form" class="section" hidden onsubmit="return false">
+        <h2>Neue Baustelle</h2>
+        ${siteFields(newSite())}
+        <div class="attach-actions" style="margin-top:4px">
+          <button type="button" class="btn ghost" id="sheet-cancel">Abbrechen</button>
+          <button type="button" class="btn primary" id="sheet-save">Speichern</button>
+        </div>
+      </form>
     </div>`;
   document.body.appendChild(sheet);
   requestAnimationFrame(() => sheet.classList.add('open'));
@@ -750,7 +754,12 @@ async function openSitePicker(currentId, onSelect) {
   $('#sheet-new', sheet).onclick = () => {
     $('#sheet-new', sheet).hidden = true;
     $('#sheet-form', sheet).hidden = false;
+    $('#sheet-form', sheet).scrollIntoView({ behavior: 'smooth', block: 'start' });
     $('[name=name]', sheet).focus();
+  };
+  $('#sheet-cancel', sheet).onclick = () => {
+    $('#sheet-form', sheet).hidden = true;
+    $('#sheet-new', sheet).hidden = false;
   };
   $('#sheet-save', sheet).onclick = async () => {
     const site = readSiteFields($('#sheet-form', sheet), newSite());
