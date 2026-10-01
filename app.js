@@ -2,15 +2,17 @@ import * as db from './db.js';
 import { prepareFile, formatBytes, MAX_FILE_BYTES } from './media.js';
 import {
   WETTER, newReport, newSite, newPerson, crewOf, entryHours, KATEGORIEN, kategorieOf, sortCrew, hoursByKategorie, workedHours, formatHours, formatDate, weekday, monthLabel, parseDate, toMarkdown, ARTEN, artLabel,
-  ABRECHNUNG, MASCHINEN_VORSCHLAEGE, maschinenStunden, today,
+  ABRECHNUNG, MASCHINEN_VORSCHLAEGE, maschinenStunden, today, newId,
 } from './report.js';
 import { buildPdf, pdfFileName, buildStundenPdf, stundenPdfName } from './pdf.js';
 import {
   TYPEN, typLabel, hatZeiten, newStunde, stundenOf, personKey, kw, summe, sortStunden, monatLabel, shiftMonth,
 } from './stunden.js';
-import { isConfigured, syncAll, syncReport, testConnection, deleteRemote } from './sync.js';
+import {
+  isConfigured, syncAll, syncReport, testConnection, deleteRemote, loadAdminConfig, saveAdminConfig, loadStundenRemote,
+} from './sync.js';
 
-const APP_VERSION = '1.9.0';
+const APP_VERSION = '1.10.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -895,7 +897,9 @@ async function renderSiteEditor(id) {
         <div class="date"><b>${parseDate(r.datum).getDate()}</b><span>${weekday(r.datum).slice(0, 2)}</span></div>
         <div class="body"><div class="title">${formatDate(r.datum)}</div><div class="preview">${esc((r.taetigkeiten || r.bemerkungen || '').split('\n')[0])}</div></div>
         <div class="hours">${formatHours(workedHours(r))}</div></a>`).join('')}</div>` : ''}
-    ${isNew ? '' : '<button class="btn danger block" id="delete-site" style="margin-top:20px">Baustelle löschen</button>'}`;
+    ${isNew ? '' : isAdmin()
+      ? '<button class="btn danger block" id="delete-site" style="margin-top:20px">Baustelle löschen</button>'
+      : '<p class="hint" style="margin-top:20px;text-align:center">Löschen darf nur der Administrator. Fertige Baustellen kannst du oben als abgeschlossen markieren.</p>'}`;
 
   $('#save-site').onclick = async () => {
     readSiteFields($('#site-form'), site);
@@ -1183,7 +1187,7 @@ async function renderPeople() {
         <button type="button" class="btn ghost" id="pf-cancel">Abbrechen</button>
         <button type="button" class="btn primary" id="pf-save">Speichern</button>
       </div>
-      ${isNew ? '' : '<button type="button" class="btn danger block" id="pf-delete" style="margin-top:12px">Person löschen</button>'}`);
+      ${isNew || !isAdmin() ? '' : '<button type="button" class="btn danger block" id="pf-delete" style="margin-top:12px">Person löschen</button>'}`);
     bindKategorie(sheet);
     $('#pf-cancel', sheet).onclick = close;
     $('#pf-save', sheet).onclick = async () => {
@@ -1229,9 +1233,105 @@ async function migrateSites() {
   localStorage.setItem('tagesberichte.sitesMigrated', '1');
 }
 
+// ---------- Administrator ----------
+// Der Administrator (Tomek) meldet sich auf seinem Handy einmal mit einer PIN an.
+// Die PIN liegt nur als Prüfsumme im Repo (stammdaten/admin.json).
+
+function isAdmin() {
+  return settings.admin === true;
+}
+
+async function hashPin(pin, salt) {
+  const data = new TextEncoder().encode(`${salt}:${pin}`);
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function setAdmin(on) {
+  settings = { ...settings, admin: on };
+  db.saveSettings(settings);
+}
+
+async function adminLogin(onDone) {
+  if (!isConfigured(settings)) {
+    toast('Bitte zuerst den Zugangs-Token eintragen.', 3500);
+    return;
+  }
+  let cfg;
+  try {
+    cfg = await loadAdminConfig(settings);
+  } catch (err) {
+    toast(`Keine Verbindung: ${err.message}`, 4000);
+    return;
+  }
+  const isNew = !cfg;
+  const { sheet, close } = openSheet(`
+    <h2>${isNew ? 'Administrator einrichten' : 'Als Administrator anmelden'}</h2>
+    <p class="hint">${isNew
+      ? 'Lege eine PIN fest. Nur wer sie kennt, kann Baustellen und Personal löschen und die Stunden aller Mitarbeiter sehen.'
+      : 'Gib die Administrator-PIN ein.'}</p>
+    <label class="field"><span>PIN</span><input type="password" inputmode="numeric" autocomplete="off" id="pin1" placeholder="mindestens 4 Ziffern"></label>
+    ${isNew ? '<label class="field"><span>PIN wiederholen</span><input type="password" inputmode="numeric" autocomplete="off" id="pin2"></label>' : ''}
+    <div class="row sheet-actions">
+      <button type="button" class="btn ghost" id="pin-cancel">Abbrechen</button>
+      <button type="button" class="btn primary" id="pin-ok">${isNew ? 'PIN festlegen' : 'Anmelden'}</button>
+    </div>`);
+  setTimeout(() => $('#pin1', sheet)?.focus(), 250);
+  $('#pin-cancel', sheet).onclick = close;
+  $('#pin-ok', sheet).onclick = async () => {
+    const pin = $('#pin1', sheet).value.trim();
+    if (pin.length < 4) { toast('Die PIN braucht mindestens 4 Zeichen.'); return; }
+    try {
+      if (isNew) {
+        if (pin !== $('#pin2', sheet).value.trim()) { toast('Die beiden PINs stimmen nicht überein.'); return; }
+        const salt = newId();
+        await saveAdminConfig(settings, { salt, pinHash: await hashPin(pin, salt), erstellt: new Date().toISOString() });
+      } else if ((await hashPin(pin, cfg.salt)) !== cfg.pinHash) {
+        toast('Falsche PIN.');
+        return;
+      }
+    } catch (err) {
+      toast(err.message, 4000);
+      return;
+    }
+    setAdmin(true);
+    close();
+    toast('Du bist als Administrator angemeldet.');
+    onDone?.();
+  };
+}
+
+async function changeAdminPin() {
+  const { sheet, close } = openSheet(`
+    <h2>Neue Administrator-PIN</h2>
+    <label class="field"><span>Neue PIN</span><input type="password" inputmode="numeric" autocomplete="off" id="pin1"></label>
+    <label class="field"><span>PIN wiederholen</span><input type="password" inputmode="numeric" autocomplete="off" id="pin2"></label>
+    <div class="row sheet-actions">
+      <button type="button" class="btn ghost" id="pin-cancel">Abbrechen</button>
+      <button type="button" class="btn primary" id="pin-ok">Speichern</button>
+    </div>`);
+  $('#pin-cancel', sheet).onclick = close;
+  $('#pin-ok', sheet).onclick = async () => {
+    const pin = $('#pin1', sheet).value.trim();
+    if (pin.length < 4) { toast('Die PIN braucht mindestens 4 Zeichen.'); return; }
+    if (pin !== $('#pin2', sheet).value.trim()) { toast('Die beiden PINs stimmen nicht überein.'); return; }
+    try {
+      const salt = newId();
+      await saveAdminConfig(settings, { salt, pinHash: await hashPin(pin, salt), erstellt: new Date().toISOString() });
+    } catch (err) {
+      toast(err.message, 4000);
+      return;
+    }
+    close();
+    toast('PIN geändert.');
+  };
+}
+
 // ---------- Stundennachweis ----------
 
 let stundenMonat = today().slice(0, 7);
+const stundenRemoteCache = new Map(); // "JJJJ-MM|Name" -> hochgeladene Einträge
+const stundenRemoteLaden = new Set();
 
 function stundenPerson() {
   return settings.stundenPerson?.name ? settings.stundenPerson : null;
@@ -1253,7 +1353,22 @@ async function renderStunden() {
     return;
   }
   const key = personKey(person);
-  const all = (await db.allStunden()).filter((e) => personKey(e) === key);
+  let all = (await db.allStunden()).filter((e) => personKey(e) === key);
+  // Der Administrator sieht zusätzlich, was der Mitarbeiter von seinem Handy hochgeladen hat.
+  const remoteKey = `${stundenMonat}|${person.name}`;
+  const remote = isAdmin() ? stundenRemoteCache.get(remoteKey) : null;
+  if (remote) {
+    const local = new Set(all.map((e) => e.id));
+    all = [...all, ...remote.filter((e) => !local.has(e.id)).map((e) => ({ ...e, fremd: true }))];
+  }
+  if (isAdmin() && !remote && isConfigured(settings) && navigator.onLine && !stundenRemoteLaden.has(remoteKey)) {
+    stundenRemoteLaden.add(remoteKey);
+    loadStundenRemote(settings, stundenMonat, person.name)
+      .then((list) => { stundenRemoteCache.set(remoteKey, list); if (location.hash === '#/stunden') renderStunden(); })
+      .catch(() => {})
+      .finally(() => stundenRemoteLaden.delete(remoteKey));
+  }
+  const fremd = all.filter((e) => e.fremd && e.datum.startsWith(stundenMonat)).length;
   const list = sortStunden(all.filter((e) => e.datum.startsWith(stundenMonat))).reverse();
   const s = summe(list);
 
@@ -1282,12 +1397,13 @@ async function renderStunden() {
   view.innerHTML = `
     <button type="button" class="site-pick who" id="who-btn">
       <div class="avatar">${initials(person.name)}</div>
-      <span><b>${esc(person.name)}</b><small>Stundennachweis für</small></span><em>Ändern</em></button>
+      <span><b>${esc(person.name)}</b><small>Stundennachweis für</small></span>${isAdmin() ? '<em>Ändern</em>' : ''}</button>
     <div class="month-nav">
       <button class="icon-btn" id="m-prev" aria-label="Vorheriger Monat">${ICON.back}</button>
       <b>${monatLabel(stundenMonat)}</b>
       <button class="icon-btn" id="m-next" aria-label="Nächster Monat"><span class="flip">${ICON.back}</span></button>
     </div>
+    ${fremd ? `<p class="hint" style="text-align:center;margin:0 0 10px">${fremd} Einträge vom Handy von ${esc(person.name)} (nur ansehen)</p>` : ''}
     <div class="stats">
       <div class="stat"><b>${formatHours(s.stunden).replace(' h', '')}</b><span>Stunden</span></div>
       <div class="stat"><b>${s.arbeitstage}</b><span>Arbeitstage</span></div>
@@ -1300,7 +1416,10 @@ async function renderStunden() {
     ${list.length ? `<button class="btn soft block" id="stunden-pdf" style="margin-top:18px">${ICON.share} Monat als PDF teilen</button>` : ''}
     <button class="fab" id="stunde-neu">${ICON.plus}<span>Stunden eintragen</span></button>`;
 
-  $('#who-btn').onclick = () => chooseStundenPerson();
+  $('#who-btn').onclick = () => {
+    if (isAdmin()) chooseStundenPerson();
+    else toast('Du siehst nur deine eigenen Stunden. Wechseln kann nur der Administrator.', 3500);
+  };
   $('#m-prev').onclick = () => { stundenMonat = shiftMonth(stundenMonat, -1); renderStunden(); };
   $('#m-next').onclick = () => { stundenMonat = shiftMonth(stundenMonat, 1); renderStunden(); };
   $('#stunde-neu').onclick = () => {
@@ -1317,7 +1436,13 @@ async function renderStunden() {
       baustelle: last?.baustelle || '',
     }), true);
   };
-  $$('.rcard.stunde').forEach((b) => { b.onclick = () => openStundeEditor(structuredClone(list.find((e) => e.id === b.dataset.id)), false); });
+  $$('.rcard.stunde').forEach((b) => {
+    b.onclick = () => {
+      const e = list.find((x) => x.id === b.dataset.id);
+      if (e.fremd) toast('Diesen Eintrag kann nur der Mitarbeiter auf seinem Handy ändern.', 3500);
+      else openStundeEditor(structuredClone(e), false);
+    };
+  });
   const pdfBtn = $('#stunden-pdf');
   if (pdfBtn) pdfBtn.onclick = () => shareStundenPdf(person.name, stundenMonat, list);
 }
@@ -1493,6 +1618,16 @@ async function renderSettings() {
     </section>
 
     <section class="section">
+      <h2>Administrator <span class="h-right">${isAdmin() ? '<span class="pill ok">Angemeldet</span>' : ''}</span></h2>
+      <p class="hint" style="margin-top:0">${isAdmin()
+        ? 'Auf diesem Handy darfst du Baustellen und Personal löschen und die Stunden aller Mitarbeiter sehen.'
+        : 'Baustellen und Personal löschen und die Stunden aller Mitarbeiter sehen darf nur der Administrator.'}</p>
+      ${isAdmin()
+        ? '<div class="row"><button class="btn ghost" id="admin-pin">PIN ändern</button><button class="btn ghost" id="admin-out">Abmelden</button></div>'
+        : '<button class="btn ghost block" id="admin-in">Als Administrator anmelden</button>'}
+    </section>
+
+    <section class="section">
       <h2>So bekommst du den Token</h2>
       <ol class="steps">
         <li>Auf GitHub <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener"><b>Fine-grained token</b> anlegen</a>.</li>
@@ -1518,6 +1653,13 @@ async function renderSettings() {
       if (key === 'token' || key === 'autoSync') scheduleAutoSync();
     });
   });
+
+  const adminIn = $('#admin-in');
+  if (adminIn) adminIn.onclick = () => adminLogin(renderSettings);
+  const adminOut = $('#admin-out');
+  if (adminOut) adminOut.onclick = () => { setAdmin(false); toast('Abgemeldet.'); renderSettings(); };
+  const adminPin = $('#admin-pin');
+  if (adminPin) adminPin.onclick = () => changeAdminPin();
 
   $('#test-btn').onclick = async () => {
     document.activeElement?.blur();

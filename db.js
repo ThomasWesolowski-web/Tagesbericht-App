@@ -178,9 +178,23 @@ export async function putStunde(e) {
   markStundenDirty(e);
 }
 
+const STUNDEN_GELOESCHT = 'tagesberichte.stundenGeloescht';
+
 export async function deleteStunde(e) {
   await done((await store('stunden', 'readwrite')).delete(e.id));
+  // merken, damit der Eintrag beim Abgleich mit dem Repo nicht zurückkommt
+  const ids = stundenGeloescht();
+  ids.add(e.id);
+  localStorage.setItem(STUNDEN_GELOESCHT, JSON.stringify([...ids]));
   markStundenDirty(e);
+}
+
+export function stundenGeloescht() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(STUNDEN_GELOESCHT) || '[]'));
+  } catch {
+    return new Set();
+  }
 }
 
 export function stundenDirty() {

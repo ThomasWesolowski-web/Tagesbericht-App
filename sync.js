@@ -291,6 +291,39 @@ export async function syncStammdaten(settings) {
   return changed;
 }
 
+// ---------- Administrator und Stunden anderer Mitarbeiter ----------
+
+async function getJson(gh, settings, path) {
+  try {
+    const res = await gh(`${contentsPath(path)}?ref=${encodeURIComponent(settings.branch)}`);
+    return { data: JSON.parse(decodeBase64Utf8(res.content)), sha: res.sha };
+  } catch (err) {
+    if (err.status === 404) return null;
+    throw err;
+  }
+}
+
+const ADMIN_PATH = 'stammdaten/admin.json';
+
+export async function loadAdminConfig(settings) {
+  return (await getJson(client(settings), settings, ADMIN_PATH))?.data || null;
+}
+
+export async function saveAdminConfig(settings, cfg) {
+  const gh = client(settings);
+  const old = await getJson(gh, settings, ADMIN_PATH);
+  const text = `${JSON.stringify(cfg, null, 2)}\n`;
+  const body = { message: 'Administrator-PIN festgelegt', content: await blobToBase64(new Blob([text])), branch: settings.branch };
+  if (old) body.sha = old.sha;
+  await gh(contentsPath(ADMIN_PATH), { method: 'PUT', body });
+}
+
+// Hochgeladener Stundennachweis eines Mitarbeiters für einen Monat (für den Administrator).
+export async function loadStundenRemote(settings, ym, name) {
+  const res = await getJson(client(settings), settings, `stunden/${ym}_${slug(name) || 'mitarbeiter'}.json`);
+  return res?.data?.eintraege || [];
+}
+
 // ---------- Stundennachweis ----------
 // Pro Mitarbeiter und Monat: stunden/<JJJJ-MM>_<name>.md, .json und .pdf
 
@@ -303,9 +336,16 @@ export async function syncStunden(settings) {
   let n = 0;
   for (const key of keys) {
     const { name, monat } = dirty[key];
-    const entries = all.filter((e) => personKey(e) === key.split('|')[0] && e.datum.startsWith(monat));
-    const who = entries[0]?.name || name || 'Mitarbeiter';
+    const local = all.filter((e) => personKey(e) === key.split('|')[0] && e.datum.startsWith(monat));
+    const who = local[0]?.name || name || 'Mitarbeiter';
     const base = `stunden/${monat}_${slug(who) || 'mitarbeiter'}`;
+    // Was schon im Repo steht (z. B. von einem anderen Handy), bleibt erhalten.
+    const geloescht = db.stundenGeloescht();
+    const ids = new Set(local.map((e) => e.id));
+    const remote = ((await getJson(gh, settings, `${base}.json`))?.data?.eintraege || [])
+      .filter((e) => !ids.has(e.id) && !geloescht.has(e.id))
+      .map(({ stunden, ...e }) => e);
+    const entries = [...local, ...remote];
     const files = [
       { path: `${base}.md`, text: stundenMarkdown(who, monat, entries) },
       { path: `${base}.json`, text: stundenJson(who, monat, entries) },
