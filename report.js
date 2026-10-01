@@ -9,6 +9,15 @@ export const WETTER = [
   { id: 'frost', label: 'Frost', icon: '🥶' },
 ];
 
+export const ARTEN = [
+  { id: 'tagesbericht', label: 'Tagesbericht', hint: 'Täglicher Baustellenbericht' },
+  { id: 'rapport', label: 'Rapport', hint: 'Arbeits- bzw. Regierapport' },
+];
+
+export function artLabel(r) {
+  return r?.art === 'rapport' ? 'Rapport' : 'Tagesbericht';
+}
+
 export function today() {
   const d = new Date();
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
@@ -27,6 +36,7 @@ export function newReport() {
     createdAt: now,
     updatedAt: now,
     datum: today(),
+    art: null, // 'tagesbericht' oder 'rapport', wird nach der Baustelle gewählt
     baustelleId: null,
     baustelle: '',
     adresse: '',
@@ -178,7 +188,7 @@ export function toMarkdown(r, files, author) {
     ['Erstellt von', author],
   ].filter(([, v]) => v && String(v).trim());
 
-  let md = `# Tagesbericht ${formatDate(r.datum)}${r.baustelle ? ` – ${r.baustelle}` : ''}\n\n`;
+  let md = `# ${artLabel(r)} ${formatDate(r.datum)}${r.baustelle ? ` – ${r.baustelle}` : ''}\n\n`;
   md += '| | |\n|---|---|\n';
   md += rows.map(([k, v]) => `| **${k}** | ${String(v).replace(/\|/g, '\\|').replace(/\n/g, ' ')} |`).join('\n') + '\n';
   const crew = crewOf(r);
@@ -211,6 +221,7 @@ export function toJson(r, files, author) {
   return JSON.stringify(
     {
       ...data,
+      art: r.art || 'tagesbericht',
       mitarbeiter: crewOf(r).map((e) => ({ ...e, kategorie: kategorieOf(e), stunden: entryHours(e) })),
       stundenNachKategorie: Object.fromEntries(hoursByKategorie(r).map((k) => [k.kategorie, k.stunden])),
       stunden: workedHours(r),

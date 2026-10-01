@@ -432,3 +432,14 @@ body.editing .toast { bottom: calc(96px + var(--safe-b)); }
 .crew-sum .kv.total { border-top: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); margin-top: 4px; padding-top: 8px; color: var(--accent); font-weight: 700; }
 .crew-sum .kv.total b { color: var(--accent); font-size: 1.05rem; }
 .kat-chips .chip { padding: 7px 12px; }
+
+/* Tagesbericht / Rapport */
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); margin-bottom: 14px; }
+.seg button { border: 0; background: transparent; border-radius: 9px; padding: 9px 8px; font-weight: 650; color: var(--ink-2); cursor: pointer; }
+.seg button[aria-checked="true"] { background: var(--accent); color: var(--accent-ink); box-shadow: var(--shadow); }
+.pill.art { color: var(--accent); background: var(--accent-soft); }
+.pill.art::before { display: none; }
+.art-choice { display: grid; gap: 10px; margin-bottom: 8px; }
+.art-choice .pick { min-height: 72px; }
+.art-choice .pick > svg { width: 26px; height: 26px; color: var(--accent); }
+.art-choice .pick b { font-size: 1.05rem; }

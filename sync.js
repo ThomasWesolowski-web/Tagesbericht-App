@@ -4,7 +4,7 @@
 
 import * as db from './db.js';
 import { blobToBase64, safeFileName, slug } from './media.js';
-import { toJson, toMarkdown, formatDate } from './report.js';
+import { toJson, toMarkdown, formatDate, artLabel } from './report.js';
 
 const API = 'https://api.github.com';
 
@@ -136,7 +136,7 @@ function folderPrefix(settings) {
 }
 
 async function chooseRemoteDir(gh, settings, report) {
-  const base = `${report.datum}_${slug(report.baustelle) || 'bericht'}`;
+  const base = `${report.datum}_${slug(report.baustelle) || 'bericht'}${report.art === 'rapport' ? '_rapport' : ''}`;
   let dir = base;
   for (let i = 2; await pathExists(gh, settings, folderPrefix(settings) + dir); i++) dir = `${base}-${i}`;
   return dir;
@@ -174,7 +174,7 @@ export async function syncReport(settings, reportId) {
     if (!wanted.has(old)) entries.push({ path: old, delete: true });
   }
 
-  const title = `Tagesbericht ${formatDate(report.datum)}${report.baustelle ? ` – ${report.baustelle}` : ''}`;
+  const title = `${artLabel(report)} ${formatDate(report.datum)}${report.baustelle ? ` – ${report.baustelle}` : ''}`;
   await commit(gh, settings, entries, report.syncedAt ? `${title} (aktualisiert)` : title);
 
   for (const e of entries) {
@@ -197,7 +197,7 @@ export async function deleteRemote(settings, report) {
   if (!report.remoteFiles?.length) return;
   const gh = client(settings);
   const entries = report.remoteFiles.map((path) => ({ path, delete: true }));
-  await commit(gh, settings, entries, `Tagesbericht ${formatDate(report.datum)} gelöscht`);
+  await commit(gh, settings, entries, `${artLabel(report)} ${formatDate(report.datum)} gelöscht`);
 }
 
 let running = null;

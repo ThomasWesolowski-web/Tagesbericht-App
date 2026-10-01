@@ -1,11 +1,11 @@
 import * as db from './db.js';
 import { prepareFile, formatBytes, MAX_FILE_BYTES } from './media.js';
 import {
-  WETTER, newReport, newSite, newPerson, crewOf, entryHours, KATEGORIEN, kategorieOf, sortCrew, hoursByKategorie, workedHours, formatHours, formatDate, weekday, monthLabel, parseDate, toMarkdown,
+  WETTER, newReport, newSite, newPerson, crewOf, entryHours, KATEGORIEN, kategorieOf, sortCrew, hoursByKategorie, workedHours, formatHours, formatDate, weekday, monthLabel, parseDate, toMarkdown, ARTEN, artLabel,
 } from './report.js';
 import { isConfigured, syncAll, syncReport, testConnection, deleteRemote } from './sync.js';
 
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.5.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -66,6 +66,7 @@ const ICON = {
   search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 16l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
   pin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-6.2-6.5-11.2a6.5 6.5 0 0 1 13 0C18.5 14.8 12 21 12 21z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="9.8" r="2.3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
   chevron: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  clock: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7.5V12l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   people: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 4.8a3.2 3.2 0 0 1 0 6.4M18 14.2c1.8.8 3 2.7 3 4.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>',
   info: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 11v6M12 7.5v.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
@@ -203,7 +204,7 @@ async function renderList() {
           <div class="body">
             <div class="title ${r.baustelle ? '' : 'muted'}">${esc(r.baustelle || 'Ohne Baustelle')}</div>
             ${preview ? `<div class="preview">${esc(preview)}</div>` : ''}
-            <div class="meta">${syncPill(r)}${n ? `<span>${ICON.clip} ${n}</span>` : ''}</div>
+            <div class="meta">${r.art === 'rapport' ? '<span class="pill art">Rapport</span>' : ''}${syncPill(r)}${n ? `<span>${ICON.clip} ${n}</span>` : ''}</div>
           </div>
           <div class="hours">${formatHours(workedHours(r))}</div>
         </a>`;
@@ -254,7 +255,7 @@ async function renderEditor(id) {
 
   appbar.innerHTML = `
     <button class="icon-btn" id="back" aria-label="Zurück">${ICON.back}</button>
-    <h1 class="small">${isDraft ? 'Neuer Bericht' : 'Bericht'}<span class="sub" id="head-date">${weekday(report.datum)}, ${formatDate(report.datum)}</span></h1>
+    <h1 class="small"><span id="head-title">${isDraft ? 'Neuer Bericht' : artLabel(report)}</span><span class="sub" id="head-date">${weekday(report.datum)}, ${formatDate(report.datum)}</span></h1>
     <button class="icon-btn" id="menu-btn" aria-label="Mehr">${ICON.more}</button>`;
   const wetterChips = WETTER.map((w) =>
     `<button type="button" class="chip" data-wetter="${w.id}" aria-pressed="${report.wetter.includes(w.id)}">${w.icon} ${w.label}</button>`).join('');
@@ -264,6 +265,8 @@ async function renderEditor(id) {
     <form id="form" autocomplete="off" onsubmit="return false">
       <section class="section">
         <h2>Allgemein</h2>
+        <div class="seg" id="art-seg" role="radiogroup" aria-label="Art">${ARTEN.map((a) =>
+          `<button type="button" role="radio" data-art="${a.id}" aria-checked="${report.art === a.id}">${a.label}</button>`).join('')}</div>
         <label class="field"><span>Datum</span><input type="date" data-field="datum" value="${esc(report.datum)}" required></label>
         <div class="field"><span>Baustelle</span><button type="button" class="site-pick" id="site-pick"></button></div>
         <label class="field"><span>Auftragsnummer</span><input type="text" data-field="auftrag" value="${esc(report.auftrag)}" placeholder="optional"></label>
@@ -350,6 +353,7 @@ async function renderEditor(id) {
       chooseSite();
       return;
     }
+    if (!report.art) report.art = 'tagesbericht';
     // Upload-Status aus der Datenbank übernehmen, falls inzwischen hochgeladen wurde
     const fresh = await db.getReport(report.id);
     if (fresh) for (const k of ['syncedAt', 'syncError', 'remoteDir', 'remoteFiles']) report[k] = fresh[k];
@@ -403,9 +407,25 @@ async function renderEditor(id) {
     await db.putSite(site);
     drawSite();
     changed();
+    if (!report.art) chooseArt();
   });
   $('#site-pick').onclick = chooseSite;
   drawSite();
+
+  const setArt = (art) => {
+    report.art = art;
+    $$('#art-seg button').forEach((b) => b.setAttribute('aria-checked', b.dataset.art === art));
+    $('#head-title').textContent = `${isDraft ? 'Neuer ' : ''}${artLabel(report)}`;
+    changed();
+  };
+  $$('#art-seg button').forEach((b) => { b.onclick = () => setArt(b.dataset.art); });
+  const chooseArt = () => {
+    const { sheet, close } = openSheet(`
+      <h2>Was möchtest du erstellen?</h2>
+      <div class="art-choice">${ARTEN.map((a) => `<button type="button" class="pick" data-art="${a.id}">
+        ${a.id === 'rapport' ? ICON.clock : ICON.doc}<span><b>${a.label}</b><small>${a.hint}</small></span></button>`).join('')}</div>`);
+    $$('.pick', sheet).forEach((b) => { b.onclick = () => { close(); setArt(b.dataset.art); }; });
+  };
   if (isDraft && !report.baustelleId) setTimeout(chooseSite, 150);
 
   const drawCrew = () => {
@@ -595,7 +615,7 @@ function openFile(file) {
 async function shareReport(report) {
   const files = await db.filesFor(report.id);
   const text = toMarkdown(report, files.map((f) => ({ ...f, remoteName: f.name })), settings.author);
-  const title = `Tagesbericht ${formatDate(report.datum)}`;
+  const title = `${artLabel(report)} ${formatDate(report.datum)}`;
   const shareFiles = files.map((f) => new File([f.blob], f.name, { type: f.type }));
   try {
     if (navigator.canShare && shareFiles.length && navigator.canShare({ files: shareFiles })) {
@@ -613,7 +633,7 @@ async function shareReport(report) {
 
 async function duplicate(report) {
   const copy = newReport();
-  for (const k of ['baustelleId', 'baustelle', 'adresse', 'auftrag', 'taetigkeiten', 'material']) copy[k] = report[k];
+  for (const k of ['art', 'baustelleId', 'baustelle', 'adresse', 'auftrag', 'taetigkeiten', 'material']) copy[k] = report[k];
   copy.mitarbeiter = structuredClone(report.mitarbeiter || []);
   drafts.set(copy.id, copy);
   location.hash = `#/bericht/${copy.id}`;
