@@ -205,6 +205,82 @@ export async function deleteRemote(settings, report) {
   await commit(gh, settings, entries, `${artLabel(report)} ${formatDate(report.datum)} gelöscht`);
 }
 
+// ---------- Baustellen und Personal ----------
+// Liegen im Repo unter stammdaten/, damit alle Handys dieselben Listen haben.
+// Pro Eintrag gewinnt die neuere Änderung (updatedAt).
+
+const STAMMDATEN = [
+  { store: 'sites', path: 'stammdaten/baustellen.json', title: 'Baustellen' },
+  { store: 'people', path: 'stammdaten/personal.json', title: 'Personal' },
+];
+
+function decodeBase64Utf8(b64) {
+  const bin = atob((b64 || '').replace(/\s/g, ''));
+  return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+}
+
+const stamp = (x) => x.updatedAt || x.createdAt || 0;
+const shared = (x) => {
+  const { lastUsed, ...rest } = x;
+  return rest;
+};
+
+async function syncList(gh, settings, def) {
+  let remote = [];
+  let sha;
+  try {
+    const res = await gh(`${contentsPath(def.path)}?ref=${encodeURIComponent(settings.branch)}`);
+    sha = res.sha;
+    remote = JSON.parse(decodeBase64Utf8(res.content)).eintraege || [];
+  } catch (err) {
+    if (err.status !== 404) throw err;
+  }
+  const local = await db.rawAll(def.store);
+  const localById = new Map(local.map((x) => [x.id, x]));
+  const remoteById = new Map(remote.map((x) => [x.id, x]));
+
+  const toLocal = [];
+  let remoteChanged = false;
+  for (const r of remote) {
+    const l = localById.get(r.id);
+    if (!l || stamp(r) > stamp(l)) toLocal.push(l?.lastUsed ? { ...r, lastUsed: l.lastUsed } : r);
+  }
+  for (const l of local) {
+    const r = remoteById.get(l.id);
+    if (!r || stamp(l) > stamp(r)) remoteChanged = true;
+  }
+  if (toLocal.length) await db.putRaw(def.store, toLocal);
+
+  if (remoteChanged) {
+    const merged = new Map(remote.map((x) => [x.id, x]));
+    for (const l of local) {
+      const r = merged.get(l.id);
+      if (!r || stamp(l) > stamp(r)) merged.set(l.id, shared(l));
+    }
+    const text = JSON.stringify({ aktualisiert: new Date().toISOString(), eintraege: [...merged.values()] }, null, 2) + '\n';
+    const body = { message: `${def.title} aktualisiert`, content: await blobToBase64(new Blob([text])), branch: settings.branch };
+    if (sha) body.sha = sha;
+    await gh(contentsPath(def.path), { method: 'PUT', body });
+  }
+  return toLocal.length > 0;
+}
+
+// Gibt true zurück, wenn sich auf dem Handy etwas geändert hat.
+export async function syncStammdaten(settings) {
+  const gh = client(settings);
+  let changed = false;
+  for (const def of STAMMDATEN) {
+    try {
+      changed = (await syncList(gh, settings, def)) || changed;
+    } catch (err) {
+      // Hat ein anderes Handy gleichzeitig geschrieben (409/422), einmal neu abgleichen.
+      if (err.status !== 409 && err.status !== 422) throw err;
+      changed = (await syncList(gh, settings, def)) || changed;
+    }
+  }
+  return changed;
+}
+
 let running = null;
 
 // Lädt alle offenen Berichte hoch. Gibt { ok, failed } zurück.
@@ -213,6 +289,13 @@ export function syncAll(settings, onProgress) {
   running = (async () => {
     let ok = 0;
     let failed = 0;
+    let stammdatenChanged = false;
+    let stammdatenError = null;
+    try {
+      stammdatenChanged = await syncStammdaten(settings);
+    } catch (err) {
+      stammdatenError = err.message;
+    }
     const pending = (await db.allReports()).filter((r) => r.dirty);
     for (const r of pending) {
       onProgress?.({ report: r, ok, failed, total: pending.length });
@@ -229,7 +312,7 @@ export function syncAll(settings, onProgress) {
         if (err.status === 0 || err.status === 401) break;
       }
     }
-    return { ok, failed, total: pending.length };
+    return { ok, failed, total: pending.length, stammdatenChanged, stammdatenError };
   })().finally(() => {
     running = null;
   });

@@ -87,36 +87,79 @@ export async function deleteFile(id) {
   return done((await store('files', 'readwrite')).delete(id));
 }
 
+// Baustellen und Personal werden mit dem Repo abgeglichen (stammdaten/*.json).
+// Gelöschte Einträge bleiben als Markierung { id, deleted: 1 } liegen, damit die
+// Löschung auch auf den anderen Handys ankommt. „lastUsed“ bleibt nur auf dem Gerät.
+const LOCAL_ONLY = ['lastUsed', 'updatedAt'];
+
+function sameContent(a, b) {
+  const strip = (x) => JSON.stringify(Object.keys(x || {}).filter((k) => !LOCAL_ONLY.includes(k)).sort().map((k) => [k, x[k]]));
+  return strip(a) === strip(b);
+}
+
+function notifyChange() {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('stammdaten-changed'));
+}
+
+async function putShared(name, item) {
+  const old = await done((await store(name)).get(item.id));
+  const changed = !old || !sameContent(old, item);
+  if (changed) item.updatedAt = Date.now();
+  await done((await store(name, 'readwrite')).put(item));
+  if (changed) notifyChange();
+}
+
+async function markDeleted(name, id) {
+  await done((await store(name, 'readwrite')).put({ id, deleted: 1, updatedAt: Date.now() }));
+  notifyChange();
+}
+
+// Rohdaten inkl. Löschmarkierungen, nur für den Abgleich.
+export async function rawAll(name) {
+  return done((await store(name)).getAll());
+}
+
+export async function putRaw(name, items) {
+  const db = await open();
+  const tx = db.transaction(name, 'readwrite');
+  for (const item of items) tx.objectStore(name).put(item);
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
 // Gespeicherte Baustellen, damit sie beim Bericht nur ausgewählt werden müssen.
 export async function allSites() {
-  const list = await done((await store('sites')).getAll());
+  const list = (await rawAll('sites')).filter((s) => !s.deleted);
   return list.sort((a, b) => (a.archived - b.archived) || (b.lastUsed || 0) - (a.lastUsed || 0) || a.name.localeCompare(b.name, 'de'));
 }
 
 export async function getSite(id) {
-  return done((await store('sites')).get(id));
+  const site = await done((await store('sites')).get(id));
+  return site?.deleted ? undefined : site;
 }
 
 export async function putSite(site) {
-  return done((await store('sites', 'readwrite')).put(site));
+  return putShared('sites', site);
 }
 
 export async function deleteSite(id) {
-  return done((await store('sites', 'readwrite')).delete(id));
+  return markDeleted('sites', id);
 }
 
 // Gespeichertes Personal, das im Bericht ausgewählt wird.
 export async function allPeople() {
-  const list = await done((await store('people')).getAll());
+  const list = (await rawAll('people')).filter((p) => !p.deleted);
   return list.sort((a, b) => (a.archived - b.archived) || a.name.localeCompare(b.name, 'de'));
 }
 
 export async function putPerson(person) {
-  return done((await store('people', 'readwrite')).put(person));
+  return putShared('people', person);
 }
 
 export async function deletePerson(id) {
-  return done((await store('people', 'readwrite')).delete(id));
+  return markDeleted('people', id);
 }
 
 // Einstellungen sind klein und liegen im localStorage.

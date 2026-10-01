@@ -6,7 +6,7 @@ import {
 } from './report.js';
 import { isConfigured, syncAll, syncReport, testConnection, deleteRemote } from './sync.js';
 
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.7.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -1332,9 +1332,14 @@ async function runSync(manual) {
     else if (result.ok) toast(result.ok === 1 ? 'Bericht hochgeladen.' : `${result.ok} Berichte hochgeladen.`);
     else if (manual) toast('Alles ist bereits hochgeladen.');
   }
+  if (manual && result.stammdatenError) toast(`Baustellen/Personal: ${result.stammdatenError}`, 4000);
   // Ansicht aktualisieren, ohne das Formular neu aufzubauen
   if (/^#\/bericht\//.test(location.hash)) editorHooks?.refresh();
   else if ((location.hash || '#/') === '#/') renderList();
+  else if (result.stammdatenChanged && !document.querySelector('.sheet-backdrop')) {
+    if (location.hash === '#/baustellen') renderSites();
+    else if (location.hash === '#/personal') renderPeople();
+  }
 }
 
 // ---------- Start ----------
@@ -1354,6 +1359,11 @@ window.addEventListener('hashchange', async () => {
   route();
 });
 window.addEventListener('online', () => scheduleAutoSync(1000));
+window.addEventListener('stammdaten-changed', () => scheduleAutoSync(1500));
+// Beim Öffnen der App die Baustellen und das Personal der anderen holen.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') scheduleAutoSync(800);
+});
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   installPrompt = e;

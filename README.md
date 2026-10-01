@@ -3,6 +3,8 @@
 Web-App für Tagesberichte, die auf dem Handy läuft und auch ohne Netz funktioniert.
 Berichte werden zuerst auf dem Handy gespeichert und danach in das private Repo
 [`Rapporte-`](https://github.com/ThomasWesolowski-web/Rapporte-) in den Ordner `berichte/` hochgeladen.
+Baustellen und Personal werden mit `stammdaten/baustellen.json` und `stammdaten/personal.json`
+im selben Repo abgeglichen, damit alle Handys dieselben Listen haben (pro Eintrag gewinnt die neuere Änderung).
 
 In diesem Repo liegt nur der App-Code. Es enthält keine Berichte und keine Zugangsdaten.
 
