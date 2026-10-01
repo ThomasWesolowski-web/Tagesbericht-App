@@ -66,8 +66,39 @@ function minutes(hhmm) {
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 }
 
+export const KATEGORIEN = ['Meister', 'Facharbeiter', 'Helfer', 'Lehrling'];
+
 export function newPerson(fields = {}) {
-  return { id: newId(), name: '', funktion: '', archived: 0, createdAt: Date.now(), ...fields };
+  return { id: newId(), name: '', kategorie: 'Facharbeiter', archived: 0, createdAt: Date.now(), ...fields };
+}
+
+// Kategorie einer Person oder eines Eintrags; ältere Einträge hatten nur ein freies Feld „Funktion“.
+export function kategorieOf(x) {
+  if (KATEGORIEN.includes(x?.kategorie)) return x.kategorie;
+  const f = (x?.funktion || '').toLowerCase();
+  if (!f) return x?.personId ? 'Facharbeiter' : 'Ohne Kategorie';
+  if (/meister|polier|vorarbeiter|bauf(ü|ue)hrer|chef/.test(f)) return 'Meister';
+  if (/lehrling|azubi|auszubild|lernend/.test(f)) return 'Lehrling';
+  if (/helfer|hilfs/.test(f)) return 'Helfer';
+  return 'Facharbeiter';
+}
+
+const ORDER = [...KATEGORIEN, 'Ohne Kategorie'];
+
+export function sortCrew(crew) {
+  return crew.sort((a, b) => ORDER.indexOf(kategorieOf(a)) - ORDER.indexOf(kategorieOf(b)));
+}
+
+// Stunden getrennt nach Kategorie, nur Kategorien mit Personen.
+export function hoursByKategorie(r) {
+  const out = [];
+  for (const k of ORDER) {
+    const entries = crewOf(r).filter((e) => kategorieOf(e) === k);
+    if (!entries.length) continue;
+    const hours = entries.map(entryHours).filter((h) => h != null);
+    out.push({ kategorie: k, personen: entries.length, stunden: hours.length ? hours.reduce((a, b) => a + b, 0) : null });
+  }
+  return out;
 }
 
 // Stunden einer Person bzw. eines älteren Berichts aus Beginn, Ende und Pause (auch über Mitternacht).
@@ -152,12 +183,13 @@ export function toMarkdown(r, files, author) {
   md += rows.map(([k, v]) => `| **${k}** | ${String(v).replace(/\|/g, '\\|').replace(/\n/g, ' ')} |`).join('\n') + '\n';
   const crew = crewOf(r);
   if (crew.length) {
-    md += '\n## Personal und Arbeitszeit\n\n| Name | Beginn | Ende | Pause | Stunden |\n|---|---|---|---|---|\n';
-    for (const e of crew) {
-      const name = `${e.name}${e.funktion ? ` (${e.funktion})` : ''}`.replace(/\|/g, '\\|');
-      md += `| ${name} | ${e.beginn || '–'} | ${e.ende || '–'} | ${e.pause || 0} min | ${formatHours(entryHours(e))} |\n`;
+    md += '\n## Personal und Arbeitszeit\n\n| Name | Kategorie | Beginn | Ende | Pause | Stunden |\n|---|---|---|---|---|---|\n';
+    for (const e of sortCrew([...crew])) {
+      md += `| ${e.name.replace(/\|/g, '\\|')} | ${kategorieOf(e)} | ${e.beginn || '–'} | ${e.ende || '–'} | ${e.pause || 0} min | ${formatHours(entryHours(e))} |\n`;
     }
-    md += `| **Summe** | | | | **${formatHours(workedHours(r))}** |\n`;
+    md += '\n### Stunden nach Kategorie\n\n| Kategorie | Personen | Stunden |\n|---|---|---|\n';
+    for (const k of hoursByKategorie(r)) md += `| ${k.kategorie} | ${k.personen} | ${formatHours(k.stunden)} |\n`;
+    md += `| **Gesamt** | **${crew.length}** | **${formatHours(workedHours(r))}** |\n`;
   }
   md += block('Ausgeführte Arbeiten', r.taetigkeiten);
   md += block('Material und Geräte', r.material);
@@ -179,7 +211,8 @@ export function toJson(r, files, author) {
   return JSON.stringify(
     {
       ...data,
-      mitarbeiter: crewOf(r).map((e) => ({ ...e, stunden: entryHours(e) })),
+      mitarbeiter: crewOf(r).map((e) => ({ ...e, kategorie: kategorieOf(e), stunden: entryHours(e) })),
+      stundenNachKategorie: Object.fromEntries(hoursByKategorie(r).map((k) => [k.kategorie, k.stunden])),
       stunden: workedHours(r),
       erstelltVon: author || undefined,
       anhaenge: files.map((f) => ({ name: f.name, datei: f.remoteName, typ: f.type, groesse: f.size })),

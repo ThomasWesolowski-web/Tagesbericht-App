@@ -1,11 +1,11 @@
 import * as db from './db.js';
 import { prepareFile, formatBytes, MAX_FILE_BYTES } from './media.js';
 import {
-  WETTER, newReport, newSite, newPerson, crewOf, entryHours, workedHours, formatHours, formatDate, weekday, monthLabel, parseDate, toMarkdown,
+  WETTER, newReport, newSite, newPerson, crewOf, entryHours, KATEGORIEN, kategorieOf, sortCrew, hoursByKategorie, workedHours, formatHours, formatDate, weekday, monthLabel, parseDate, toMarkdown,
 } from './report.js';
 import { isConfigured, syncAll, syncReport, testConnection, deleteRemote } from './sync.js';
 
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -272,6 +272,7 @@ async function renderEditor(id) {
       <section class="section">
         <h2>Personal und Arbeitszeit <span class="h-right" id="hours"></span></h2>
         <div id="crew" class="crew-list"></div>
+        <div id="crew-sum" class="crew-sum"></div>
         <button type="button" class="btn soft block" id="add-crew">${ICON.plus} Personal hinzufügen</button>
       </section>
 
@@ -318,8 +319,15 @@ async function renderEditor(id) {
   const pendingAdds = new Set(); // neu angehängte Dateien, die bei „Abbrechen“ wieder weg müssen
   const pendingRemovals = new Set(); // entfernte Dateien, die erst beim Speichern gelöscht werden
 
+  const drawSum = () => {
+    const groups = hoursByKategorie(report);
+    $('#crew-sum').innerHTML = groups.length ? `
+      ${groups.map((g) => `<div class="kv"><span>${esc(g.kategorie)} <small>(${g.personen})</small></span><b>${formatHours(g.stunden)}</b></div>`).join('')}
+      <div class="kv total"><span>Gesamt</span><b>${formatHours(workedHours(report))}</b></div>` : '';
+  };
   const changed = () => {
     unsaved = true;
+    drawSum();
     $('#hours').textContent = report.mitarbeiter.length ? `Summe ${formatHours(workedHours(report))}` : '';
     $$('#crew .crew').forEach((el) => {
       el.querySelector('.crew-hours').textContent = formatHours(entryHours(report.mitarbeiter[Number(el.dataset.i)]));
@@ -406,7 +414,7 @@ async function renderEditor(id) {
       <div class="crew" data-i="${i}">
         <div class="crew-head">
           <div class="avatar">${esc((e.name || '?').trim().split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase())}</div>
-          <span><b>${esc(e.name)}</b>${e.funktion ? `<small>${esc(e.funktion)}</small>` : ''}</span>
+          <span><b>${esc(e.name)}</b><small>${esc(kategorieOf(e))}</small></span>
           <b class="crew-hours">${formatHours(entryHours(e))}</b>
           <button type="button" class="icon-btn crew-remove" aria-label="${esc(e.name)} entfernen">${ICON.x}</button>
         </div>
@@ -432,6 +440,7 @@ async function renderEditor(id) {
         changed();
       };
     });
+    drawSum();
     const same = $('#crew-same');
     if (same) same.onclick = () => {
       const [first] = crew;
@@ -445,14 +454,16 @@ async function renderEditor(id) {
     const first = report.mitarbeiter[0];
     for (const p of people) {
       report.mitarbeiter.push({
-        personId: p.id, name: p.name, funktion: p.funktion || '',
+        personId: p.id, name: p.name, kategorie: kategorieOf(p),
         beginn: first?.beginn || '', ende: first?.ende || '', pause: first?.pause ?? '',
       });
     }
+    sortCrew(report.mitarbeiter);
     drawCrew();
     changed();
   });
   drawCrew();
+  drawSum();
   $('#hours').textContent = report.mitarbeiter.length ? `Summe ${formatHours(workedHours(report))}` : '';
 
   $$('#wetter .chip').forEach((chip) => {
@@ -832,7 +843,20 @@ async function openSitePicker(currentId, onSelect) {
 function personFields(p) {
   return `
     <label class="field"><span>Name *</span><input type="text" name="name" value="${esc(p.name)}" placeholder="Vor- und Nachname" autocapitalize="words"></label>
-    <label class="field"><span>Funktion</span><input type="text" name="funktion" value="${esc(p.funktion)}" placeholder="z. B. Polier, Maurer, Lehrling"></label>`;
+    <div class="field"><span>Kategorie</span>
+      <input type="hidden" name="kategorie" value="${esc(kategorieOf(p))}">
+      <div class="chips kat-chips">${KATEGORIEN.map((k) => `<button type="button" class="chip" data-kat="${k}" aria-pressed="${kategorieOf(p) === k}">${k}</button>`).join('')}</div>
+    </div>`;
+}
+
+function bindKategorie(root) {
+  $$('.kat-chips .chip', root).forEach((chip) => {
+    chip.onclick = () => {
+      const box = chip.closest('.field');
+      $('[name=kategorie]', box).value = chip.dataset.kat;
+      $$('.chip', box).forEach((c) => c.setAttribute('aria-pressed', c === chip));
+    };
+  });
 }
 
 function openSheet(html) {
@@ -851,7 +875,7 @@ function openSheet(html) {
 
 // Mehrere Personen auswählen; Personen, die schon im Bericht sind, werden nicht angeboten.
 async function openPeoplePicker(takenIds, onDone) {
-  let people = (await db.allPeople()).filter((p) => !p.archived && !takenIds.includes(p.id));
+  let people = sortCrew((await db.allPeople()).filter((p) => !p.archived && !takenIds.includes(p.id)));
   const chosen = new Set();
   const { sheet, close } = openSheet(`
     <h2>Personal auswählen</h2>
@@ -870,7 +894,7 @@ async function openPeoplePicker(takenIds, onDone) {
   const draw = () => {
     $('#people-list', sheet).innerHTML = people.length
       ? people.map((p) => `<button type="button" class="pick check" data-id="${p.id}" aria-pressed="${chosen.has(p.id)}">
-          <i class="box"></i><span><b>${esc(p.name)}</b>${p.funktion ? `<small>${esc(p.funktion)}</small>` : ''}</span></button>`).join('')
+          <i class="box"></i><span><b>${esc(p.name)}</b><small>${esc(kategorieOf(p))}</small></span></button>`).join('')
       : `<p class="hint" style="text-align:center;margin:4px 0 0">${takenIds.length ? 'Alle gespeicherten Personen sind schon im Bericht.' : 'Noch kein Personal gespeichert.'}</p>`;
     $$('.pick', sheet).forEach((b) => {
       b.onclick = () => {
@@ -886,6 +910,7 @@ async function openPeoplePicker(takenIds, onDone) {
     const btn = $('#people-done', sheet);
     btn.textContent = chosen.size ? `${chosen.size} ${chosen.size === 1 ? 'Person' : 'Personen'} übernehmen` : 'Fertig';
   };
+  bindKategorie(sheet);
   $('#person-new', sheet).onclick = () => {
     $('#person-new', sheet).hidden = true;
     $('#person-form', sheet).hidden = false;
@@ -895,7 +920,7 @@ async function openPeoplePicker(takenIds, onDone) {
   const resetForm = () => {
     $('#person-form', sheet).hidden = true;
     $('#person-new', sheet).hidden = false;
-    $$('#person-form [name]', sheet).forEach((el) => { el.value = ''; });
+    $('#person-form [name=name]', sheet).value = '';
   };
   $('#person-cancel', sheet).onclick = resetForm;
   $('#person-save', sheet).onclick = async () => {
@@ -905,7 +930,7 @@ async function openPeoplePicker(takenIds, onDone) {
       return;
     }
     await db.putPerson(person);
-    people = [...people, person];
+    people = sortCrew([...people, person]);
     chosen.add(person.id);
     resetForm();
     draw();
@@ -928,7 +953,7 @@ async function renderPeople() {
     <button class="btn soft block" id="add-person" style="margin:6px 0 14px">${ICON.plus} Neue Person</button>
     ${people.length ? `<div class="card-list">${people.map((p) => `<button type="button" class="scard person ${p.archived ? 'archived' : ''}" data-id="${p.id}">
         <div class="sicon avatar">${esc(p.name.trim().split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase())}</div>
-        <div class="body"><div class="title">${esc(p.name)}</div><div class="meta">${esc(p.funktion || '')}${p.archived ? ' · Ausgeschieden' : ''}</div></div>
+        <div class="body"><div class="title">${esc(p.name)}</div><div class="meta">${esc(kategorieOf(p))}${p.archived ? ' · Ausgeschieden' : ''}</div></div>
         ${ICON.chevron}</button>`).join('')}</div>`
       : '<div class="empty"><h2>Noch kein Personal</h2><p>Lege deine Leute einmal an. Im Bericht wählst du sie dann nur noch aus.</p></div>'}`;
   const edit = (person, isNew) => {
@@ -944,6 +969,7 @@ async function renderPeople() {
         <button type="button" class="btn primary" id="pf-save">Speichern</button>
       </div>
       ${isNew ? '' : '<button type="button" class="btn danger block" id="pf-delete" style="margin-top:12px">Person löschen</button>'}`);
+    bindKategorie(sheet);
     $('#pf-cancel', sheet).onclick = close;
     $('#pf-save', sheet).onclick = async () => {
       readSiteFields($('#pf', sheet), person);

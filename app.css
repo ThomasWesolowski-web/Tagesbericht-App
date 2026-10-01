@@ -425,3 +425,10 @@ body.editing .toast { bottom: calc(96px + var(--safe-b)); }
 .pick.check[aria-pressed="true"] { border-color: var(--accent); }
 .pick.check[aria-pressed="true"] .box { background: var(--accent); border-color: var(--accent); }
 .pick.check[aria-pressed="true"] .box::after { content: ""; width: 10px; height: 6px; border: solid var(--accent-ink); border-width: 0 0 2.5px 2.5px; transform: translateY(-1px) rotate(-45deg); }
+.crew-sum { border-radius: 12px; background: var(--accent-soft); padding: 8px 12px; margin-bottom: 12px; }
+.crew-sum:empty { display: none; }
+.crew-sum .kv { color: var(--ink); }
+.crew-sum .kv small { color: var(--ink-3); }
+.crew-sum .kv.total { border-top: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); margin-top: 4px; padding-top: 8px; color: var(--accent); font-weight: 700; }
+.crew-sum .kv.total b { color: var(--accent); font-size: 1.05rem; }
+.kat-chips .chip { padding: 7px 12px; }
