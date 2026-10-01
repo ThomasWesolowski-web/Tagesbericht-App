@@ -54,11 +54,25 @@ export function isConfigured(settings) {
 
 export async function testConnection(settings) {
   const gh = client(settings);
-  const repo = await gh('');
-  if (!repo.permissions?.push) {
-    throw new GitHubError(403, 'Der Token kann das Repo lesen, aber nicht schreiben.');
+  let repo;
+  try {
+    repo = await gh('');
+  } catch (err) {
+    if (err.status === 404) {
+      throw new GitHubError(404, `Der Token sieht das Repo „${settings.owner}/${settings.repo}“ nicht. Prüfe die Schreibweise und ob beim Token unter „Repository access“ genau dieses Repo ausgewählt ist.`);
+    }
+    throw err;
   }
-  await gh(`/git/ref/heads/${encodeURIComponent(settings.branch)}`);
+  if (!repo.permissions?.push) {
+    throw new GitHubError(403, 'Der Token sieht das Repo, darf aber nicht schreiben. Beim Token unter „Permissions → Contents“ „Read and write“ wählen.');
+  }
+  try {
+    await gh(`/git/ref/heads/${encodeURIComponent(settings.branch)}`);
+  } catch (err) {
+    if (err.status === 404) throw new GitHubError(404, `Den Branch „${settings.branch}“ gibt es im Repo nicht.`);
+    if (err.status === 403) throw new GitHubError(403, 'Dem Token fehlt das Recht „Contents: Read and write“.');
+    throw err;
+  }
   return { name: repo.full_name, private: repo.private };
 }
 
