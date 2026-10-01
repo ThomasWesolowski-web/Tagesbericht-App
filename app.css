@@ -473,3 +473,4 @@ body.editing .toast { bottom: calc(96px + var(--safe-b)); }
 .sheet-actions .btn { width: 100%; }
 button.fab { border: 0; font: inherit; font-weight: 750; cursor: pointer; }
 .stat b small { font-size: .7em; color: var(--ink-2); font-weight: 650; }
+.missing { outline: 2px solid #d64545; outline-offset: 3px; border-radius: 12px; transition: outline-color .3s; }

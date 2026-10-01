@@ -12,7 +12,7 @@ import {
   isConfigured, syncAll, syncReport, testConnection, deleteRemote, loadAdminConfig, saveAdminConfig, loadStundenRemote,
 } from './sync.js';
 
-const APP_VERSION = '1.10.0';
+const APP_VERSION = '1.10.1';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -391,6 +391,17 @@ async function renderEditor(id) {
       return;
     }
     if (!report.art) report.art = 'tagesbericht';
+    const fehlt = rapportFehlt(report);
+    if (fehlt) {
+      toast(fehlt.text, 4000);
+      const el = fehlt.sel && $(fehlt.sel);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('missing');
+        setTimeout(() => el.classList.remove('missing'), 2500);
+      }
+      return;
+    }
     // Upload-Status aus der Datenbank übernehmen, falls inzwischen hochgeladen wurde
     const fresh = await db.getReport(report.id);
     if (fresh) for (const k of ['syncedAt', 'syncError', 'remoteDir', 'remoteFiles']) report[k] = fresh[k];
@@ -685,6 +696,21 @@ async function renderEditor(id) {
 }
 
 let editorHooks = null;
+
+// Pflichtangaben beim Rapport, bevor gespeichert werden darf.
+const RAPPORT_PFLICHT = { zeiten: true, arbeiten: true, unterschrift: false };
+
+function rapportFehlt(r) {
+  if (r.art !== 'rapport') return null;
+  if (RAPPORT_PFLICHT.zeiten) {
+    if (!r.mitarbeiter.length) return { text: 'Rapport: Bitte zuerst Personal mit Beginn und Ende eintragen.', sel: '#add-crew' };
+    const i = r.mitarbeiter.findIndex((e) => !e.beginn || !e.ende);
+    if (i >= 0) return { text: `Rapport: Bei ${r.mitarbeiter[i].name || 'einer Person'} fehlt ${!r.mitarbeiter[i].beginn ? 'Beginn' : 'Ende'}.`, sel: `#crew .crew[data-i="${i}"]` };
+  }
+  if (RAPPORT_PFLICHT.arbeiten && !(r.taetigkeiten || '').trim()) return { text: 'Rapport: Bitte eintragen, welche Arbeiten ausgeführt wurden.', sel: '[data-field=taetigkeiten]' };
+  if (RAPPORT_PFLICHT.unterschrift && !r.unterschrift?.dataUrl) return { text: 'Rapport: Bitte zuerst vom Bauherrn unterschreiben lassen.', sel: '#sign-box' };
+  return null;
+}
 
 function autoGrow(el) {
   el.style.height = 'auto';
