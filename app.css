@@ -460,3 +460,16 @@ body.editing .toast { bottom: calc(96px + var(--safe-b)); }
 #masch-quick .chip svg { width: 16px; height: 16px; flex: none; }
 #abr-seg { margin-bottom: 0; }
 #pdf-btn { margin-bottom: 12px; }
+
+/* Stundennachweis */
+.site-pick.who { margin: 6px 0 4px; }
+.site-pick.who .avatar { flex: none; }
+.month-nav { display: flex; align-items: center; justify-content: space-between; margin: 10px 0 12px; }
+.month-nav b { font-size: 1.05rem; }
+.month-nav .flip { display: inline-flex; transform: scaleX(-1); }
+.rcard.stunde { width: 100%; text-align: left; font: inherit; color: inherit; border: 1px solid var(--line); cursor: pointer; }
+.rcard.stunde.frei .date { opacity: .7; }
+.sheet-actions { margin-top: 6px; }
+.sheet-actions .btn { width: 100%; }
+button.fab { border: 0; font: inherit; font-weight: 750; cursor: pointer; }
+.stat b small { font-size: .7em; color: var(--ink-2); font-weight: 650; }

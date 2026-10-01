@@ -2,12 +2,15 @@ import * as db from './db.js';
 import { prepareFile, formatBytes, MAX_FILE_BYTES } from './media.js';
 import {
   WETTER, newReport, newSite, newPerson, crewOf, entryHours, KATEGORIEN, kategorieOf, sortCrew, hoursByKategorie, workedHours, formatHours, formatDate, weekday, monthLabel, parseDate, toMarkdown, ARTEN, artLabel,
-  ABRECHNUNG, MASCHINEN_VORSCHLAEGE, maschinenStunden,
+  ABRECHNUNG, MASCHINEN_VORSCHLAEGE, maschinenStunden, today,
 } from './report.js';
-import { buildPdf, pdfFileName } from './pdf.js';
+import { buildPdf, pdfFileName, buildStundenPdf, stundenPdfName } from './pdf.js';
+import {
+  TYPEN, typLabel, hatZeiten, newStunde, stundenOf, personKey, kw, summe, sortStunden, monatLabel, shiftMonth,
+} from './stunden.js';
 import { isConfigured, syncAll, syncReport, testConnection, deleteRemote } from './sync.js';
 
-const APP_VERSION = '1.8.2';
+const APP_VERSION = '1.9.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -97,6 +100,7 @@ async function route() {
   $$('.tabbar a[data-tab]').forEach((a) => a.classList.toggle('active',
     (a.dataset.tab === 'list' && hash === '#/')
     || (a.dataset.tab === 'sites' && hash.startsWith('#/baustelle'))
+    || (a.dataset.tab === 'hours' && hash === '#/stunden')
     || (a.dataset.tab === 'settings' && (hash === '#/einstellungen' || hash === '#/personal'))));
 
   if (hash === '#/neu') {
@@ -110,6 +114,7 @@ async function route() {
   const site = /^#\/baustelle\/(.+)$/.exec(hash);
   if (site) return renderSiteEditor(decodeURIComponent(site[1]));
   if (hash === '#/baustellen') return renderSites();
+  if (hash === '#/stunden') return renderStunden();
   if (hash === '#/personal') return renderPeople();
   if (hash === '#/einstellungen') return renderSettings();
   return renderList();
@@ -719,6 +724,10 @@ async function shareReport(report) {
   }
   hideToast();
   const title = `${artLabel(report)} ${formatDate(report.datum)}${report.baustelle ? ` – ${report.baustelle}` : ''}`;
+  await sharePdfFile(file, title, extras);
+}
+
+async function sharePdfFile(file, title, extras) {
   const share = async () => {
     const all = [file, ...extras];
     const list = navigator.canShare?.({ files: all }) ? all : [file];
@@ -1218,6 +1227,235 @@ async function migrateSites() {
     await db.putReport(r);
   }
   localStorage.setItem('tagesberichte.sitesMigrated', '1');
+}
+
+// ---------- Stundennachweis ----------
+
+let stundenMonat = today().slice(0, 7);
+
+function stundenPerson() {
+  return settings.stundenPerson?.name ? settings.stundenPerson : null;
+}
+
+function initials(name) {
+  return esc((name || '?').trim().split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase());
+}
+
+async function renderStunden() {
+  appbar.innerHTML = '<h1>Stunden</h1>';
+  const person = stundenPerson();
+  if (!person) {
+    view.innerHTML = `<div class="empty">
+        <h2>Stundennachweis</h2>
+        <p>Hier trägst du jeden Tag deine Arbeitsstunden ein. Wähle zuerst, für wen die Stunden gelten.</p>
+        <button class="btn primary" id="who-btn">${ICON.people} Mitarbeiter wählen</button></div>`;
+    $('#who-btn').onclick = () => chooseStundenPerson();
+    return;
+  }
+  const key = personKey(person);
+  const all = (await db.allStunden()).filter((e) => personKey(e) === key);
+  const list = sortStunden(all.filter((e) => e.datum.startsWith(stundenMonat))).reverse();
+  const s = summe(list);
+
+  // nach Kalenderwoche gruppieren
+  const weeks = [];
+  for (const e of list) {
+    const w = kw(e.datum);
+    if (!weeks.length || weeks[weeks.length - 1].kw !== w) weeks.push({ kw: w, items: [] });
+    weeks[weeks.length - 1].items.push(e);
+  }
+  const card = (e) => {
+    const d = parseDate(e.datum);
+    const z = hatZeiten(e.typ);
+    const title = z ? (e.baustelle || (e.typ === 'schule' ? 'Berufsschule' : 'Ohne Baustelle')) : typLabel(e.typ);
+    const sub = z ? `${e.beginn || '–'} – ${e.ende || '–'}${Number(e.pause) ? ` · ${e.pause} min Pause` : ''}` : (e.notiz || '');
+    return `<button type="button" class="rcard stunde ${z ? '' : 'frei'}" data-id="${e.id}">
+      <div class="date"><b>${d.getDate()}</b><span>${weekday(e.datum).slice(0, 2)}</span></div>
+      <div class="body">
+        <div class="title">${esc(title)}</div>
+        <div class="preview">${esc(sub)}${z && e.notiz ? ` · ${esc(e.notiz)}` : ''}</div>
+        ${e.typ !== 'arbeit' ? `<div class="meta"><span class="pill art">${typLabel(e.typ)}</span></div>` : ''}
+      </div>
+      <div class="hours">${z ? formatHours(stundenOf(e)) : ''}</div></button>`;
+  };
+
+  view.innerHTML = `
+    <button type="button" class="site-pick who" id="who-btn">
+      <div class="avatar">${initials(person.name)}</div>
+      <span><b>${esc(person.name)}</b><small>Stundennachweis für</small></span><em>Ändern</em></button>
+    <div class="month-nav">
+      <button class="icon-btn" id="m-prev" aria-label="Vorheriger Monat">${ICON.back}</button>
+      <b>${monatLabel(stundenMonat)}</b>
+      <button class="icon-btn" id="m-next" aria-label="Nächster Monat"><span class="flip">${ICON.back}</span></button>
+    </div>
+    <div class="stats">
+      <div class="stat"><b>${formatHours(s.stunden).replace(' h', '')}</b><span>Stunden</span></div>
+      <div class="stat"><b>${s.arbeitstage}</b><span>Arbeitstage</span></div>
+      <div class="stat"><b>${s.urlaub}<small> / ${s.krank}</small></b><span>Urlaub / Krank</span></div>
+    </div>
+    ${weeks.length ? weeks.map((w) => `
+      <div class="month"><span>KW ${w.kw}</span><span>${formatHours(w.items.reduce((a, e) => a + (stundenOf(e) || 0), 0))}</span></div>
+      <div class="card-list">${w.items.map(card).join('')}</div>`).join('')
+    : '<p class="hint" style="text-align:center;margin:28px 0">Für diesen Monat ist noch nichts eingetragen.</p>'}
+    ${list.length ? `<button class="btn soft block" id="stunden-pdf" style="margin-top:18px">${ICON.share} Monat als PDF teilen</button>` : ''}
+    <button class="fab" id="stunde-neu">${ICON.plus}<span>Stunden eintragen</span></button>`;
+
+  $('#who-btn').onclick = () => chooseStundenPerson();
+  $('#m-prev').onclick = () => { stundenMonat = shiftMonth(stundenMonat, -1); renderStunden(); };
+  $('#m-next').onclick = () => { stundenMonat = shiftMonth(stundenMonat, 1); renderStunden(); };
+  $('#stunde-neu').onclick = () => {
+    const last = sortStunden(all.filter((e) => hatZeiten(e.typ))).pop();
+    const datum = stundenMonat === today().slice(0, 7) ? today() : `${stundenMonat}-01`;
+    openStundeEditor(newStunde({
+      personId: person.personId || null,
+      name: person.name,
+      datum,
+      beginn: last?.beginn || '07:00',
+      ende: last?.ende || '16:00',
+      pause: last?.pause ?? 30,
+      baustelleId: last?.baustelleId || null,
+      baustelle: last?.baustelle || '',
+    }), true);
+  };
+  $$('.rcard.stunde').forEach((b) => { b.onclick = () => openStundeEditor(structuredClone(list.find((e) => e.id === b.dataset.id)), false); });
+  const pdfBtn = $('#stunden-pdf');
+  if (pdfBtn) pdfBtn.onclick = () => shareStundenPdf(person.name, stundenMonat, list);
+}
+
+async function chooseStundenPerson() {
+  const people = (await db.allPeople()).filter((p) => !p.archived);
+  const cur = stundenPerson();
+  const { sheet, close } = openSheet(`
+    <h2>Für wen sind die Stunden?</h2>
+    <div class="pick-list">${sortCrew(people).map((p) => `<button type="button" class="pick ${cur?.personId === p.id ? 'current' : ''}" data-id="${p.id}">
+      <div class="avatar">${initials(p.name)}</div><span><b>${esc(p.name)}</b><small>${esc(kategorieOf(p))}</small></span></button>`).join('')}</div>
+    ${people.length ? '<div class="sheet-or">oder</div>' : ''}
+    <label class="field"><span>Name eingeben</span><input type="text" id="who-name" placeholder="Vor- und Nachname" value="${cur && !cur.personId ? esc(cur.name) : ''}"></label>
+    <button type="button" class="btn primary block" id="who-ok">Übernehmen</button>`);
+  const set = (p) => {
+    settings.stundenPerson = p;
+    db.saveSettings(settings);
+    close();
+    renderStunden();
+  };
+  $$('.pick', sheet).forEach((b) => {
+    b.onclick = () => { const p = people.find((x) => x.id === b.dataset.id); set({ personId: p.id, name: p.name }); };
+  });
+  $('#who-ok', sheet).onclick = () => {
+    const name = $('#who-name', sheet).value.trim();
+    if (!name) { toast('Bitte einen Namen eingeben oder eine Person antippen.'); return; }
+    const match = people.find((p) => p.name.toLowerCase() === name.toLowerCase());
+    set(match ? { personId: match.id, name: match.name } : { personId: null, name });
+  };
+}
+
+// Zeiten aus einem Bericht desselben Tages vorschlagen, in dem die Person eingetragen ist.
+async function stundenAusBericht(e) {
+  for (const r of await db.allReports()) {
+    if (r.datum !== e.datum) continue;
+    const m = crewOf(r).find((c) => (e.personId && c.personId === e.personId) || c.name.trim().toLowerCase() === e.name.trim().toLowerCase());
+    if (m) return { beginn: m.beginn, ende: m.ende, pause: m.pause, baustelleId: r.baustelleId, baustelle: r.baustelle };
+  }
+  return null;
+}
+
+function openStundeEditor(e, isNew) {
+  const origMonth = isNew ? null : { ...e };
+  const { sheet, close } = openSheet(`
+    <h2>${isNew ? 'Stunden eintragen' : 'Eintrag bearbeiten'}</h2>
+    <label class="field"><span>Datum</span><input type="date" id="st-datum" value="${esc(e.datum)}"></label>
+    <div class="chips" id="st-typ" style="margin-bottom:14px">${TYPEN.map((t) =>
+      `<button type="button" class="chip" data-typ="${t.id}" aria-pressed="${e.typ === t.id}">${t.label}</button>`).join('')}</div>
+    <div id="st-zeit">
+      <div class="field"><span>Baustelle</span><button type="button" class="site-pick" id="st-site"></button></div>
+      <div class="row three">
+        <label class="field"><span>Beginn</span><input type="time" id="st-beginn" value="${esc(e.beginn)}"></label>
+        <label class="field"><span>Ende</span><input type="time" id="st-ende" value="${esc(e.ende)}"></label>
+        <label class="field"><span>Pause</span><input type="number" inputmode="numeric" min="0" step="5" id="st-pause" value="${esc(e.pause)}" placeholder="Min."></label>
+      </div>
+      <div class="crew-sum"><div class="kv total" style="border:0;margin:0;padding-top:4px"><span>Arbeitszeit</span><b id="st-h"></b></div></div>
+      <p class="hint" id="st-hint" style="margin:-4px 0 12px" hidden></p>
+    </div>
+    <label class="field"><span>Notiz</span><input type="text" id="st-notiz" value="${esc(e.notiz)}" placeholder="optional, z. B. Fahrzeit, Überstunden"></label>
+    <div class="row sheet-actions">
+      <button type="button" class="btn ghost" id="st-cancel">Abbrechen</button>
+      <button type="button" class="btn primary" id="st-save">Speichern</button>
+    </div>
+    ${isNew ? '' : `<button type="button" class="btn danger block" id="st-del" style="margin-top:10px">${ICON.trash} Eintrag löschen</button>`}`);
+
+  const drawSite = () => {
+    $('#st-site', sheet).innerHTML = e.baustelle
+      ? `${ICON.pin}<span><b>${esc(e.baustelle)}</b></span><em>Ändern</em>`
+      : `${ICON.pin}<span><b class="muted">Baustelle wählen</b><small>optional</small></span>`;
+  };
+  const drawHours = () => {
+    $('#st-h', sheet).textContent = formatHours(entryHours(e));
+  };
+  const drawTyp = () => {
+    $$('#st-typ .chip', sheet).forEach((c) => c.setAttribute('aria-pressed', c.dataset.typ === e.typ));
+    $('#st-zeit', sheet).hidden = !hatZeiten(e.typ);
+  };
+  const fromReport = async () => {
+    const hit = await stundenAusBericht(e);
+    if (!hit) return;
+    Object.assign(e, hit);
+    $('#st-beginn', sheet).value = e.beginn || '';
+    $('#st-ende', sheet).value = e.ende || '';
+    $('#st-pause', sheet).value = e.pause ?? '';
+    const hint = $('#st-hint', sheet);
+    hint.textContent = `Zeiten aus dem Bericht ${e.baustelle ? `„${e.baustelle}“ ` : ''}übernommen.`;
+    hint.hidden = false;
+    drawSite();
+    drawHours();
+  };
+  drawSite();
+  drawHours();
+  drawTyp();
+  if (isNew) fromReport();
+
+  $('#st-datum', sheet).onchange = (ev) => { e.datum = ev.target.value; if (isNew) fromReport(); };
+  $$('#st-typ .chip', sheet).forEach((c) => { c.onclick = () => { e.typ = c.dataset.typ; drawTyp(); }; });
+  $('#st-site', sheet).onclick = () => openSitePicker(e.baustelleId, (site) => {
+    e.baustelleId = site.id;
+    e.baustelle = site.name;
+    drawSite();
+  });
+  for (const k of ['beginn', 'ende', 'pause']) {
+    $(`#st-${k}`, sheet).oninput = (ev) => { e[k] = k === 'pause' ? (ev.target.value === '' ? '' : Number(ev.target.value)) : ev.target.value; drawHours(); };
+  }
+  $('#st-notiz', sheet).oninput = (ev) => { e.notiz = ev.target.value; };
+  $('#st-cancel', sheet).onclick = close;
+  $('#st-save', sheet).onclick = async () => {
+    if (!e.datum) { toast('Bitte ein Datum wählen.'); return; }
+    if (hatZeiten(e.typ) && (!e.beginn || !e.ende)) { toast('Bitte Beginn und Ende eintragen.'); return; }
+    if (!hatZeiten(e.typ)) Object.assign(e, { beginn: '', ende: '', pause: '', baustelleId: null, baustelle: '' });
+    await db.putStunde(e);
+    if (origMonth && origMonth.datum.slice(0, 7) !== e.datum.slice(0, 7)) db.markStundenDirty(origMonth);
+    stundenMonat = e.datum.slice(0, 7);
+    close();
+    toast('Gespeichert.');
+    renderStunden();
+  };
+  const del = $('#st-del', sheet);
+  if (del) del.onclick = async () => {
+    if (!confirm('Eintrag löschen?')) return;
+    await db.deleteStunde(e);
+    close();
+    renderStunden();
+  };
+}
+
+async function shareStundenPdf(name, ym, entries) {
+  toast('PDF wird erstellt …', 6000);
+  let file;
+  try {
+    file = new File([await buildStundenPdf(name, ym, entries)], stundenPdfName(name, ym), { type: 'application/pdf' });
+  } catch (err) {
+    toast(`PDF konnte nicht erstellt werden: ${err.message}`, 4000);
+    return;
+  }
+  hideToast();
+  await sharePdfFile(file, `Stundennachweis ${monatLabel(ym)} – ${name}`, []);
 }
 
 // ---------- Einstellungen ----------

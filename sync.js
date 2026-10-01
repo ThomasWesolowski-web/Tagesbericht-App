@@ -4,7 +4,8 @@
 
 import * as db from './db.js';
 import { blobToBase64, safeFileName, slug } from './media.js';
-import { buildPdf } from './pdf.js';
+import { buildPdf, buildStundenPdf } from './pdf.js';
+import { stundenMarkdown, stundenJson, personKey } from './stunden.js';
 import { toJson, toMarkdown, formatDate, artLabel } from './report.js';
 
 const API = 'https://api.github.com';
@@ -290,6 +291,37 @@ export async function syncStammdaten(settings) {
   return changed;
 }
 
+// ---------- Stundennachweis ----------
+// Pro Mitarbeiter und Monat: stunden/<JJJJ-MM>_<name>.md, .json und .pdf
+
+export async function syncStunden(settings) {
+  const dirty = db.stundenDirty();
+  const keys = Object.keys(dirty);
+  if (!keys.length) return 0;
+  const gh = client(settings);
+  const all = await db.allStunden();
+  let n = 0;
+  for (const key of keys) {
+    const { name, monat } = dirty[key];
+    const entries = all.filter((e) => personKey(e) === key.split('|')[0] && e.datum.startsWith(monat));
+    const who = entries[0]?.name || name || 'Mitarbeiter';
+    const base = `stunden/${monat}_${slug(who) || 'mitarbeiter'}`;
+    const files = [
+      { path: `${base}.md`, text: stundenMarkdown(who, monat, entries) },
+      { path: `${base}.json`, text: stundenJson(who, monat, entries) },
+    ];
+    try {
+      files.push({ path: `${base}.pdf`, blob: await buildStundenPdf(who, monat, entries) });
+    } catch {
+      // ohne PDF weiter
+    }
+    await commit(gh, settings, files, `Stundennachweis ${monat} – ${who}`);
+    db.clearStundenDirty(key);
+    n++;
+  }
+  return n;
+}
+
 let running = null;
 
 // Lädt alle offenen Berichte hoch. Gibt { ok, failed } zurück.
@@ -304,6 +336,12 @@ export function syncAll(settings, onProgress) {
       stammdatenChanged = await syncStammdaten(settings);
     } catch (err) {
       stammdatenError = err.message;
+    }
+    let stundenError = null;
+    try {
+      await syncStunden(settings);
+    } catch (err) {
+      stundenError = err.message;
     }
     const pending = (await db.allReports()).filter((r) => r.dirty);
     for (const r of pending) {
@@ -321,7 +359,7 @@ export function syncAll(settings, onProgress) {
         if (err.status === 0 || err.status === 401) break;
       }
     }
-    return { ok, failed, total: pending.length, stammdatenChanged, stammdatenError };
+    return { ok, failed, total: pending.length, stammdatenChanged, stammdatenError, stundenError };
   })().finally(() => {
     running = null;
   });

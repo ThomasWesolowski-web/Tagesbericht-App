@@ -6,6 +6,7 @@ import {
   workedHours, maschinenStunden, formatHours, formatDate, weekday,
 } from './report.js';
 import { slug } from './media.js';
+import { sortStunden, summe, kw, hatZeiten, stundenOf, typLabel, monatLabel, tage } from './stunden.js';
 
 let loading;
 function loadJsPdf() {
@@ -18,6 +19,10 @@ function loadJsPdf() {
     document.head.appendChild(s);
   });
   return loading;
+}
+
+export function stundenPdfName(name, ym) {
+  return `Stundennachweis_${ym}_${slug(name) || 'mitarbeiter'}.pdf`;
 }
 
 export function pdfFileName(r) {
@@ -61,25 +66,9 @@ const MUTED = [104, 110, 120];
 const LINE = [222, 218, 212];
 const SOFT = [246, 243, 238];
 
-export async function buildPdf(r, files, author) {
-  const { jsPDF } = await loadJsPdf();
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  const W = 210;
-  const H = 297;
-  const M = 16; // Rand
-  const CW = W - 2 * M;
-  const BOTTOM = H - 18;
-  let y = M;
-
-  const color = (c) => doc.setTextColor(...c);
-  const font = (style = 'normal', size = 10) => { doc.setFont('helvetica', style); doc.setFontSize(size); };
-  const newPage = () => { doc.addPage(); y = M; };
-  const ensure = (h) => { if (y + h > BOTTOM) newPage(); };
-
-  const isRapport = r.art === 'rapport';
-  const title = artLabel(r);
-
-  // Briefkopf: Schrift als echte Schrift (scharf), nur die Pinselfläche ist ein Bild.
+// Briefkopf: Schrift als echte Schrift (scharf), nur die Pinselfläche ist ein Bild.
+// Gibt die y-Position unter dem Briefkopf zurück.
+async function briefkopf(doc, { W, M, font, color }) {
   const KH = 40; // Höhe des Briefkopfs in mm
   const top = 6;
   const k = KH / LOGO_PX.h; // mm pro Pixel der Vorlage
@@ -114,11 +103,33 @@ export async function buildPdf(r, files, author) {
   doc.setDrawColor(...INK);
   doc.setLineWidth(0.15);
   doc.line(M, top + 39, M + doc.getTextWidth(adr), top + 39);
-  y = top + KH + 3;
+  const y = top + KH + 3;
   doc.setDrawColor(...ACCENT);
   doc.setLineWidth(0.6);
-  doc.line(M, y, M + CW, y);
+  doc.line(M, y, W - M, y);
   doc.setLineWidth(0.2);
+  return y;
+}
+
+export async function buildPdf(r, files, author) {
+  const { jsPDF } = await loadJsPdf();
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const W = 210;
+  const H = 297;
+  const M = 16; // Rand
+  const CW = W - 2 * M;
+  const BOTTOM = H - 18;
+  let y = M;
+
+  const color = (c) => doc.setTextColor(...c);
+  const font = (style = 'normal', size = 10) => { doc.setFont('helvetica', style); doc.setFontSize(size); };
+  const newPage = () => { doc.addPage(); y = M; };
+  const ensure = (h) => { if (y + h > BOTTOM) newPage(); };
+
+  const isRapport = r.art === 'rapport';
+  const title = artLabel(r);
+
+  y = await briefkopf(doc, { W, M, font, color });
   y += 10;
   font('bold', 22); color(INK);
   doc.text(title, M, y);
@@ -330,5 +341,138 @@ export async function buildPdf(r, files, author) {
     doc.text(FIRMA, W / 2, H - 4, { align: 'center' });
   }
   doc.setProperties({ title: `${title} ${formatDate(r.datum)} ${r.baustelle || ''}`.trim(), author: author || '' });
+  return doc.output('blob');
+}
+
+// Monatlicher Stundennachweis eines Mitarbeiters.
+export async function buildStundenPdf(name, ym, entries) {
+  const { jsPDF } = await loadJsPdf();
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const W = 210;
+  const H = 297;
+  const M = 16;
+  const CW = W - 2 * M;
+  const BOTTOM = H - 18;
+  const color = (c) => doc.setTextColor(...c);
+  const font = (style = 'normal', size = 10) => { doc.setFont('helvetica', style); doc.setFontSize(size); };
+
+  let y = await briefkopf(doc, { W, M, font, color });
+  y += 10;
+  font('bold', 22); color(INK);
+  doc.text('Stundennachweis', M, y);
+  font('normal', 11); color(MUTED);
+  doc.text(monatLabel(ym), W - M, y, { align: 'right' });
+  y += 9;
+  font('bold', 14); color(INK);
+  doc.text(name || 'Mitarbeiter', M, y);
+  y += 8;
+
+  const cols = [
+    { label: 'Datum', w: 26 }, { label: 'Art', w: 24 }, { label: 'Baustelle / Notiz', w: 60 },
+    { label: 'Beginn', w: 16 }, { label: 'Ende', w: 16 }, { label: 'Pause', w: 16 }, { label: 'Stunden', w: 20, align: 'right' },
+  ];
+  const rowH = 6.6;
+  const head = () => {
+    doc.setFillColor(...SOFT);
+    doc.rect(M, y - 4.6, CW, rowH, 'F');
+    font('bold', 8.5); color(MUTED);
+    let x = M;
+    for (const c of cols) {
+      doc.text(c.label, c.align === 'right' ? x + c.w - 2 : x + 2, y, { align: c.align === 'right' ? 'right' : 'left' });
+      x += c.w;
+    }
+    y += rowH;
+  };
+  const row = (cells, { bold = false, fill = null } = {}) => {
+    if (y + rowH > BOTTOM) { doc.addPage(); y = M + 4; head(); }
+    if (fill) { doc.setFillColor(...fill); doc.rect(M, y - 4.6, CW, rowH, 'F'); }
+    font(bold ? 'bold' : 'normal', 9.5); color(INK);
+    let x = M;
+    cells.forEach((cell, i) => {
+      const c = cols[i];
+      const t = doc.splitTextToSize(String(cell ?? ''), c.w - 3)[0] || '';
+      doc.text(t, c.align === 'right' ? x + c.w - 2 : x + 2, y, { align: c.align === 'right' ? 'right' : 'left' });
+      x += c.w;
+    });
+    doc.setDrawColor(...LINE);
+    doc.line(M, y + 2, M + CW, y + 2);
+    y += rowH;
+  };
+
+  const list = sortStunden(entries);
+  head();
+  if (!list.length) row(['', 'Keine Einträge']);
+  let woche = null;
+  let wocheH = 0;
+  const wocheZeile = () => {
+    if (woche != null) row(['', '', `Summe KW ${woche}`, '', '', '', formatHours(wocheH)], { bold: true, fill: [237, 245, 237] });
+  };
+  for (const e of list) {
+    const w = kw(e.datum);
+    if (woche != null && w !== woche) { wocheZeile(); wocheH = 0; }
+    woche = w;
+    const z = hatZeiten(e.typ);
+    const h = stundenOf(e);
+    wocheH += h || 0;
+    row([
+      `${weekday(e.datum).slice(0, 2)} ${formatDate(e.datum).slice(0, 6)}`,
+      typLabel(e.typ),
+      [e.baustelle, e.notiz].filter(Boolean).join(' · '),
+      z ? e.beginn || '–' : '',
+      z ? e.ende || '–' : '',
+      z ? `${e.pause || 0} min` : '',
+      z ? formatHours(h) : '',
+    ]);
+  }
+  wocheZeile();
+
+  // Summen
+  const s = summe(list);
+  const facts = [
+    ['Arbeitsstunden', formatHours(s.stunden)],
+    ['Arbeitstage', String(s.arbeitstage)],
+    s.urlaub ? ['Urlaub', tage(s.urlaub)] : null,
+    s.krank ? ['Krank', tage(s.krank)] : null,
+    s.feiertag ? ['Feiertage', String(s.feiertag)] : null,
+    s.schule ? ['Berufsschule', tage(s.schule)] : null,
+  ].filter(Boolean);
+  const perRow = Math.max(facts.length, 3) > 5 ? 3 : Math.max(facts.length, 3);
+  const cellW = CW / perRow;
+  const rows = Math.ceil(facts.length / perRow);
+  if (y + rows * 14 + 40 > BOTTOM) { doc.addPage(); y = M + 4; }
+  y += 4;
+  doc.setFillColor(...SOFT);
+  doc.setDrawColor(...LINE);
+  doc.roundedRect(M, y, CW, rows * 14, 2, 2, 'FD');
+  facts.forEach(([k, v], i) => {
+    const cx = M + (i % perRow) * cellW + 4;
+    const cy = y + Math.floor(i / perRow) * 14;
+    font('normal', 8); color(MUTED);
+    doc.text(k.toUpperCase(), cx, cy + 5);
+    font('bold', 12); color(i === 0 ? FIRMEN_GRUEN : INK);
+    doc.text(v, cx, cy + 11);
+  });
+  y += rows * 14 + 22;
+
+  // Unterschriften
+  doc.setDrawColor(...INK);
+  doc.setLineWidth(0.2);
+  doc.line(M, y, M + 75, y);
+  doc.line(W - M - 75, y, W - M, y);
+  font('normal', 8.5); color(MUTED);
+  doc.text('Datum, Unterschrift Mitarbeiter', M, y + 4.5);
+  doc.text('Datum, Unterschrift Arbeitgeber', W - M - 75, y + 4.5);
+
+  const pages = doc.getNumberOfPages();
+  for (let p = 1; p <= pages; p++) {
+    doc.setPage(p);
+    doc.setDrawColor(...LINE);
+    doc.line(M, H - 13, W - M, H - 13);
+    font('normal', 8); color(MUTED);
+    doc.text(`Stundennachweis ${monatLabel(ym)} · ${name}`, M, H - 8.5);
+    doc.text(`Seite ${p} von ${pages}`, W - M, H - 8.5, { align: 'right' });
+    doc.text(FIRMA, W / 2, H - 4, { align: 'center' });
+  }
+  doc.setProperties({ title: `Stundennachweis ${monatLabel(ym)} ${name}` });
   return doc.output('blob');
 }

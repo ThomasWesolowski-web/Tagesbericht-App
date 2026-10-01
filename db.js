@@ -2,7 +2,7 @@
 // "reports": ein Eintrag pro Tagesbericht, "files": Fotos und Dokumente als Blob.
 
 const DB_NAME = 'tagesberichte';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 let dbPromise;
 
@@ -24,6 +24,9 @@ function open() {
         }
         if (!db.objectStoreNames.contains('people')) {
           db.createObjectStore('people', { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains('stunden')) {
+          db.createObjectStore('stunden', { keyPath: 'id' });
         }
       };
       req.onsuccess = () => resolve(req.result);
@@ -160,6 +163,46 @@ export async function putPerson(person) {
 
 export async function deletePerson(id) {
   return markDeleted('people', id);
+}
+
+// Stundennachweis. Geänderte Monate werden gemerkt und beim nächsten Sync hochgeladen.
+const STUNDEN_DIRTY = 'tagesberichte.stundenDirty';
+
+export async function allStunden() {
+  return done((await store('stunden')).getAll());
+}
+
+export async function putStunde(e) {
+  e.updatedAt = Date.now();
+  await done((await store('stunden', 'readwrite')).put(e));
+  markStundenDirty(e);
+}
+
+export async function deleteStunde(e) {
+  await done((await store('stunden', 'readwrite')).delete(e.id));
+  markStundenDirty(e);
+}
+
+export function stundenDirty() {
+  try {
+    return JSON.parse(localStorage.getItem(STUNDEN_DIRTY) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+export function markStundenDirty(e) {
+  const d = stundenDirty();
+  const key = `${e.personId || `name:${(e.name || '').trim().toLowerCase()}`}|${e.datum.slice(0, 7)}`;
+  d[key] = { personId: e.personId || null, name: e.name, monat: e.datum.slice(0, 7) };
+  localStorage.setItem(STUNDEN_DIRTY, JSON.stringify(d));
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('stammdaten-changed'));
+}
+
+export function clearStundenDirty(key) {
+  const d = stundenDirty();
+  delete d[key];
+  localStorage.setItem(STUNDEN_DIRTY, JSON.stringify(d));
 }
 
 // Einstellungen sind klein und liegen im localStorage.
