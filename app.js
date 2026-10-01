@@ -7,7 +7,7 @@ import {
 import { buildPdf, pdfFileName } from './pdf.js';
 import { isConfigured, syncAll, syncReport, testConnection, deleteRemote } from './sync.js';
 
-const APP_VERSION = '1.8.0';
+const APP_VERSION = '1.8.1';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];

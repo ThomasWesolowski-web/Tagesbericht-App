@@ -51,7 +51,9 @@ async function toJpeg(src, maxPx = 1400) {
   }
 }
 
-const ACCENT = [226, 97, 27];
+const ACCENT = [62, 150, 66]; // Grün aus dem Firmenlogo
+const FIRMA = 'MT+ Füß & Wesolowski GbR · Steinbeisstr. 8 · 72510 Stetten';
+const BRIEFKOPF = 'icons/briefkopf.jpg';
 const INK = [28, 31, 36];
 const MUTED = [104, 110, 120];
 const LINE = [222, 218, 212];
@@ -75,10 +77,22 @@ export async function buildPdf(r, files, author) {
   const isRapport = r.art === 'rapport';
   const title = artLabel(r);
 
-  // Kopf
-  doc.setFillColor(...ACCENT);
-  doc.rect(0, 0, W, 4, 'F');
-  y = 16;
+  // Briefkopf mit Logo und Anschrift
+  const kopf = await toJpeg(BRIEFKOPF, 1600);
+  if (kopf) {
+    const kh = (kopf.h / kopf.w) * CW;
+    doc.addImage(kopf.data, 'JPEG', M, 8, CW, kh);
+    y = 8 + kh + 4;
+  } else {
+    font('bold', 9); color(MUTED);
+    doc.text(FIRMA, M, 12);
+    y = 18;
+  }
+  doc.setDrawColor(...ACCENT);
+  doc.setLineWidth(0.6);
+  doc.line(M, y, M + CW, y);
+  doc.setLineWidth(0.2);
+  y += 10;
   font('bold', 22); color(INK);
   doc.text(title, M, y);
   font('normal', 11); color(MUTED);
@@ -282,10 +296,11 @@ export async function buildPdf(r, files, author) {
   for (let p = 1; p <= pages; p++) {
     doc.setPage(p);
     doc.setDrawColor(...LINE);
-    doc.line(M, H - 12, W - M, H - 12);
+    doc.line(M, H - 13, W - M, H - 13);
     font('normal', 8); color(MUTED);
-    doc.text(`${title} ${formatDate(r.datum)}${r.baustelle ? ` · ${r.baustelle}` : ''}`, M, H - 7.5);
-    doc.text(`Seite ${p} von ${pages}`, W - M, H - 7.5, { align: 'right' });
+    doc.text(`${title} ${formatDate(r.datum)}${r.baustelle ? ` · ${r.baustelle}` : ''}`, M, H - 8.5);
+    doc.text(`Seite ${p} von ${pages}`, W - M, H - 8.5, { align: 'right' });
+    doc.text(FIRMA, W / 2, H - 4, { align: 'center' });
   }
   doc.setProperties({ title: `${title} ${formatDate(r.datum)} ${r.baustelle || ''}`.trim(), author: author || '' });
   return doc.output('blob');
