@@ -95,25 +95,55 @@ async function remoteShas(gh, settings, dir) {
   }
 }
 
+// Aktueller Stand einer einzelnen Datei (die Ordnerliste von GitHub kann kurz veraltet sein).
+async function freshSha(gh, settings, path) {
+  try {
+    const res = await gh(`${contentsPath(path)}?ref=${encodeURIComponent(settings.branch)}&t=${Date.now()}`);
+    return res?.sha || null;
+  } catch (err) {
+    if (err.status === 404) return null;
+    throw err;
+  }
+}
+
 async function commit(gh, settings, entries, message) {
   const dirs = [...new Set(entries.map((e) => e.path.slice(0, e.path.lastIndexOf('/'))))];
   const shas = new Map();
   for (const dir of dirs) for (const [k, v] of await remoteShas(gh, settings, dir)) shas.set(k, v);
 
+  const run = async (e) => {
+    if (e.delete) {
+      const sha = shas.get(e.path);
+      if (!sha) return;
+      await gh(contentsPath(e.path), { method: 'DELETE', body: { message, sha, branch: settings.branch } });
+      shas.delete(e.path);
+    } else {
+      const content = await blobToBase64(e.blob || new Blob([e.text], { type: 'text/plain;charset=utf-8' }));
+      const body = { message, content, branch: settings.branch };
+      if (shas.has(e.path)) body.sha = shas.get(e.path);
+      const res = await gh(contentsPath(e.path), { method: 'PUT', body });
+      shas.set(e.path, res?.content?.sha);
+    }
+  };
+
   for (const e of entries) {
     const step = e.delete ? `${e.path} löschen` : `${e.path} hochladen`;
     try {
-      if (e.delete) {
-        const sha = shas.get(e.path);
-        if (!sha) continue;
-        await gh(contentsPath(e.path), { method: 'DELETE', body: { message, sha, branch: settings.branch } });
-        shas.delete(e.path);
-      } else {
-        const content = await blobToBase64(e.blob || new Blob([e.text], { type: 'text/plain;charset=utf-8' }));
-        const body = { message, content, branch: settings.branch };
-        if (shas.has(e.path)) body.sha = shas.get(e.path);
-        const res = await gh(contentsPath(e.path), { method: 'PUT', body });
-        shas.set(e.path, res?.content?.sha);
+      // Beim Löschen ohne bekannten Stand lieber einzeln nachsehen, ob die Datei existiert.
+      if (e.delete && !shas.has(e.path)) {
+        const sha = await freshSha(gh, settings, e.path);
+        if (sha) shas.set(e.path, sha);
+      }
+      try {
+        await run(e);
+      } catch (err) {
+        // 409/422: Stand der Datei war veraltet. Aktuellen Stand holen und einmal neu versuchen.
+        if (err.status !== 409 && err.status !== 422) throw err;
+        const sha = await freshSha(gh, settings, e.path);
+        if (sha) shas.set(e.path, sha);
+        else shas.delete(e.path);
+        if (e.delete && !sha) continue;
+        await run(e);
       }
     } catch (err) {
       err.message = `${err.message} (${step}, HTTP ${err.status})`;

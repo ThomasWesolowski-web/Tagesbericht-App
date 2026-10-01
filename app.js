@@ -12,7 +12,7 @@ import {
   isConfigured, syncAll, syncReport, testConnection, deleteRemote, loadAdminConfig, saveAdminConfig, loadStundenRemote,
 } from './sync.js';
 
-const APP_VERSION = '1.10.1';
+const APP_VERSION = '1.10.2';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
