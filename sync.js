@@ -67,7 +67,7 @@ export async function testConnection(settings) {
     throw new GitHubError(403, 'Der Token sieht das Repo, darf aber nicht schreiben. Beim Token unter „Permissions → Contents“ „Read and write“ wählen.');
   }
   try {
-    await gh(`/git/ref/heads/${encodeURIComponent(settings.branch)}`);
+    await gh(`/branches/${encodeURIComponent(settings.branch)}`);
   } catch (err) {
     if (err.status === 404) throw new GitHubError(404, `Den Branch „${settings.branch}“ gibt es im Repo nicht.`);
     if (err.status === 403) throw new GitHubError(403, 'Dem Token fehlt das Recht „Contents: Read and write“.');
@@ -76,37 +76,46 @@ export async function testConnection(settings) {
   return { name: repo.full_name, private: repo.private };
 }
 
-// Schreibt mehrere Dateien (oder Löschungen mit content === null) als einen Commit.
-async function commit(gh, settings, entries, message) {
-  const tree = [];
-  for (const e of entries) {
-    if (e.delete) {
-      tree.push({ path: e.path, mode: '100644', type: 'blob', sha: null });
-    } else {
-      const blob = e.text != null
-        ? await gh('/git/blobs', { method: 'POST', body: { content: e.text, encoding: 'utf-8' } })
-        : await gh('/git/blobs', { method: 'POST', body: { content: await blobToBase64(e.blob), encoding: 'base64' } });
-      tree.push({ path: e.path, mode: '100644', type: 'blob', sha: blob.sha });
-    }
-  }
+// Schreibt Dateien (oder Löschungen) über die Contents-API, eine Datei nach der anderen.
+// Das ist langsamer als ein einzelner Commit, funktioniert aber zuverlässig mit
+// fein granularen Tokens.
+function contentsPath(path) {
+  return `/contents/${path.split('/').map(encodeURIComponent).join('/')}`;
+}
 
-  // Falls inzwischen jemand anders committet hat, einmal neu aufsetzen.
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const ref = await gh(`/git/ref/heads/${encodeURIComponent(settings.branch)}`);
-    const parent = await gh(`/git/commits/${ref.object.sha}`);
-    const newTree = await gh('/git/trees', { method: 'POST', body: { base_tree: parent.tree.sha, tree } });
-    const newCommit = await gh('/git/commits', {
-      method: 'POST',
-      body: { message, tree: newTree.sha, parents: [ref.object.sha] },
-    });
+async function remoteShas(gh, settings, dir) {
+  try {
+    const list = await gh(`${contentsPath(dir)}?ref=${encodeURIComponent(settings.branch)}`);
+    return new Map((Array.isArray(list) ? list : []).map((f) => [f.path, f.sha]));
+  } catch (err) {
+    if (err.status === 404) return new Map();
+    throw err;
+  }
+}
+
+async function commit(gh, settings, entries, message) {
+  const dirs = [...new Set(entries.map((e) => e.path.slice(0, e.path.lastIndexOf('/'))))];
+  const shas = new Map();
+  for (const dir of dirs) for (const [k, v] of await remoteShas(gh, settings, dir)) shas.set(k, v);
+
+  for (const e of entries) {
+    const step = e.delete ? `${e.path} löschen` : `${e.path} hochladen`;
     try {
-      await gh(`/git/refs/heads/${encodeURIComponent(settings.branch)}`, {
-        method: 'PATCH',
-        body: { sha: newCommit.sha },
-      });
-      return newCommit.sha;
+      if (e.delete) {
+        const sha = shas.get(e.path);
+        if (!sha) continue;
+        await gh(contentsPath(e.path), { method: 'DELETE', body: { message, sha, branch: settings.branch } });
+        shas.delete(e.path);
+      } else {
+        const content = await blobToBase64(e.blob || new Blob([e.text], { type: 'text/plain;charset=utf-8' }));
+        const body = { message, content, branch: settings.branch };
+        if (shas.has(e.path)) body.sha = shas.get(e.path);
+        const res = await gh(contentsPath(e.path), { method: 'PUT', body });
+        shas.set(e.path, res?.content?.sha);
+      }
     } catch (err) {
-      if (err.status !== 422 || attempt === 2) throw err;
+      err.message = `${err.message} (${step}, HTTP ${err.status})`;
+      throw err;
     }
   }
 }
