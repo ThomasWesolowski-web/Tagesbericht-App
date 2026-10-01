@@ -5,7 +5,7 @@ import {
 } from './report.js';
 import { isConfigured, syncAll, syncReport, testConnection, deleteRemote } from './sync.js';
 
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -238,12 +238,14 @@ function bindInstall() {
 // ---------- Bericht bearbeiten ----------
 
 async function renderEditor(id) {
-  let report = drafts.get(id) || (await db.getReport(id));
-  if (!report) {
+  const stored = drafts.get(id) || (await db.getReport(id));
+  if (!stored) {
     toast('Bericht nicht gefunden.');
     location.replace('#/');
     return;
   }
+  // Es wird an einer Kopie gearbeitet; gespeichert wird erst mit „Speichern“.
+  const report = structuredClone(stored);
   const isDraft = drafts.has(id);
   document.body.classList.add('editing');
 
@@ -251,12 +253,11 @@ async function renderEditor(id) {
     <button class="icon-btn" id="back" aria-label="Zurück">${ICON.back}</button>
     <h1 class="small">${isDraft ? 'Neuer Bericht' : 'Bericht'}<span class="sub" id="head-date">${weekday(report.datum)}, ${formatDate(report.datum)}</span></h1>
     <button class="icon-btn" id="menu-btn" aria-label="Mehr">${ICON.more}</button>`;
-  $('#back').onclick = () => (history.length > 1 ? history.back() : (location.hash = '#/'));
-
   const wetterChips = WETTER.map((w) =>
     `<button type="button" class="chip" data-wetter="${w.id}" aria-pressed="${report.wetter.includes(w.id)}">${w.icon} ${w.label}</button>`).join('');
 
   view.innerHTML = `
+    <div class="sync-line" id="sync-state"></div>
     <form id="form" autocomplete="off" onsubmit="return false">
       <section class="section">
         <h2>Allgemein</h2>
@@ -311,30 +312,62 @@ async function renderEditor(id) {
         <div class="thumbs" id="thumbs"></div>
       </section>
     </form>
+    ${isDraft ? '' : `<button class="btn danger block" id="delete-btn">${ICON.trash} Bericht löschen</button>`}
     <div class="savebar"><div class="savebar-inner">
-      <div class="state" id="save-state"></div>
-      <button class="btn primary" id="upload-btn">${ICON.cloud} Hochladen</button>
+      <button class="btn ghost" id="cancel-btn">Abbrechen</button>
+      <button class="btn primary" id="save-btn">Speichern</button>
     </div></div>`;
 
-  let saveTimer;
-  let saved = !isDraft;
+  let unsaved = false;
+  const pendingAdds = new Set(); // neu angehängte Dateien, die bei „Abbrechen“ wieder weg müssen
+  const pendingRemovals = new Set(); // entfernte Dateien, die erst beim Speichern gelöscht werden
 
-  const persist = async () => {
+  const changed = () => {
+    unsaved = true;
+    $('#hours').textContent = formatHours(workedHours(report));
+    $('#head-date').textContent = `${weekday(report.datum)}, ${formatDate(report.datum)}`;
+  };
+
+  const leave = () => {
+    editorHooks = null;
+    location.hash = '#/';
+  };
+  const discard = async () => {
+    for (const fid of pendingAdds) await db.deleteFile(fid);
+    pendingAdds.clear();
+    drafts.delete(report.id);
+  };
+  const save = async () => {
+    if (!report.baustelleId && !report.baustelle) {
+      toast('Bitte zuerst eine Baustelle auswählen.');
+      chooseSite();
+      return;
+    }
+    // Upload-Status aus der Datenbank übernehmen, falls inzwischen hochgeladen wurde
+    const fresh = await db.getReport(report.id);
+    if (fresh) for (const k of ['syncedAt', 'syncError', 'remoteDir', 'remoteFiles']) report[k] = fresh[k];
+    for (const fid of pendingRemovals) await db.deleteFile(fid);
+    pendingRemovals.clear();
+    pendingAdds.clear();
     report.updatedAt = Date.now();
     report.dirty = true;
     await db.putReport(report);
     if (drafts.delete(report.id)) requestPersistentStorage();
-    saved = true;
-    updateState();
-    scheduleAutoSync();
+    unsaved = false;
+    toast('Bericht gespeichert.');
+    scheduleAutoSync(1500);
+    leave();
   };
-  const changed = () => {
-    $('#hours').textContent = formatHours(workedHours(report));
-    $('#head-date').textContent = `${weekday(report.datum)}, ${formatDate(report.datum)}`;
-    $('#save-state').innerHTML = '<b>Speichert …</b>';
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(persist, 350);
+  const cancel = async () => {
+    if (unsaved && !confirm(isDraft ? 'Neuen Bericht verwerfen?' : 'Änderungen verwerfen?')) return;
+    await discard();
+    leave();
   };
+  $('#back').onclick = cancel;
+  $('#cancel-btn').onclick = cancel;
+  $('#save-btn').onclick = save;
+  const delBtn = $('#delete-btn');
+  if (delBtn) delBtn.onclick = () => removeReport(report, true);
 
   $$('[data-field]').forEach((el) => {
     el.addEventListener('input', () => {
@@ -377,7 +410,7 @@ async function renderEditor(id) {
   });
 
   const drawThumbs = async () => {
-    const files = await db.filesFor(report.id);
+    const files = (await db.filesFor(report.id)).filter((f) => !pendingRemovals.has(f.id));
     $('#file-sum').textContent = files.length ? `${files.length} · ${formatBytes(files.reduce((s, f) => s + f.size, 0))}` : '';
     $('#thumbs').innerHTML = files.map((f) => {
       const inner = f.type.startsWith('image/')
@@ -393,8 +426,9 @@ async function renderEditor(id) {
       $('.open', t).onclick = () => openFile(file);
       $('.remove', t).onclick = async () => {
         if (!confirm(`„${file.name}“ aus dem Bericht entfernen?`)) return;
-        await db.deleteFile(file.id);
-        await persist();
+        if (pendingAdds.delete(file.id)) await db.deleteFile(file.id);
+        else pendingRemovals.add(file.id);
+        changed();
         drawThumbs();
       };
     });
@@ -402,15 +436,17 @@ async function renderEditor(id) {
 
   const addFiles = async (list) => {
     if (!list.length) return;
-    $('#save-state').innerHTML = '<b>Anhänge werden gespeichert …</b>';
+    $('#sync-state').textContent = 'Anhänge werden vorbereitet …';
     for (const file of list) {
       if (file.size > MAX_FILE_BYTES) {
         toast(`„${file.name}“ ist größer als 25 MB und wurde nicht hinzugefügt.`, 4000);
         continue;
       }
       const prepared = await prepareFile(file);
+      const fid = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+      pendingAdds.add(fid);
       await db.putFile({
-        id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+        id: fid,
         reportId: report.id,
         name: prepared.name,
         type: prepared.type,
@@ -419,59 +455,45 @@ async function renderEditor(id) {
         addedAt: Date.now(),
       });
     }
-    await persist();
+    changed();
+    updateState();
     drawThumbs();
   };
   $('#cam').onchange = (e) => { addFiles([...e.target.files]); e.target.value = ''; };
   $('#pick').onchange = (e) => { addFiles([...e.target.files]); e.target.value = ''; };
 
   function updateState() {
-    const el = $('#save-state');
+    const el = $('#sync-state');
     if (!el) return;
-    const configured = isConfigured(settings);
-    let line2;
-    if (!configured) line2 = 'Sync ist nicht eingerichtet';
-    else if (syncing) line2 = 'Wird hochgeladen …';
-    else if (report.syncError && report.dirty) line2 = `<span class="err">${esc(report.syncError)}</span>`;
-    else if (report.dirty) line2 = report.syncedAt ? 'Änderungen noch nicht hochgeladen' : 'Noch nicht hochgeladen';
-    else line2 = `Hochgeladen ${timeLabel(report.syncedAt)}`;
-    el.innerHTML = `<b>${saved ? 'Auf dem Handy gespeichert' : 'Noch leer'}</b>${line2}`;
-    const btn = $('#upload-btn');
-    btn.disabled = configured && (!saved || syncing || !report.dirty);
-    btn.innerHTML = configured ? `${ICON.cloud} ${report.dirty || !saved ? 'Hochladen' : 'Aktuell'}` : `${ICON.cloud} Einrichten`;
+    if (isDraft) el.innerHTML = '';
+    else if (!isConfigured(settings)) el.innerHTML = '<span class="pill local">Nur auf dem Handy</span>';
+    else if (syncing) el.innerHTML = '<span class="pill pending">Wird hochgeladen …</span>';
+    else if (report.syncError && report.dirty) el.innerHTML = `<span class="pill error">Upload-Fehler</span> <small>${esc(report.syncError)}</small>`;
+    else if (report.dirty) el.innerHTML = '<span class="pill pending">Noch nicht hochgeladen</span>';
+    else el.innerHTML = `<span class="pill ok">Hochgeladen ${timeLabel(report.syncedAt)}</span>`;
   }
   editorHooks = {
     id: report.id,
+    hash: location.hash,
+    hasUnsaved: () => unsaved,
+    discard,
     refresh: async () => {
       const fresh = await db.getReport(report.id);
       if (fresh) {
+        for (const k of ['syncedAt', 'syncError', 'remoteDir', 'remoteFiles']) report[k] = fresh[k];
         report.dirty = fresh.dirty;
-        report.syncedAt = fresh.syncedAt;
-        report.syncError = fresh.syncError;
-        report.remoteDir = fresh.remoteDir;
-        report.remoteFiles = fresh.remoteFiles;
-        if (fresh.updatedAt !== report.updatedAt) report.dirty = true;
       }
       updateState();
     },
-  };
-
-  $('#upload-btn').onclick = async () => {
-    if (!isConfigured(settings)) {
-      location.hash = '#/einstellungen';
-      return;
-    }
-    clearTimeout(saveTimer);
-    await persist();
-    await runSync(true);
   };
 
   $('#menu-btn').onclick = (e) => {
     e.stopPropagation();
     openMenu([
       { icon: ICON.share, label: 'Teilen', run: () => shareReport(report) },
+      ...(isDraft ? [] : [{ icon: ICON.cloud, label: 'Jetzt hochladen', run: () => (isConfigured(settings) ? runSync(true) : (location.hash = '#/einstellungen')) }]),
       { icon: ICON.copy, label: 'Neuer Bericht mit diesen Angaben', run: () => duplicate(report) },
-      { icon: ICON.trash, label: 'Bericht löschen', danger: true, run: () => removeReport(report, saved) },
+      { icon: ICON.trash, label: isDraft ? 'Verwerfen' : 'Bericht löschen', danger: true, run: () => (isDraft ? cancel() : removeReport(report, true)) },
     ]);
   };
 
@@ -535,6 +557,7 @@ async function duplicate(report) {
 async function removeReport(report, saved) {
   if (!saved) {
     drafts.delete(report.id);
+    editorHooks = null;
     location.hash = '#/';
     return;
   }
@@ -550,8 +573,10 @@ async function removeReport(report, saved) {
       if (!confirm(`Im Repo konnte nicht gelöscht werden (${err.message}). Nur auf dem Handy löschen?`)) return;
     }
   }
+  await editorHooks?.discard();
   await db.deleteReport(report.id);
   toast('Bericht gelöscht.');
+  editorHooks = null;
   location.hash = '#/';
 }
 
@@ -905,7 +930,17 @@ async function runSync(manual) {
 
 // ---------- Start ----------
 
-window.addEventListener('hashchange', () => {
+window.addEventListener('hashchange', async () => {
+  const ed = editorHooks;
+  if (ed && ed.hash !== location.hash && ed.hasUnsaved()) {
+    if (!confirm('Änderungen am Bericht verwerfen?')) {
+      history.replaceState(null, '', ed.hash);
+      return;
+    }
+    await ed.discard();
+  } else if (ed) {
+    await ed.discard();
+  }
   editorHooks = null;
   route();
 });

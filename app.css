@@ -387,3 +387,10 @@ body.editing .toast { bottom: calc(96px + var(--safe-b)); }
 }
 .pick.current { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
 .pick[hidden] { display: none; }
+
+/* Speichern / Abbrechen */
+.savebar-inner .btn { flex: 1; }
+.savebar-inner .btn.primary { flex: 1.6; }
+#delete-btn { margin-top: 4px; }
+.sync-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 2px 2px 10px; font-size: .82rem; color: var(--ink-2); }
+.sync-line:empty { display: none; }
