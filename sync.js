@@ -180,6 +180,8 @@ export async function syncReport(settings, reportId) {
   if (!report) return;
   const snapshot = report.updatedAt;
   const files = await db.filesFor(reportId);
+  // Berichte anderer behalten ihren Verfasser, auch wenn der Administrator sie ändert.
+  const author = report.erstelltVon || settings.author;
 
   // Jeder Anhang bekommt einmal einen festen Dateinamen im Repo.
   const taken = new Set(['bericht.md', 'bericht.json', 'bericht.pdf', 'unterschrift.png', ...files.map((f) => f.remoteName).filter(Boolean)]);
@@ -196,13 +198,13 @@ export async function syncReport(settings, reportId) {
   // Fertiges PDF zum Weiterschicken; fällt es aus, wird der Rest trotzdem hochgeladen.
   let pdf = null;
   try {
-    pdf = await buildPdf(report, files, settings.author);
+    pdf = await buildPdf(report, files, author);
   } catch {
     // ohne PDF weiter
   }
   const entries = [
-    { path: `${dir}/bericht.md`, text: toMarkdown(report, files, settings.author, { pdfLink: Boolean(pdf) }) },
-    { path: `${dir}/bericht.json`, text: toJson(report, files, settings.author) },
+    { path: `${dir}/bericht.md`, text: toMarkdown(report, files, author, { pdfLink: Boolean(pdf) }) },
+    { path: `${dir}/bericht.json`, text: toJson(report, files, author) },
   ];
   for (const f of files) {
     const path = `${dir}/${f.remoteName}`;
@@ -392,10 +394,141 @@ export async function syncStunden(settings) {
   return n;
 }
 
+// ---------- Berichte anderer Handys herunterladen ----------
+// Holt neue und geänderte Berichte aus dem Repo auf dieses Handy (für den Administrator
+// alle, sonst nur die eigenen, z. B. nach Handywechsel). Lokale, noch nicht hochgeladene
+// Änderungen gehen immer vor.
+
+const GELADEN_KEY = 'tagesberichte.geladen';
+
+// Merkt sich pro bericht.json den zuletzt gesehenen Stand; bei Wechsel Admin/Mitarbeiter neu prüfen.
+function geladen(modus) {
+  try {
+    const g = JSON.parse(localStorage.getItem(GELADEN_KEY)) || {};
+    return g.modus === modus ? g.pfade || {} : {};
+  } catch {
+    return {};
+  }
+}
+
+async function blobAt(gh, sha, type) {
+  const res = await gh(`/git/blobs/${sha}`);
+  const bin = atob((res.content || '').replace(/\s/g, ''));
+  return new Blob([Uint8Array.from(bin, (c) => c.charCodeAt(0))], { type: type || 'application/octet-stream' });
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.onerror = reject;
+    fr.readAsDataURL(blob);
+  });
+}
+
+function fromJson(data, dir, paths) {
+  const { stundenNachKategorie, stunden, maschinenStunden, anhaenge, unterschrift, ...r } = data;
+  return {
+    ...r,
+    mitarbeiter: (data.mitarbeiter || []).map(({ stunden: h, ...e }) => e),
+    maschinen: data.maschinen || [],
+    abrechnung: data.abrechnung || 'regie',
+    unterschrift: null,
+    remoteDir: dir,
+    remoteFiles: paths,
+    dirty: false,
+    syncError: null,
+    syncedAt: Date.now(),
+  };
+}
+
+export async function pullReports(settings, { alle = false } = {}) {
+  const gh = client(settings);
+  const prefix = folderPrefix(settings);
+  const tree = await gh(`/git/trees/${encodeURIComponent(settings.branch)}?recursive=1`);
+  const blobs = new Map((tree.tree || []).filter((t) => t.type === 'blob' && t.path.startsWith(prefix)).map((t) => [t.path, t.sha]));
+  const modus = alle ? 'alle' : `eigene:${(settings.author || '').trim().toLowerCase()}`;
+  const seen = geladen(modus);
+  const local = new Map((await db.allReports()).map((r) => [r.id, r]));
+  const author = (settings.author || '').trim().toLowerCase();
+  let neu = 0;
+  let geaendert = 0;
+  let entfernt = 0;
+  const jsonPaths = [...blobs.keys()].filter((p) => /^[^/]+\/bericht\.json$/.test(p.slice(prefix.length)));
+
+  for (const path of jsonPaths) {
+    const sha = blobs.get(path);
+    if (seen[path] === sha) continue;
+    const dir = path.slice(prefix.length, -'/bericht.json'.length);
+    let data;
+    try {
+      data = JSON.parse(await (await blobAt(gh, sha, 'application/json')).text());
+    } catch {
+      continue;
+    }
+    if (!data?.id) continue;
+    const mine = local.get(data.id);
+    const vonMir = author && (data.erstelltVon || '').trim().toLowerCase() === author;
+    seen[path] = sha;
+    if (!mine && !alle && !vonMir) continue;
+    // Eigene offene Änderungen gehen vor; doppelte Ordner desselben Berichts ignorieren.
+    if (mine && (mine.dirty || (mine.remoteDir && mine.remoteDir !== dir) || (mine.updatedAt || 0) >= (data.updatedAt || 0))) continue;
+
+    const paths = [...blobs.keys()].filter((p) => p.startsWith(`${prefix}${dir}/`));
+    const report = fromJson(data, dir, paths);
+    report.fremd = mine ? mine.fremd || false : !vonMir;
+    const sigPath = `${prefix}${dir}/unterschrift.png`;
+    if (data.unterschrift && blobs.has(sigPath)) {
+      try {
+        report.unterschrift = {
+          name: data.unterschrift.name || '',
+          zeit: Date.parse(data.unterschrift.zeit) || Date.now(),
+          dataUrl: await blobToDataUrl(await blobAt(gh, blobs.get(sigPath), 'image/png')),
+        };
+      } catch {
+        // ohne Unterschrift weiter
+      }
+    }
+    // Anhänge: vorhandene behalten, fehlende laden, entfernte löschen
+    const files = mine ? await db.filesFor(data.id) : [];
+    const wanted = new Set();
+    for (const a of data.anhaenge || []) {
+      const p = `${prefix}${dir}/${a.datei}`;
+      wanted.add(a.datei);
+      if (files.some((f) => f.remoteName === a.datei) || !blobs.has(p)) continue;
+      const blob = await blobAt(gh, blobs.get(p), a.typ);
+      await db.putFile({
+        id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+        reportId: data.id, name: a.name || a.datei, type: a.typ || blob.type, size: blob.size, blob,
+        remoteName: a.datei, uploadedPath: p, addedAt: Date.now(),
+      });
+    }
+    for (const f of files) if (!wanted.has(f.remoteName)) await db.deleteFile(f.id);
+    // Während des Ladens bearbeitet? Dann nicht überschreiben.
+    const now = await db.getReport(data.id);
+    if (now && (now.dirty || (now.updatedAt || 0) >= (data.updatedAt || 0)) && mine) continue;
+    await db.putReport(report);
+    if (mine) geaendert++;
+    else neu++;
+  }
+
+  // Im Repo gelöschte Berichte anderer verschwinden auch hier (eigene bleiben immer).
+  const vorhanden = new Set(jsonPaths.map((p) => p.slice(prefix.length, -'/bericht.json'.length)));
+  for (const r of local.values()) {
+    if (r.fremd && !r.dirty && r.remoteDir && !vorhanden.has(r.remoteDir) && !tree.truncated) {
+      await db.deleteReport(r.id);
+      entfernt++;
+    }
+  }
+  for (const p of Object.keys(seen)) if (!blobs.has(p)) delete seen[p];
+  localStorage.setItem(GELADEN_KEY, JSON.stringify({ modus, pfade: seen }));
+  return { neu, geaendert, entfernt };
+}
+
 let running = null;
 
 // Lädt alle offenen Berichte hoch. Gibt { ok, failed } zurück.
-export function syncAll(settings, onProgress) {
+export function syncAll(settings, onProgress, { alle = false } = {}) {
   if (running) return running;
   running = (async () => {
     let ok = 0;
@@ -429,7 +562,14 @@ export function syncAll(settings, onProgress) {
         if (err.status === 0 || err.status === 401) break;
       }
     }
-    return { ok, failed, total: pending.length, stammdatenChanged, stammdatenError, stundenError };
+    let geladen = null;
+    let ladeFehler = null;
+    try {
+      geladen = await pullReports(settings, { alle });
+    } catch (err) {
+      ladeFehler = err.message;
+    }
+    return { ok, failed, total: pending.length, stammdatenChanged, stammdatenError, stundenError, geladen, ladeFehler };
   })().finally(() => {
     running = null;
   });

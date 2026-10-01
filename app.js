@@ -14,7 +14,7 @@ import {
   isConfigured, syncAll, syncReport, testConnection, deleteRemote, loadAdminConfig, saveAdminConfig, loadStundenRemote,
 } from './sync.js';
 
-const APP_VERSION = '1.11.0';
+const APP_VERSION = '1.12.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -222,7 +222,7 @@ async function renderList() {
           <div class="body">
             <div class="title ${r.baustelle ? '' : 'muted'}">${esc(r.baustelle || 'Ohne Baustelle')}</div>
             ${preview ? `<div class="preview">${esc(preview)}</div>` : ''}
-            <div class="meta">${r.art === 'rapport' ? '<span class="pill art">Rapport</span>' : ''}${syncPill(r)}${n ? `<span>${ICON.clip} ${n}</span>` : ''}</div>
+            <div class="meta">${r.art === 'rapport' ? '<span class="pill art">Rapport</span>' : ''}${r.fremd && r.erstelltVon ? `<span class="pill von">von ${esc(r.erstelltVon)}</span>` : ''}${syncPill(r)}${n ? `<span>${ICON.clip} ${n}</span>` : ''}</div>
           </div>
           <div class="hours">${formatHours(workedHours(r))}</div>
         </a>`;
@@ -1873,7 +1873,7 @@ async function runSync(manual) {
   editorHooks?.refresh();
   let result;
   try {
-    result = await syncAll(settings);
+    result = await syncAll(settings, null, { alle: isAdmin() });
   } finally {
     syncing = false;
   }
@@ -1882,10 +1882,16 @@ async function runSync(manual) {
     else if (result.ok) toast(result.ok === 1 ? 'Bericht hochgeladen.' : `${result.ok} Berichte hochgeladen.`);
     else if (manual) toast('Alles ist bereits hochgeladen.');
   }
+  const g = result.geladen;
+  if (g && (g.neu || g.geaendert)) {
+    const n = g.neu + g.geaendert;
+    toast(n === 1 ? '1 Bericht vom Repo geladen.' : `${n} Berichte vom Repo geladen.`);
+  } else if (manual && result.ladeFehler && !result.failed) toast(`Berichte laden: ${result.ladeFehler}`, 4000);
   if (manual && result.stammdatenError) toast(`Baustellen/Personal: ${result.stammdatenError}`, 4000);
   // Ansicht aktualisieren, ohne das Formular neu aufzubauen
   if (/^#\/bericht\//.test(location.hash)) editorHooks?.refresh();
   else if ((location.hash || '#/') === '#/') renderList();
+  else if (g?.neu && /^#\/baustelle\//.test(location.hash) && !document.querySelector('.sheet-backdrop')) route();
   else if (result.stammdatenChanged && !document.querySelector('.sheet-backdrop')) {
     if (location.hash === '#/baustellen') renderSites();
     else if (location.hash === '#/personal') renderPeople();

@@ -157,7 +157,7 @@ body.editing .view { padding-bottom: calc(110px + var(--safe-b)); }
 .rcard .title { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rcard .title.muted { color: var(--ink-3); font-style: italic; font-weight: 500; }
 .rcard .preview { font-size: .87rem; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rcard .meta { display: flex; gap: 10px; align-items: center; margin-top: 3px; font-size: .78rem; color: var(--ink-3); font-weight: 600; }
+.rcard .meta { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; margin-top: 3px; font-size: .78rem; color: var(--ink-3); font-weight: 600; }
 .rcard .meta svg { width: 14px; height: 14px; vertical-align: -2px; }
 .rcard .hours { flex: none; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
 
@@ -479,3 +479,5 @@ button.fab { border: 0; font: inherit; font-weight: 750; cursor: pointer; }
 .seg.three { grid-template-columns: 1fr 1fr 1fr; margin-bottom: 0; }
 .seg.three button { padding: 9px 4px; font-size: .9rem; }
 select { width: 100%; font: inherit; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 12px; min-height: 48px; -webkit-appearance: none; appearance: none; }
+.pill.von { color: var(--ink-2); background: var(--surface-2); }
+.pill.von::before { display: none; }
