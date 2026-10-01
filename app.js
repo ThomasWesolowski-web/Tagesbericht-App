@@ -15,7 +15,7 @@ import {
 } from './sync.js';
 import { startI18n, SPRACHEN } from './i18n.js';
 
-const APP_VERSION = '1.15.0';
+const APP_VERSION = '1.15.1';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -99,6 +99,11 @@ function syncPill(r) {
 // ---------- Router ----------
 
 async function route() {
+  // Neue Version liegt bereit: beim Wechsel auf eine andere Seite einspielen
+  if (neueVersion && !/^#\/(bericht|neu)/.test(location.hash)) {
+    location.reload();
+    return;
+  }
   releaseUrls();
   closeMenu();
   $$('.sheet-backdrop, .pdf-view').forEach((el) => el.remove());
@@ -2027,8 +2032,26 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { $('#lightbox').hidden = true; closeMenu(); }
 });
 
+// Neue Version: lädt im Hintergrund und wird von selbst aktiv, sobald gerade nichts bearbeitet wird.
+let neueVersion = false;
+function updateEinspielen() {
+  if (!neueVersion) return;
+  const ruhig = !/^#\/(bericht|neu)/.test(location.hash) && !document.querySelector('.sheet-backdrop, .pdf-view');
+  if (ruhig) location.reload();
+}
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  const hatteVersion = Boolean(navigator.serviceWorker.controller);
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hatteVersion || neueVersion) return;
+    neueVersion = true;
+    updateEinspielen();
+  });
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    // Beim Zurückkehren in die App nach einer neuen Version schauen
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') reg.update().catch(() => {});
+    });
+  }).catch(() => {});
 }
 
 // Sprache einmal abfragen (beim ersten Start; der Administrator arbeitet auf Deutsch)
