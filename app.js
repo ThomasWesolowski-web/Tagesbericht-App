@@ -1,11 +1,11 @@
 import * as db from './db.js';
 import { prepareFile, formatBytes, MAX_FILE_BYTES } from './media.js';
 import {
-  WETTER, newReport, workedHours, formatHours, formatDate, weekday, monthLabel, parseDate, toMarkdown,
+  WETTER, newReport, newSite, workedHours, formatHours, formatDate, weekday, monthLabel, parseDate, toMarkdown,
 } from './report.js';
 import { isConfigured, syncAll, syncReport, testConnection, deleteRemote } from './sync.js';
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.1.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -64,6 +64,9 @@ const ICON = {
   copy: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
   trash: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 16l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  pin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-6.2-6.5-11.2a6.5 6.5 0 0 1 13 0C18.5 14.8 12 21 12 21z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="9.8" r="2.3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
+  chevron: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>',
   info: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 11v6M12 7.5v.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
 };
 
@@ -79,20 +82,25 @@ function syncPill(r) {
 async function route() {
   releaseUrls();
   closeMenu();
+  $$('.sheet-backdrop').forEach((el) => el.remove());
   document.body.classList.remove('editing');
   const hash = location.hash || '#/';
   $$('.tabbar a[data-tab]').forEach((a) => a.classList.toggle('active',
-    (a.dataset.tab === 'list' && hash === '#/') || (a.dataset.tab === 'settings' && hash === '#/einstellungen')));
+    (a.dataset.tab === 'list' && hash === '#/')
+    || (a.dataset.tab === 'sites' && hash.startsWith('#/baustelle'))
+    || (a.dataset.tab === 'settings' && hash === '#/einstellungen')));
 
   if (hash === '#/neu') {
-    const latest = (await db.allReports())[0];
-    const r = newReport(latest);
+    const r = newReport();
     drafts.set(r.id, r);
     location.replace(`#/bericht/${r.id}`);
     return;
   }
   const m = /^#\/bericht\/(.+)$/.exec(hash);
   if (m) return renderEditor(decodeURIComponent(m[1]));
+  const site = /^#\/baustelle\/(.+)$/.exec(hash);
+  if (site) return renderSiteEditor(decodeURIComponent(site[1]));
+  if (hash === '#/baustellen') return renderSites();
   if (hash === '#/einstellungen') return renderSettings();
   return renderList();
 }
@@ -158,7 +166,8 @@ async function renderList() {
       <div class="stat ${pending && configured ? 'attention' : ''}"><b>${configured ? pending : '–'}</b><span>${configured ? 'nicht hochgeladen' : 'Sync aus'}</span></div>
     </div>
     <label class="search">${ICON.search}<input id="search" type="search" placeholder="Baustelle, Arbeiten, Personal …" autocomplete="off"></label>
-    <div id="list"></div>`;
+    <div id="list"></div>
+    <a class="fab" href="#/neu">${ICON.plus}<span>Neuer Bericht</span></a>`;
   view.innerHTML = html;
   bindInstall();
 
@@ -252,8 +261,7 @@ async function renderEditor(id) {
       <section class="section">
         <h2>Allgemein</h2>
         <label class="field"><span>Datum</span><input type="date" data-field="datum" value="${esc(report.datum)}" required></label>
-        <label class="field"><span>Baustelle / Projekt</span><input type="text" data-field="baustelle" value="${esc(report.baustelle)}" placeholder="z. B. Musterstraße 12, Zürich" list="baustellen" enterkeyhint="next"></label>
-        <datalist id="baustellen"></datalist>
+        <div class="field"><span>Baustelle</span><button type="button" class="site-pick" id="site-pick"></button></div>
         <div class="row">
           <label class="field"><span>Auftragsnummer</span><input type="text" data-field="auftrag" value="${esc(report.auftrag)}" placeholder="optional"></label>
           <label class="field"><span>Personal</span><input type="text" data-field="personal" value="${esc(report.personal)}" placeholder="Wer war dabei?"></label>
@@ -308,10 +316,6 @@ async function renderEditor(id) {
       <button class="btn primary" id="upload-btn">${ICON.cloud} Hochladen</button>
     </div></div>`;
 
-  // Vorschläge für die Baustelle aus früheren Berichten
-  const sites = [...new Set((await db.allReports()).map((r) => r.baustelle).filter(Boolean))].slice(0, 30);
-  $('#baustellen').innerHTML = sites.map((s) => `<option value="${esc(s)}">`).join('');
-
   let saveTimer;
   let saved = !isDraft;
 
@@ -341,6 +345,28 @@ async function renderEditor(id) {
     });
     if (el.tagName === 'TEXTAREA') autoGrow(el);
   });
+  const drawSite = () => {
+    $('#site-pick').innerHTML = report.baustelle
+      ? `${ICON.pin}<span><b>${esc(report.baustelle)}</b>${report.adresse ? `<small>${esc(report.adresse)}</small>` : ''}</span><em>Ändern</em>`
+      : `${ICON.pin}<span><b class="muted">Baustelle auswählen</b><small>oder neue Baustelle erstellen</small></span>`;
+  };
+  const chooseSite = () => openSitePicker(report.baustelleId, async (site) => {
+    report.baustelleId = site.id;
+    report.baustelle = site.name;
+    report.adresse = site.adresse || '';
+    if (site.auftrag) {
+      report.auftrag = site.auftrag;
+      $('[data-field=auftrag]').value = site.auftrag;
+    }
+    site.lastUsed = Date.now();
+    await db.putSite(site);
+    drawSite();
+    changed();
+  });
+  $('#site-pick').onclick = chooseSite;
+  drawSite();
+  if (isDraft && !report.baustelleId) setTimeout(chooseSite, 150);
+
   $$('#wetter .chip').forEach((chip) => {
     chip.onclick = () => {
       const w = chip.dataset.wetter;
@@ -498,9 +524,10 @@ async function shareReport(report) {
 }
 
 async function duplicate(report) {
-  const copy = newReport(report);
-  copy.taetigkeiten = report.taetigkeiten;
-  copy.material = report.material;
+  const copy = newReport();
+  for (const k of ['baustelleId', 'baustelle', 'adresse', 'auftrag', 'personal', 'beginn', 'ende', 'pause', 'taetigkeiten', 'material']) {
+    copy[k] = report[k];
+  }
   drafts.set(copy.id, copy);
   location.hash = `#/bericht/${copy.id}`;
 }
@@ -546,6 +573,189 @@ function openMenu(items) {
 
 function closeMenu() {
   $('#menu')?.remove();
+}
+
+// ---------- Baustellen ----------
+
+async function siteStats() {
+  const stats = new Map();
+  for (const r of await db.allReports()) {
+    if (!r.baustelleId) continue;
+    const s = stats.get(r.baustelleId) || { count: 0, hours: 0, last: '' };
+    s.count++;
+    s.hours += workedHours(r) || 0;
+    if (r.datum > s.last) s.last = r.datum;
+    stats.set(r.baustelleId, s);
+  }
+  return stats;
+}
+
+function siteCard(site, st) {
+  const meta = st ? `${st.count} ${st.count === 1 ? 'Bericht' : 'Berichte'} · ${formatHours(st.hours)}` : 'Noch keine Berichte';
+  return `<a class="scard ${site.archived ? 'archived' : ''}" href="#/baustelle/${encodeURIComponent(site.id)}">
+      <div class="sicon">${ICON.pin}</div>
+      <div class="body"><div class="title">${esc(site.name)}</div>
+        ${site.adresse ? `<div class="preview">${esc(site.adresse)}</div>` : ''}
+        <div class="meta">${meta}${site.auftrag ? ` · Nr. ${esc(site.auftrag)}` : ''}</div></div>
+      ${ICON.chevron}</a>`;
+}
+
+async function renderSites() {
+  appbar.innerHTML = '<h1>Baustellen</h1>';
+  const sites = await db.allSites();
+  const stats = await siteStats();
+  const active = sites.filter((s) => !s.archived);
+  const done = sites.filter((s) => s.archived);
+  if (!sites.length) {
+    view.innerHTML = `<div class="empty">
+        <h2>Noch keine Baustellen</h2>
+        <p>Lege deine Baustellen einmal an. Beim Bericht wählst du sie dann nur noch aus.</p>
+        <a class="btn primary" href="#/baustelle/neu">${ICON.plus} Neue Baustelle</a></div>`;
+    return;
+  }
+  view.innerHTML = `
+    <a class="btn soft block" href="#/baustelle/neu" style="margin:6px 0 14px">${ICON.plus} Neue Baustelle</a>
+    ${active.length ? `<div class="month"><span>Aktiv</span><span>${active.length}</span></div><div class="card-list">${active.map((s) => siteCard(s, stats.get(s.id))).join('')}</div>` : ''}
+    ${done.length ? `<div class="month"><span>Abgeschlossen</span><span>${done.length}</span></div><div class="card-list">${done.map((s) => siteCard(s, stats.get(s.id))).join('')}</div>` : ''}`;
+}
+
+function siteFields(site) {
+  return `
+    <label class="field"><span>Name der Baustelle *</span><input type="text" name="name" value="${esc(site.name)}" placeholder="z. B. MFH Seestrasse" required></label>
+    <label class="field"><span>Adresse</span><input type="text" name="adresse" value="${esc(site.adresse)}" placeholder="Strasse, Ort"></label>
+    <div class="row">
+      <label class="field"><span>Auftragsnummer</span><input type="text" name="auftrag" value="${esc(site.auftrag)}" placeholder="optional"></label>
+      <label class="field"><span>Kunde / Bauherr</span><input type="text" name="kunde" value="${esc(site.kunde)}" placeholder="optional"></label>
+    </div>`;
+}
+
+function readSiteFields(root, site) {
+  for (const el of $$('[name]', root)) if (el.name in site) site[el.name] = el.value.trim();
+  return site;
+}
+
+async function renderSiteEditor(id) {
+  const isNew = id === 'neu';
+  const site = isNew ? newSite() : await db.getSite(id);
+  if (!site) {
+    location.replace('#/baustellen');
+    return;
+  }
+  appbar.innerHTML = `
+    <button class="icon-btn" id="back" aria-label="Zurück">${ICON.back}</button>
+    <h1 class="small">${isNew ? 'Neue Baustelle' : esc(site.name)}</h1>`;
+  $('#back').onclick = () => (location.hash = '#/baustellen');
+
+  const reports = isNew ? [] : (await db.allReports()).filter((r) => r.baustelleId === site.id);
+  view.innerHTML = `
+    <form id="site-form" class="section" onsubmit="return false">
+      ${siteFields(site)}
+      <label class="field"><span>Notizen</span><textarea name="notiz" rows="3" placeholder="Ansprechpartner, Zugang, Besonderheiten …">${esc(site.notiz)}</textarea></label>
+      ${isNew ? '' : `<div class="toggle"><span><b>Abgeschlossen</b><small>Wird bei neuen Berichten nicht mehr angeboten</small></span>
+        <label class="switch"><input type="checkbox" id="archived" ${site.archived ? 'checked' : ''}><i></i></label></div>`}
+    </form>
+    <button class="btn primary block" id="save-site">${isNew ? 'Baustelle speichern' : 'Änderungen speichern'}</button>
+    ${reports.length ? `<div class="month"><span>Berichte</span><span>${formatHours(reports.reduce((s, r) => s + (workedHours(r) || 0), 0))}</span></div>
+      <div class="card-list">${reports.map((r) => `<a class="rcard" href="#/bericht/${encodeURIComponent(r.id)}">
+        <div class="date"><b>${parseDate(r.datum).getDate()}</b><span>${weekday(r.datum).slice(0, 2)}</span></div>
+        <div class="body"><div class="title">${formatDate(r.datum)}</div><div class="preview">${esc((r.taetigkeiten || r.bemerkungen || '').split('\n')[0])}</div></div>
+        <div class="hours">${formatHours(workedHours(r))}</div></a>`).join('')}</div>` : ''}
+    ${isNew ? '' : '<button class="btn danger block" id="delete-site" style="margin-top:20px">Baustelle löschen</button>'}`;
+
+  $('#save-site').onclick = async () => {
+    readSiteFields($('#site-form'), site);
+    if (!site.name) {
+      toast('Bitte einen Namen für die Baustelle eingeben.');
+      $('[name=name]').focus();
+      return;
+    }
+    const box = $('#archived');
+    if (box) site.archived = box.checked ? 1 : 0;
+    await db.putSite(site);
+    toast(isNew ? 'Baustelle gespeichert.' : 'Änderungen gespeichert.');
+    location.hash = '#/baustellen';
+  };
+  const del = $('#delete-site');
+  if (del) del.onclick = async () => {
+    const hint = reports.length ? ` Die ${reports.length} Berichte dazu bleiben erhalten.` : '';
+    if (!confirm(`Baustelle „${site.name}“ löschen?${hint}`)) return;
+    await db.deleteSite(site.id);
+    location.hash = '#/baustellen';
+  };
+}
+
+// Auswahl im Bericht: gespeicherte Baustelle antippen oder neue anlegen.
+async function openSitePicker(currentId, onSelect) {
+  const sites = (await db.allSites()).filter((s) => !s.archived || s.id === currentId);
+  const sheet = document.createElement('div');
+  sheet.className = 'sheet-backdrop';
+  sheet.innerHTML = `
+    <div class="sheet" role="dialog" aria-label="Baustelle auswählen">
+      <div class="sheet-grip"></div>
+      <h2>Baustelle</h2>
+      <button class="btn primary block" id="sheet-new">${ICON.plus} Neue Baustelle erstellen</button>
+      <form id="sheet-form" class="section" hidden onsubmit="return false" style="margin-top:12px">
+        ${siteFields(newSite())}
+        <button class="btn primary block" id="sheet-save">Speichern und auswählen</button>
+      </form>
+      ${sites.length ? `${sites.length > 6 ? `<label class="search" style="margin-top:14px">${ICON.search}<input id="sheet-search" type="search" placeholder="Baustelle suchen …" autocomplete="off"></label>` : ''}
+        <div class="month"><span>Baustelle auswählen</span></div>
+        <div class="pick-list">${sites.map((s) => `<button type="button" class="pick ${s.id === currentId ? 'current' : ''}" data-id="${s.id}">
+          ${ICON.pin}<span><b>${esc(s.name)}</b>${s.adresse ? `<small>${esc(s.adresse)}</small>` : ''}</span></button>`).join('')}</div>`
+        : '<p class="hint" style="text-align:center;margin-top:14px">Noch keine Baustellen gespeichert.</p>'}
+    </div>`;
+  document.body.appendChild(sheet);
+  requestAnimationFrame(() => sheet.classList.add('open'));
+  const close = () => {
+    sheet.classList.remove('open');
+    setTimeout(() => sheet.remove(), 200);
+  };
+  sheet.onclick = (e) => { if (e.target === sheet) close(); };
+  $$('.pick', sheet).forEach((b) => {
+    b.onclick = () => {
+      close();
+      onSelect(sites.find((s) => s.id === b.dataset.id));
+    };
+  });
+  const search = $('#sheet-search', sheet);
+  if (search) search.oninput = () => {
+    const q = search.value.trim().toLowerCase();
+    $$('.pick', sheet).forEach((b) => { b.hidden = q && !b.textContent.toLowerCase().includes(q); });
+  };
+  $('#sheet-new', sheet).onclick = () => {
+    $('#sheet-new', sheet).hidden = true;
+    $('#sheet-form', sheet).hidden = false;
+    $('[name=name]', sheet).focus();
+  };
+  $('#sheet-save', sheet).onclick = async () => {
+    const site = readSiteFields($('#sheet-form', sheet), newSite());
+    if (!site.name) {
+      toast('Bitte einen Namen für die Baustelle eingeben.');
+      return;
+    }
+    await db.putSite(site);
+    close();
+    onSelect(site);
+  };
+}
+
+// Baustellen aus früheren Berichten einmalig übernehmen.
+async function migrateSites() {
+  if (localStorage.getItem('tagesberichte.sitesMigrated')) return;
+  const sites = await db.allSites();
+  const byName = new Map(sites.map((s) => [s.name.toLowerCase(), s]));
+  for (const r of await db.allReports()) {
+    if (r.baustelleId || !r.baustelle) continue;
+    let site = byName.get(r.baustelle.toLowerCase());
+    if (!site) {
+      site = newSite({ name: r.baustelle, auftrag: r.auftrag || '', lastUsed: r.createdAt });
+      byName.set(site.name.toLowerCase(), site);
+      await db.putSite(site);
+    }
+    r.baustelleId = site.id;
+    await db.putReport(r);
+  }
+  localStorage.setItem('tagesberichte.sitesMigrated', '1');
 }
 
 // ---------- Einstellungen ----------
@@ -713,6 +923,6 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 
-route();
+migrateSites().catch(() => {}).finally(route);
 scheduleAutoSync(1500);
 

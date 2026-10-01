@@ -15,20 +15,26 @@ export function today() {
   return d.toISOString().slice(0, 10);
 }
 
-export function newReport(previous) {
+export function newId() {
+  return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+// Ein neuer Bericht startet leer, nur mit dem heutigen Datum.
+export function newReport() {
   const now = Date.now();
   return {
-    id: crypto.randomUUID ? crypto.randomUUID() : `${now}-${Math.random().toString(16).slice(2)}`,
+    id: newId(),
     createdAt: now,
     updatedAt: now,
     datum: today(),
-    // Baustelle und Arbeitszeit vom letzten Bericht übernehmen, das spart Tipparbeit.
-    baustelle: previous?.baustelle || '',
-    auftrag: previous?.auftrag || '',
-    personal: previous?.personal || '',
-    beginn: previous?.beginn || '07:00',
-    ende: previous?.ende || '16:00',
-    pause: previous?.pause ?? 30,
+    baustelleId: null,
+    baustelle: '',
+    adresse: '',
+    auftrag: '',
+    personal: '',
+    beginn: '',
+    ende: '',
+    pause: '',
     wetter: [],
     temperatur: '',
     taetigkeiten: '',
@@ -39,6 +45,21 @@ export function newReport(previous) {
     syncError: null,
     remoteDir: null,
     remoteFiles: [],
+  };
+}
+
+export function newSite(fields = {}) {
+  return {
+    id: newId(),
+    name: '',
+    adresse: '',
+    auftrag: '',
+    kunde: '',
+    notiz: '',
+    archived: 0,
+    createdAt: Date.now(),
+    lastUsed: 0,
+    ...fields,
   };
 }
 
@@ -99,6 +120,7 @@ export function toMarkdown(r, files, author) {
   const rows = [
     ['Datum', `${weekday(r.datum)}, ${formatDate(r.datum)}`],
     ['Baustelle / Projekt', r.baustelle],
+    ['Adresse', r.adresse],
     ['Auftragsnummer', r.auftrag],
     ['Personal', r.personal],
     ['Arbeitszeit', r.beginn && r.ende ? `${r.beginn} – ${r.ende} Uhr, ${r.pause || 0} min Pause` : ''],

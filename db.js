@@ -2,7 +2,7 @@
 // "reports": ein Eintrag pro Tagesbericht, "files": Fotos und Dokumente als Blob.
 
 const DB_NAME = 'tagesberichte';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise;
 
@@ -18,6 +18,9 @@ function open() {
         if (!db.objectStoreNames.contains('files')) {
           const files = db.createObjectStore('files', { keyPath: 'id' });
           files.createIndex('reportId', 'reportId');
+        }
+        if (!db.objectStoreNames.contains('sites')) {
+          db.createObjectStore('sites', { keyPath: 'id' });
         }
       };
       req.onsuccess = () => resolve(req.result);
@@ -79,6 +82,24 @@ export async function putFile(file) {
 
 export async function deleteFile(id) {
   return done((await store('files', 'readwrite')).delete(id));
+}
+
+// Gespeicherte Baustellen, damit sie beim Bericht nur ausgewählt werden müssen.
+export async function allSites() {
+  const list = await done((await store('sites')).getAll());
+  return list.sort((a, b) => (a.archived - b.archived) || (b.lastUsed || 0) - (a.lastUsed || 0) || a.name.localeCompare(b.name, 'de'));
+}
+
+export async function getSite(id) {
+  return done((await store('sites')).get(id));
+}
+
+export async function putSite(site) {
+  return done((await store('sites', 'readwrite')).put(site));
+}
+
+export async function deleteSite(id) {
+  return done((await store('sites', 'readwrite')).delete(id));
 }
 
 // Einstellungen sind klein und liegen im localStorage.
