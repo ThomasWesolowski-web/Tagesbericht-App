@@ -53,7 +53,9 @@ async function toJpeg(src, maxPx = 1400) {
 
 const ACCENT = [62, 150, 66]; // Grün aus dem Firmenlogo
 const FIRMA = 'MT+ Füß & Wesolowski GbR · Steinbeisstr. 8 · 72510 Stetten';
-const BRIEFKOPF = 'icons/briefkopf.jpg';
+const LOGO = 'icons/logo-mt.jpg'; // Pinselfläche ohne Schrift, MT+ wird scharf darübergesetzt
+const LOGO_PX = { w: 364, h: 219 }; // Maße der Vorlage, auf die sich die Positionen beziehen
+const FIRMEN_GRUEN = [38, 134, 48];
 const INK = [28, 31, 36];
 const MUTED = [104, 110, 120];
 const LINE = [222, 218, 212];
@@ -77,17 +79,42 @@ export async function buildPdf(r, files, author) {
   const isRapport = r.art === 'rapport';
   const title = artLabel(r);
 
-  // Briefkopf mit Logo und Anschrift
-  const kopf = await toJpeg(BRIEFKOPF, 1600);
-  if (kopf) {
-    const kh = (kopf.h / kopf.w) * CW;
-    doc.addImage(kopf.data, 'JPEG', M, 8, CW, kh);
-    y = 8 + kh + 4;
-  } else {
-    font('bold', 9); color(MUTED);
-    doc.text(FIRMA, M, 12);
-    y = 18;
-  }
+  // Briefkopf: Schrift als echte Schrift (scharf), nur die Pinselfläche ist ein Bild.
+  const KH = 40; // Höhe des Briefkopfs in mm
+  const top = 6;
+  const k = KH / LOGO_PX.h; // mm pro Pixel der Vorlage
+  const logo = await toJpeg(LOGO, 1600);
+  const lx = W - M - LOGO_PX.w * k + 4;
+  if (logo) doc.addImage(logo.data, 'JPEG', lx, top, LOGO_PX.w * k, KH);
+  const pt = (px) => (px * k) / 0.3528; // Schriftgröße aus Pixelhöhe der Vorlage
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(pt(83.6));
+  doc.text('MT', lx + 57 * k, top + 159 * k);
+  doc.setFontSize(pt(65.6));
+  doc.text('+', lx + 191.8 * k, top + 104 * k);
+
+  font('bold', 15.5); color(FIRMEN_GRUEN);
+  doc.text('Stuckateurmeisterbetrieb', M, top + 16);
+  doc.text('Füß & Wesolowski GbR', M, top + 22.5);
+  const leistungen = [['Sanierung', 'Nassputz'], ['Trockenbau', 'Wärmedämmung']];
+  leistungen.forEach((row, i) => {
+    row.forEach((t, j) => {
+      const x = M + j * 30;
+      const yy = top + 28.3 + i * 4.3;
+      font('bold', 8.5); color(FIRMEN_GRUEN);
+      doc.text('+', x, yy);
+      font('normal', 8.5); color(MUTED);
+      doc.text(t, x + 3.5, yy);
+    });
+  });
+  font('normal', 7.5); color(INK);
+  const adr = 'MT+ Füß & Wesolowski GbR + Steinbeisstr. 8 + 72510 Stetten';
+  doc.text(adr, M, top + 38.2);
+  doc.setDrawColor(...INK);
+  doc.setLineWidth(0.15);
+  doc.line(M, top + 39, M + doc.getTextWidth(adr), top + 39);
+  y = top + KH + 3;
   doc.setDrawColor(...ACCENT);
   doc.setLineWidth(0.6);
   doc.line(M, y, M + CW, y);
