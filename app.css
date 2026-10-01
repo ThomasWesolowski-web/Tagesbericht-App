@@ -499,3 +499,7 @@ body.no-scroll { overflow: hidden; }
 .sync-fields { border: 0; margin: 0; padding: 0; min-width: 0; }
 .sync-fields:disabled input { opacity: .6; background: var(--surface-2); }
 #sync-unlock svg { width: 18px; height: 18px; vertical-align: -3px; margin-right: 4px; }
+
+/* Löschen: klein, links */
+.btn.del { display: flex; width: max-content; margin-right: auto; padding: 7px 12px; min-height: 36px; font-size: .85rem; font-weight: 650; gap: 6px; }
+.btn.del svg { width: 16px; height: 16px; }

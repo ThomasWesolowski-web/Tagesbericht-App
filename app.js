@@ -15,7 +15,7 @@ import {
 } from './sync.js';
 import { startI18n, SPRACHEN } from './i18n.js';
 
-const APP_VERSION = '1.15.1';
+const APP_VERSION = '1.15.2';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -363,7 +363,7 @@ async function renderEditor(id) {
       </section>
     </form>
     ${isDraft ? '' : `<button class="btn soft block" id="pdf-btn">${ICON.share} Als PDF teilen</button>`}
-    ${isDraft ? '' : `<button class="btn danger block" id="delete-btn">${ICON.trash} Bericht löschen</button>`}
+    ${isDraft ? '' : `<button class="btn danger del" id="delete-btn">${ICON.trash} Bericht löschen</button>`}
     <div class="savebar"><div class="savebar-inner">
       <button class="btn ghost" id="cancel-btn">Abbrechen</button>
       <button class="btn primary" id="save-btn">Speichern</button>
@@ -974,7 +974,7 @@ async function renderSiteEditor(id) {
         <div class="body"><div class="title">${formatDate(r.datum)}</div><div class="preview">${esc((r.taetigkeiten || r.bemerkungen || '').split('\n')[0])}</div></div>
         <div class="hours">${formatHours(workedHours(r))}</div></a>`).join('')}</div>` : ''}
     ${isNew ? '' : isAdmin()
-      ? '<button class="btn danger block" id="delete-site" style="margin-top:20px">Baustelle löschen</button>'
+      ? `<button class="btn danger del" id="delete-site" style="margin-top:20px">${ICON.trash} Baustelle löschen</button>`
       : '<p class="hint" style="margin-top:20px;text-align:center">Löschen darf nur der Administrator. Fertige Baustellen kannst du oben als abgeschlossen markieren.</p>'}`;
 
   const siteSum = $('#site-sum');
@@ -1265,7 +1265,7 @@ async function renderPeople() {
         <button type="button" class="btn ghost" id="pf-cancel">Abbrechen</button>
         <button type="button" class="btn primary" id="pf-save">Speichern</button>
       </div>
-      ${isNew || !isAdmin() ? '' : '<button type="button" class="btn danger block" id="pf-delete" style="margin-top:12px">Person löschen</button>'}`);
+      ${isNew || !isAdmin() ? '' : `<button type="button" class="btn danger del" id="pf-delete" style="margin-top:12px">${ICON.trash} Person löschen</button>`}`);
     bindKategorie(sheet);
     $('#pf-cancel', sheet).onclick = close;
     $('#pf-save', sheet).onclick = async () => {
@@ -1729,7 +1729,7 @@ function openStundeEditor(e, isNew) {
       <button type="button" class="btn ghost" id="st-cancel">Abbrechen</button>
       <button type="button" class="btn primary" id="st-save">Speichern</button>
     </div>
-    ${isNew ? '' : `<button type="button" class="btn danger block" id="st-del" style="margin-top:10px">${ICON.trash} Eintrag löschen</button>`}`);
+    ${isNew ? '' : `<button type="button" class="btn danger del" id="st-del" style="margin-top:10px">${ICON.trash} Eintrag löschen</button>`}`);
 
   const drawSite = () => {
     $('#st-site', sheet).innerHTML = e.baustelle
