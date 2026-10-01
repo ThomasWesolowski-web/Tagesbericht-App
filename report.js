@@ -31,10 +31,8 @@ export function newReport() {
     baustelle: '',
     adresse: '',
     auftrag: '',
-    personal: '',
-    beginn: '',
-    ende: '',
-    pause: '',
+    // Pro Person eine eigene Zeiterfassung: { personId, name, funktion, beginn, ende, pause }
+    mitarbeiter: [],
     wetter: [],
     temperatur: '',
     taetigkeiten: '',
@@ -68,8 +66,12 @@ function minutes(hhmm) {
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 }
 
-// Arbeitsstunden aus Beginn, Ende und Pause (auch über Mitternacht).
-export function workedHours(r) {
+export function newPerson(fields = {}) {
+  return { id: newId(), name: '', funktion: '', archived: 0, createdAt: Date.now(), ...fields };
+}
+
+// Stunden einer Person bzw. eines älteren Berichts aus Beginn, Ende und Pause (auch über Mitternacht).
+export function entryHours(r) {
   const start = minutes(r.beginn);
   const end = minutes(r.ende);
   if (start == null || end == null) return null;
@@ -77,6 +79,24 @@ export function workedHours(r) {
   if (total < 0) total += 24 * 60;
   total -= Number(r.pause) || 0;
   return Math.max(0, total) / 60;
+}
+
+// Summe aller Personen; ältere Berichte haben noch eine einzige Arbeitszeit.
+export function workedHours(r) {
+  if (Array.isArray(r.mitarbeiter) && r.mitarbeiter.length) {
+    const hours = r.mitarbeiter.map(entryHours).filter((h) => h != null);
+    return hours.length ? hours.reduce((a, b) => a + b, 0) : null;
+  }
+  return entryHours(r);
+}
+
+// Ältere Berichte (ein Textfeld Personal, eine Arbeitszeit) in die neue Form bringen.
+export function crewOf(r) {
+  if (Array.isArray(r.mitarbeiter)) return r.mitarbeiter;
+  if (r.personal || r.beginn || r.ende) {
+    return [{ personId: null, name: r.personal || 'Personal', funktion: '', beginn: r.beginn || '', ende: r.ende || '', pause: r.pause ?? '' }];
+  }
+  return [];
 }
 
 export function formatHours(h) {
@@ -122,9 +142,7 @@ export function toMarkdown(r, files, author) {
     ['Baustelle / Projekt', r.baustelle],
     ['Adresse', r.adresse],
     ['Auftragsnummer', r.auftrag],
-    ['Personal', r.personal],
-    ['Arbeitszeit', r.beginn && r.ende ? `${r.beginn} – ${r.ende} Uhr, ${r.pause || 0} min Pause` : ''],
-    ['Stunden', formatHours(workedHours(r))],
+    ['Stunden gesamt', formatHours(workedHours(r))],
     ['Wetter', [wetter, r.temperatur ? `${r.temperatur} °C` : ''].filter(Boolean).join(', ')],
     ['Erstellt von', author],
   ].filter(([, v]) => v && String(v).trim());
@@ -132,6 +150,15 @@ export function toMarkdown(r, files, author) {
   let md = `# Tagesbericht ${formatDate(r.datum)}${r.baustelle ? ` – ${r.baustelle}` : ''}\n\n`;
   md += '| | |\n|---|---|\n';
   md += rows.map(([k, v]) => `| **${k}** | ${String(v).replace(/\|/g, '\\|').replace(/\n/g, ' ')} |`).join('\n') + '\n';
+  const crew = crewOf(r);
+  if (crew.length) {
+    md += '\n## Personal und Arbeitszeit\n\n| Name | Beginn | Ende | Pause | Stunden |\n|---|---|---|---|---|\n';
+    for (const e of crew) {
+      const name = `${e.name}${e.funktion ? ` (${e.funktion})` : ''}`.replace(/\|/g, '\\|');
+      md += `| ${name} | ${e.beginn || '–'} | ${e.ende || '–'} | ${e.pause || 0} min | ${formatHours(entryHours(e))} |\n`;
+    }
+    md += `| **Summe** | | | | **${formatHours(workedHours(r))}** |\n`;
+  }
   md += block('Ausgeführte Arbeiten', r.taetigkeiten);
   md += block('Material und Geräte', r.material);
   md += block('Bemerkungen / Besondere Vorkommnisse', r.bemerkungen);
@@ -152,6 +179,7 @@ export function toJson(r, files, author) {
   return JSON.stringify(
     {
       ...data,
+      mitarbeiter: crewOf(r).map((e) => ({ ...e, stunden: entryHours(e) })),
       stunden: workedHours(r),
       erstelltVon: author || undefined,
       anhaenge: files.map((f) => ({ name: f.name, datei: f.remoteName, typ: f.type, groesse: f.size })),

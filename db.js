@@ -2,7 +2,7 @@
 // "reports": ein Eintrag pro Tagesbericht, "files": Fotos und Dokumente als Blob.
 
 const DB_NAME = 'tagesberichte';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 let dbPromise;
 
@@ -21,6 +21,9 @@ function open() {
         }
         if (!db.objectStoreNames.contains('sites')) {
           db.createObjectStore('sites', { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains('people')) {
+          db.createObjectStore('people', { keyPath: 'id' });
         }
       };
       req.onsuccess = () => resolve(req.result);
@@ -100,6 +103,20 @@ export async function putSite(site) {
 
 export async function deleteSite(id) {
   return done((await store('sites', 'readwrite')).delete(id));
+}
+
+// Gespeichertes Personal, das im Bericht ausgewählt wird.
+export async function allPeople() {
+  const list = await done((await store('people')).getAll());
+  return list.sort((a, b) => (a.archived - b.archived) || a.name.localeCompare(b.name, 'de'));
+}
+
+export async function putPerson(person) {
+  return done((await store('people', 'readwrite')).put(person));
+}
+
+export async function deletePerson(id) {
+  return done((await store('people', 'readwrite')).delete(id));
 }
 
 // Einstellungen sind klein und liegen im localStorage.

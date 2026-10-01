@@ -1,11 +1,11 @@
 import * as db from './db.js';
 import { prepareFile, formatBytes, MAX_FILE_BYTES } from './media.js';
 import {
-  WETTER, newReport, newSite, workedHours, formatHours, formatDate, weekday, monthLabel, parseDate, toMarkdown,
+  WETTER, newReport, newSite, newPerson, crewOf, entryHours, workedHours, formatHours, formatDate, weekday, monthLabel, parseDate, toMarkdown,
 } from './report.js';
 import { isConfigured, syncAll, syncReport, testConnection, deleteRemote } from './sync.js';
 
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -66,6 +66,7 @@ const ICON = {
   search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 16l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
   pin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-6.2-6.5-11.2a6.5 6.5 0 0 1 13 0C18.5 14.8 12 21 12 21z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="9.8" r="2.3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
   chevron: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  people: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 4.8a3.2 3.2 0 0 1 0 6.4M18 14.2c1.8.8 3 2.7 3 4.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>',
   info: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 11v6M12 7.5v.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
 };
@@ -88,7 +89,7 @@ async function route() {
   $$('.tabbar a[data-tab]').forEach((a) => a.classList.toggle('active',
     (a.dataset.tab === 'list' && hash === '#/')
     || (a.dataset.tab === 'sites' && hash.startsWith('#/baustelle'))
-    || (a.dataset.tab === 'settings' && hash === '#/einstellungen')));
+    || (a.dataset.tab === 'settings' && (hash === '#/einstellungen' || hash === '#/personal'))));
 
   if (hash === '#/neu') {
     const r = newReport();
@@ -101,6 +102,7 @@ async function route() {
   const site = /^#\/baustelle\/(.+)$/.exec(hash);
   if (site) return renderSiteEditor(decodeURIComponent(site[1]));
   if (hash === '#/baustellen') return renderSites();
+  if (hash === '#/personal') return renderPeople();
   if (hash === '#/einstellungen') return renderSettings();
   return renderList();
 }
@@ -175,7 +177,7 @@ async function renderList() {
   const draw = (q) => {
     const needle = q.trim().toLowerCase();
     const shown = needle
-      ? reports.filter((r) => [r.baustelle, r.auftrag, r.taetigkeiten, r.material, r.bemerkungen, r.personal, formatDate(r.datum)]
+      ? reports.filter((r) => [r.baustelle, r.auftrag, r.taetigkeiten, r.material, r.bemerkungen, r.personal, ...(r.mitarbeiter || []).map((e) => e.name), formatDate(r.datum)]
         .join(' ').toLowerCase().includes(needle))
       : reports;
     if (!shown.length) {
@@ -246,6 +248,7 @@ async function renderEditor(id) {
   }
   // Es wird an einer Kopie gearbeitet; gespeichert wird erst mit „Speichern“.
   const report = structuredClone(stored);
+  report.mitarbeiter = structuredClone(crewOf(report));
   const isDraft = drafts.has(id);
   document.body.classList.add('editing');
 
@@ -263,20 +266,13 @@ async function renderEditor(id) {
         <h2>Allgemein</h2>
         <label class="field"><span>Datum</span><input type="date" data-field="datum" value="${esc(report.datum)}" required></label>
         <div class="field"><span>Baustelle</span><button type="button" class="site-pick" id="site-pick"></button></div>
-        <div class="row">
-          <label class="field"><span>Auftragsnummer</span><input type="text" data-field="auftrag" value="${esc(report.auftrag)}" placeholder="optional"></label>
-          <label class="field"><span>Personal</span><input type="text" data-field="personal" value="${esc(report.personal)}" placeholder="Wer war dabei?"></label>
-        </div>
+        <label class="field"><span>Auftragsnummer</span><input type="text" data-field="auftrag" value="${esc(report.auftrag)}" placeholder="optional"></label>
       </section>
 
       <section class="section">
-        <h2>Arbeitszeit</h2>
-        <div class="row three">
-          <label class="field"><span>Beginn</span><input type="time" data-field="beginn" value="${esc(report.beginn)}"></label>
-          <label class="field"><span>Ende</span><input type="time" data-field="ende" value="${esc(report.ende)}"></label>
-          <label class="field"><span>Pause (min)</span><input type="number" inputmode="numeric" min="0" step="5" data-field="pause" value="${esc(report.pause)}"></label>
-        </div>
-        <div class="hours-total"><span>Arbeitsstunden</span><b id="hours">${formatHours(workedHours(report))}</b></div>
+        <h2>Personal und Arbeitszeit <span class="h-right" id="hours"></span></h2>
+        <div id="crew" class="crew-list"></div>
+        <button type="button" class="btn soft block" id="add-crew">${ICON.plus} Personal hinzufügen</button>
       </section>
 
       <section class="section">
@@ -324,7 +320,10 @@ async function renderEditor(id) {
 
   const changed = () => {
     unsaved = true;
-    $('#hours').textContent = formatHours(workedHours(report));
+    $('#hours').textContent = report.mitarbeiter.length ? `Summe ${formatHours(workedHours(report))}` : '';
+    $$('#crew .crew').forEach((el) => {
+      el.querySelector('.crew-hours').textContent = formatHours(entryHours(report.mitarbeiter[Number(el.dataset.i)]));
+    });
     $('#head-date').textContent = `${weekday(report.datum)}, ${formatDate(report.datum)}`;
   };
 
@@ -346,6 +345,7 @@ async function renderEditor(id) {
     // Upload-Status aus der Datenbank übernehmen, falls inzwischen hochgeladen wurde
     const fresh = await db.getReport(report.id);
     if (fresh) for (const k of ['syncedAt', 'syncError', 'remoteDir', 'remoteFiles']) report[k] = fresh[k];
+    for (const k of ['personal', 'beginn', 'ende', 'pause']) delete report[k];
     for (const fid of pendingRemovals) await db.deleteFile(fid);
     pendingRemovals.clear();
     pendingAdds.clear();
@@ -399,6 +399,61 @@ async function renderEditor(id) {
   $('#site-pick').onclick = chooseSite;
   drawSite();
   if (isDraft && !report.baustelleId) setTimeout(chooseSite, 150);
+
+  const drawCrew = () => {
+    const crew = report.mitarbeiter;
+    $('#crew').innerHTML = crew.map((e, i) => `
+      <div class="crew" data-i="${i}">
+        <div class="crew-head">
+          <div class="avatar">${esc((e.name || '?').trim().split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase())}</div>
+          <span><b>${esc(e.name)}</b>${e.funktion ? `<small>${esc(e.funktion)}</small>` : ''}</span>
+          <b class="crew-hours">${formatHours(entryHours(e))}</b>
+          <button type="button" class="icon-btn crew-remove" aria-label="${esc(e.name)} entfernen">${ICON.x}</button>
+        </div>
+        <div class="row three">
+          <label class="field"><span>Beginn</span><input type="time" data-k="beginn" value="${esc(e.beginn)}"></label>
+          <label class="field"><span>Ende</span><input type="time" data-k="ende" value="${esc(e.ende)}"></label>
+          <label class="field"><span>Pause</span><input type="number" inputmode="numeric" min="0" step="5" data-k="pause" value="${esc(e.pause)}" placeholder="Min."></label>
+        </div>
+      </div>`).join('') + (crew.length > 1
+      ? '<button type="button" class="link-btn" id="crew-same">Zeiten der ersten Person für alle übernehmen</button>' : '')
+      + (crew.length ? '' : '<p class="hint" style="margin:0 0 12px">Noch kein Personal ausgewählt.</p>');
+    $$('#crew .crew').forEach((el) => {
+      const e = crew[Number(el.dataset.i)];
+      $$('[data-k]', el).forEach((inp) => {
+        inp.oninput = () => {
+          e[inp.dataset.k] = inp.dataset.k === 'pause' ? (inp.value === '' ? '' : Number(inp.value)) : inp.value;
+          changed();
+        };
+      });
+      $('.crew-remove', el).onclick = () => {
+        crew.splice(Number(el.dataset.i), 1);
+        drawCrew();
+        changed();
+      };
+    });
+    const same = $('#crew-same');
+    if (same) same.onclick = () => {
+      const [first] = crew;
+      for (const e of crew) Object.assign(e, { beginn: first.beginn, ende: first.ende, pause: first.pause });
+      drawCrew();
+      changed();
+    };
+  };
+  $('#add-crew').onclick = () => openPeoplePicker(report.mitarbeiter.map((e) => e.personId), (people) => {
+    // Neue Personen übernehmen die Zeiten der ersten Person im Bericht, falls schon erfasst
+    const first = report.mitarbeiter[0];
+    for (const p of people) {
+      report.mitarbeiter.push({
+        personId: p.id, name: p.name, funktion: p.funktion || '',
+        beginn: first?.beginn || '', ende: first?.ende || '', pause: first?.pause ?? '',
+      });
+    }
+    drawCrew();
+    changed();
+  });
+  drawCrew();
+  $('#hours').textContent = report.mitarbeiter.length ? `Summe ${formatHours(workedHours(report))}` : '';
 
   $$('#wetter .chip').forEach((chip) => {
     chip.onclick = () => {
@@ -547,9 +602,8 @@ async function shareReport(report) {
 
 async function duplicate(report) {
   const copy = newReport();
-  for (const k of ['baustelleId', 'baustelle', 'adresse', 'auftrag', 'personal', 'beginn', 'ende', 'pause', 'taetigkeiten', 'material']) {
-    copy[k] = report[k];
-  }
+  for (const k of ['baustelleId', 'baustelle', 'adresse', 'auftrag', 'taetigkeiten', 'material']) copy[k] = report[k];
+  copy.mitarbeiter = structuredClone(report.mitarbeiter || []);
   drafts.set(copy.id, copy);
   location.hash = `#/bericht/${copy.id}`;
 }
@@ -773,6 +827,148 @@ async function openSitePicker(currentId, onSelect) {
   };
 }
 
+// ---------- Personal ----------
+
+function personFields(p) {
+  return `
+    <label class="field"><span>Name *</span><input type="text" name="name" value="${esc(p.name)}" placeholder="Vor- und Nachname" autocapitalize="words"></label>
+    <label class="field"><span>Funktion</span><input type="text" name="funktion" value="${esc(p.funktion)}" placeholder="z. B. Polier, Maurer, Lehrling"></label>`;
+}
+
+function openSheet(html) {
+  const sheet = document.createElement('div');
+  sheet.className = 'sheet-backdrop';
+  sheet.innerHTML = `<div class="sheet" role="dialog"><div class="sheet-grip"></div>${html}</div>`;
+  document.body.appendChild(sheet);
+  requestAnimationFrame(() => sheet.classList.add('open'));
+  const close = () => {
+    sheet.classList.remove('open');
+    setTimeout(() => sheet.remove(), 200);
+  };
+  sheet.onclick = (e) => { if (e.target === sheet) close(); };
+  return { sheet, close };
+}
+
+// Mehrere Personen auswählen; Personen, die schon im Bericht sind, werden nicht angeboten.
+async function openPeoplePicker(takenIds, onDone) {
+  let people = (await db.allPeople()).filter((p) => !p.archived && !takenIds.includes(p.id));
+  const chosen = new Set();
+  const { sheet, close } = openSheet(`
+    <h2>Personal auswählen</h2>
+    <div class="pick-list" id="people-list"></div>
+    <div class="sheet-or"><span>oder</span></div>
+    <button class="btn ghost block" id="person-new">${ICON.plus} Neue Person anlegen</button>
+    <form id="person-form" class="section" hidden onsubmit="return false">
+      <h2>Neue Person</h2>
+      ${personFields(newPerson())}
+      <div class="attach-actions">
+        <button type="button" class="btn ghost" id="person-cancel">Abbrechen</button>
+        <button type="button" class="btn primary" id="person-save">Speichern</button>
+      </div>
+    </form>
+    <button class="btn primary block" id="people-done" style="margin-top:16px"></button>`);
+  const draw = () => {
+    $('#people-list', sheet).innerHTML = people.length
+      ? people.map((p) => `<button type="button" class="pick check" data-id="${p.id}" aria-pressed="${chosen.has(p.id)}">
+          <i class="box"></i><span><b>${esc(p.name)}</b>${p.funktion ? `<small>${esc(p.funktion)}</small>` : ''}</span></button>`).join('')
+      : `<p class="hint" style="text-align:center;margin:4px 0 0">${takenIds.length ? 'Alle gespeicherten Personen sind schon im Bericht.' : 'Noch kein Personal gespeichert.'}</p>`;
+    $$('.pick', sheet).forEach((b) => {
+      b.onclick = () => {
+        if (chosen.has(b.dataset.id)) chosen.delete(b.dataset.id);
+        else chosen.add(b.dataset.id);
+        b.setAttribute('aria-pressed', chosen.has(b.dataset.id));
+        drawDone();
+      };
+    });
+    drawDone();
+  };
+  const drawDone = () => {
+    const btn = $('#people-done', sheet);
+    btn.textContent = chosen.size ? `${chosen.size} ${chosen.size === 1 ? 'Person' : 'Personen'} übernehmen` : 'Fertig';
+  };
+  $('#person-new', sheet).onclick = () => {
+    $('#person-new', sheet).hidden = true;
+    $('#person-form', sheet).hidden = false;
+    $('#person-form', sheet).scrollIntoView({ behavior: 'smooth', block: 'start' });
+    $('[name=name]', sheet).focus();
+  };
+  const resetForm = () => {
+    $('#person-form', sheet).hidden = true;
+    $('#person-new', sheet).hidden = false;
+    $$('#person-form [name]', sheet).forEach((el) => { el.value = ''; });
+  };
+  $('#person-cancel', sheet).onclick = resetForm;
+  $('#person-save', sheet).onclick = async () => {
+    const person = readSiteFields($('#person-form', sheet), newPerson());
+    if (!person.name) {
+      toast('Bitte einen Namen eingeben.');
+      return;
+    }
+    await db.putPerson(person);
+    people = [...people, person];
+    chosen.add(person.id);
+    resetForm();
+    draw();
+  };
+  $('#people-done', sheet).onclick = () => {
+    close();
+    const selected = people.filter((p) => chosen.has(p.id));
+    if (selected.length) onDone(selected);
+  };
+  draw();
+}
+
+async function renderPeople() {
+  appbar.innerHTML = `
+    <button class="icon-btn" id="back" aria-label="Zurück">${ICON.back}</button>
+    <h1 class="small">Personal</h1>`;
+  $('#back').onclick = () => (location.hash = '#/einstellungen');
+  const people = await db.allPeople();
+  view.innerHTML = `
+    <button class="btn soft block" id="add-person" style="margin:6px 0 14px">${ICON.plus} Neue Person</button>
+    ${people.length ? `<div class="card-list">${people.map((p) => `<button type="button" class="scard person ${p.archived ? 'archived' : ''}" data-id="${p.id}">
+        <div class="sicon avatar">${esc(p.name.trim().split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase())}</div>
+        <div class="body"><div class="title">${esc(p.name)}</div><div class="meta">${esc(p.funktion || '')}${p.archived ? ' · Ausgeschieden' : ''}</div></div>
+        ${ICON.chevron}</button>`).join('')}</div>`
+      : '<div class="empty"><h2>Noch kein Personal</h2><p>Lege deine Leute einmal an. Im Bericht wählst du sie dann nur noch aus.</p></div>'}`;
+  const edit = (person, isNew) => {
+    const { sheet, close } = openSheet(`
+      <h2>${isNew ? 'Neue Person' : 'Person bearbeiten'}</h2>
+      <form class="section" id="pf" onsubmit="return false">
+        ${personFields(person)}
+        ${isNew ? '' : `<div class="toggle"><span><b>Ausgeschieden</b><small>Wird im Bericht nicht mehr angeboten</small></span>
+          <label class="switch"><input type="checkbox" id="p-archived" ${person.archived ? 'checked' : ''}><i></i></label></div>`}
+      </form>
+      <div class="attach-actions">
+        <button type="button" class="btn ghost" id="pf-cancel">Abbrechen</button>
+        <button type="button" class="btn primary" id="pf-save">Speichern</button>
+      </div>
+      ${isNew ? '' : '<button type="button" class="btn danger block" id="pf-delete" style="margin-top:12px">Person löschen</button>'}`);
+    $('#pf-cancel', sheet).onclick = close;
+    $('#pf-save', sheet).onclick = async () => {
+      readSiteFields($('#pf', sheet), person);
+      if (!person.name) {
+        toast('Bitte einen Namen eingeben.');
+        return;
+      }
+      const box = $('#p-archived', sheet);
+      if (box) person.archived = box.checked ? 1 : 0;
+      await db.putPerson(person);
+      close();
+      renderPeople();
+    };
+    const del = $('#pf-delete', sheet);
+    if (del) del.onclick = async () => {
+      if (!confirm(`${person.name} löschen? Bestehende Berichte behalten den Namen.`)) return;
+      await db.deletePerson(person.id);
+      close();
+      renderPeople();
+    };
+  };
+  $('#add-person').onclick = () => edit(newPerson(), true);
+  $$('.scard.person').forEach((b) => { b.onclick = () => edit(people.find((p) => p.id === b.dataset.id), false); });
+}
+
 // Baustellen aus früheren Berichten einmalig übernehmen.
 async function migrateSites() {
   if (localStorage.getItem('tagesberichte.sitesMigrated')) return;
@@ -798,6 +994,11 @@ async function renderSettings() {
   appbar.innerHTML = '<h1>Einstellungen</h1>';
   const s = settings;
   view.innerHTML = `
+    <a class="scard" href="#/personal" style="margin-bottom:12px">
+      <div class="sicon">${ICON.people}</div>
+      <div class="body"><div class="title">Personal verwalten</div><div class="meta">Leute anlegen, die im Bericht ausgewählt werden</div></div>
+      ${ICON.chevron}</a>
+
     <section class="section">
       <h2>Allgemein</h2>
       <label class="field"><span>Dein Name (steht im Bericht)</span><input type="text" data-set="author" value="${esc(s.author)}" placeholder="z. B. Tomek"></label>
