@@ -252,6 +252,13 @@ const ROWS = [
     'Само администраторот може да брише градилишта и персонал и да ги гледа часовите на сите.',
     'Vetëm administratori mund të fshijë kantiere dhe personel dhe të shohë orët e të gjithëve.'],
 
+  ['Gesperrt, zum Ändern entsperren', 'Zablokowane – odblokuj, aby zmienić', 'Blocat – deblochează pentru a modifica', 'Заклучено – отклучи за промена', 'E kyçur – zhbllokoje për ta ndryshuar'],
+  ['Fertig, wieder sperren', 'Gotowe, zablokuj ponownie', 'Gata, blochează din nou', 'Готово, заклучи повторно', 'Gati, kyçe përsëri'],
+  ['Sync-Einstellungen entsperren', 'Odblokuj ustawienia synchronizacji', 'Deblochează setările de sincronizare', 'Отклучи поставки за синхронизација', 'Zhblloko cilësimet e sinkronizimit'],
+  ['Nur mit der Administrator-PIN. Falsche Angaben können das Hochladen stoppen.', 'Tylko z PIN-em administratora. Błędne dane mogą zatrzymać wysyłanie.', 'Doar cu PIN-ul administratorului. Datele greșite pot opri trimiterea.', 'Само со PIN на администраторот. Погрешни податоци може да го запрат испраќањето.', 'Vetëm me PIN-in e administratorit. Të dhëna të gabuara mund ta ndalojnë dërgimin.'],
+  ['Entsperren', 'Odblokuj', 'Deblochează', 'Отклучи', 'Zhblloko'],
+  ['PIN', 'PIN', 'PIN', 'PIN', 'PIN'],
+
   // Allgemeine Knöpfe und Hinweise
   ['Baustelle, Arbeiten, Personal …', 'Budowa, prace, pracownicy …', 'Șantier, lucrări, personal …', 'Градилиште, работи, персонал …', 'Kantieri, punët, personeli …'],
   ['Hinweis schließen', 'Zamknij wskazówkę', 'Închide nota', 'Затвори напомена', 'Mbyll njoftimin'],

@@ -15,7 +15,7 @@ import {
 } from './sync.js';
 import { startI18n, SPRACHEN } from './i18n.js';
 
-const APP_VERSION = '1.14.0';
+const APP_VERSION = '1.15.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -75,6 +75,7 @@ const ICON = {
   camera: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.5-2.5h7L17 8h3v11H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
   clip: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5l-7.8 7.8a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   doc: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l5 5v13H7z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M14 3v5h5" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>',
+  lock: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
   x: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>',
   share: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3m0 0L8 7m4-4 4 4M6 11H5v10h14V11h-1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   copy: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
@@ -104,6 +105,7 @@ async function route() {
   document.body.classList.remove('no-scroll');
   document.body.classList.remove('editing');
   const hash = location.hash || '#/';
+  if (hash !== '#/einstellungen') syncEntsperrt = false;
   $$('.tabbar a[data-tab]').forEach((a) => a.classList.toggle('active',
     (a.dataset.tab === 'list' && hash === '#/')
     || (a.dataset.tab === 'sites' && hash.startsWith('#/baustelle'))
@@ -1427,6 +1429,47 @@ function setAdmin(on) {
   db.saveSettings(settings);
 }
 
+// Sync-Einstellungen sind gesperrt, damit niemand aus Versehen etwas verstellt.
+// Der Administrator entsperrt mit einem Tippen, alle anderen brauchen die Administrator-PIN.
+let syncEntsperrt = false;
+
+async function syncEntsperren() {
+  const frei = () => { syncEntsperrt = true; renderSettings(); };
+  if (isAdmin()) {
+    if (confirm('Sync-Einstellungen entsperren? Falsche Angaben können das Hochladen stoppen.')) frei();
+    return;
+  }
+  let cfg;
+  try {
+    cfg = await loadAdminConfig(settings);
+  } catch (err) {
+    toast(`Keine Verbindung: ${err.message}`, 4000);
+    return;
+  }
+  if (!cfg) {
+    if (confirm('Sync-Einstellungen entsperren? Falsche Angaben können das Hochladen stoppen.')) frei();
+    return;
+  }
+  const { sheet, close } = openSheet(`
+    <h2>Sync-Einstellungen entsperren</h2>
+    <p class="hint">Nur mit der Administrator-PIN. Falsche Angaben können das Hochladen stoppen.</p>
+    <label class="field"><span>PIN</span><input type="password" inputmode="numeric" autocomplete="off" id="pin1"></label>
+    <div class="row sheet-actions">
+      <button type="button" class="btn ghost" id="pin-cancel">Abbrechen</button>
+      <button type="button" class="btn primary" id="pin-ok">Entsperren</button>
+    </div>`);
+  setTimeout(() => $('#pin1', sheet)?.focus(), 250);
+  $('#pin-cancel', sheet).onclick = close;
+  $('#pin-ok', sheet).onclick = async () => {
+    if ((await hashPin($('#pin1', sheet).value.trim(), cfg.salt)) !== cfg.pinHash) {
+      toast('Falsche PIN.');
+      return;
+    }
+    close();
+    frei();
+  };
+}
+
 async function adminLogin(onDone) {
   if (!isConfigured(settings)) {
     toast('Bitte zuerst den Zugangs-Token eintragen.', 3500);
@@ -1779,6 +1822,10 @@ async function renderSettings() {
 
     <section class="section">
       <h2>Sync ins GitHub-Repo <span class="h-right" id="conn-state">${isConfigured(s) ? '<span class="pill ok">Eingerichtet</span>' : '<span class="pill local">Aus</span>'}</span></h2>
+      ${isConfigured(s) ? (syncEntsperrt
+        ? '<button type="button" class="btn soft block" id="sync-lock" style="margin-bottom:12px">Fertig, wieder sperren</button>'
+        : `<button type="button" class="btn ghost block" id="sync-unlock" style="margin-bottom:12px">${ICON.lock} Gesperrt, zum Ändern entsperren</button>`) : ''}
+      <fieldset class="sync-fields" id="sync-fields" ${isConfigured(s) && !syncEntsperrt ? 'disabled' : ''}>
       <div class="row">
         <label class="field"><span>Besitzer</span><input type="text" data-set="owner" value="${esc(s.owner)}" autocapitalize="off" spellcheck="false"></label>
         <label class="field"><span>Repo</span><input type="text" data-set="repo" value="${esc(s.repo)}" autocapitalize="off" spellcheck="false"></label>
@@ -1788,6 +1835,7 @@ async function renderSettings() {
         <label class="field"><span>Ordner</span><input type="text" data-set="folder" value="${esc(s.folder)}" autocapitalize="off" spellcheck="false"></label>
       </div>
       <label class="field"><span>Zugangs-Token</span><input type="password" data-set="token" value="${esc(s.token)}" placeholder="github_pat_…" autocapitalize="off" spellcheck="false"></label>
+      </fieldset>
       <div class="toggle" style="margin:4px 0 14px">
         <span><b>Automatisch hochladen</b><small>Sobald Netz da ist, nach jeder Änderung</small></span>
         <label class="switch"><input type="checkbox" data-set="autoSync" ${s.autoSync ? 'checked' : ''}><i></i></label>
@@ -1822,6 +1870,10 @@ async function renderSettings() {
 
     <p class="hint" style="text-align:center">Tagesberichte ${APP_VERSION}</p>`;
 
+  const unlock = $('#sync-unlock');
+  if (unlock) unlock.onclick = () => syncEntsperren();
+  const lock = $('#sync-lock');
+  if (lock) lock.onclick = () => { syncEntsperrt = false; renderSettings(); };
   $('#lang-select').onchange = (e) => {
     settings.lang = e.target.value;
     db.saveSettings(settings);

@@ -494,3 +494,8 @@ body.no-scroll { overflow: hidden; }
 .pdf-pages .hint { color: #e5e7eb; }
 .pdf-view footer { padding: 10px 16px calc(10px + var(--safe-b)); background: var(--bg); border-top: 1px solid var(--line); }
 .lang-pick .flag { font-size: 1.6rem; line-height: 1; }
+
+/* gesperrte Sync-Einstellungen */
+.sync-fields { border: 0; margin: 0; padding: 0; min-width: 0; }
+.sync-fields:disabled input { opacity: .6; background: var(--surface-2); }
+#sync-unlock svg { width: 18px; height: 18px; vertical-align: -3px; margin-right: 4px; }
