@@ -246,7 +246,7 @@ export function toMarkdown(r, files, author, options = {}) {
 
 // Maschinenlesbare Fassung, damit Berichte später ausgewertet werden können.
 export function toJson(r, files, author) {
-  const { dirty, syncError, remoteFiles, abrechnung, maschinen, unterschrift, ...data } = r;
+  const { dirty, syncError, remoteFiles, deutsch, abrechnung, maschinen, unterschrift, ...data } = r;
   const rapport = r.art === 'rapport'
     ? {
         abrechnung: abrechnung || 'regie',

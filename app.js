@@ -13,8 +13,9 @@ import {
 import {
   isConfigured, syncAll, syncReport, testConnection, deleteRemote, loadAdminConfig, saveAdminConfig, loadStundenRemote,
 } from './sync.js';
+import { startI18n, SPRACHEN } from './i18n.js';
 
-const APP_VERSION = '1.13.0';
+const APP_VERSION = '1.14.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -22,6 +23,7 @@ const view = $('#view');
 const appbar = $('#appbar');
 
 let settings = db.loadSettings();
+startI18n(settings.lang || 'de');
 let objectUrls = [];
 let drafts = new Map(); // neue Berichte, die erst beim ersten Tippen gespeichert werden
 let syncing = false;
@@ -1770,6 +1772,9 @@ async function renderSettings() {
     <section class="section">
       <h2>Allgemein</h2>
       <label class="field"><span>Dein Name (steht im Bericht)</span><input type="text" data-set="author" value="${esc(s.author)}" placeholder="z. B. Tomek"></label>
+      <label class="field"><span>Sprache</span><select id="lang-select" data-roh>
+        ${SPRACHEN.map((l) => `<option value="${l.id}" ${(s.lang || 'de') === l.id ? 'selected' : ''}>${l.flagge} ${l.name}</option>`).join('')}
+      </select></label>
     </section>
 
     <section class="section">
@@ -1817,6 +1822,11 @@ async function renderSettings() {
 
     <p class="hint" style="text-align:center">Tagesberichte ${APP_VERSION}</p>`;
 
+  $('#lang-select').onchange = (e) => {
+    settings.lang = e.target.value;
+    db.saveSettings(settings);
+    location.reload();
+  };
   $$('[data-set]').forEach((el) => {
     el.addEventListener('change', () => {
       const key = el.dataset.set;
@@ -1969,6 +1979,25 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 
-migrateSites().catch(() => {}).finally(route);
+// Sprache einmal abfragen (beim ersten Start; der Administrator arbeitet auf Deutsch)
+function spracheWaehlen() {
+  const { sheet, close } = openSheet(`
+    <h2>Sprache · Język · Limbă · Јазик · Gjuha</h2>
+    <div class="pick-list">${SPRACHEN.map((l) => `<button type="button" class="pick lang-pick" data-lang="${l.id}" data-roh>
+      <span class="flag">${l.flagge}</span><span><b>${l.name}</b></span></button>`).join('')}</div>`);
+  $$('.lang-pick', sheet).forEach((b) => {
+    b.onclick = () => {
+      settings.lang = b.dataset.lang;
+      db.saveSettings(settings);
+      close();
+      if (settings.lang !== 'de') location.reload();
+    };
+  });
+}
+
+migrateSites().catch(() => {}).finally(() => {
+  route();
+  if (!settings.lang && !settings.admin) spracheWaehlen();
+});
 scheduleAutoSync(1500);
 

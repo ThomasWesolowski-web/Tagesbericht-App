@@ -7,6 +7,10 @@ import { blobToBase64, safeFileName, slug } from './media.js';
 import { buildPdf, buildStundenPdf } from './pdf.js';
 import { stundenMarkdown, stundenJson, personKey } from './stunden.js';
 import { toJson, toMarkdown, formatDate, artLabel } from './report.js';
+import { berichtInsDeutsche, FREITEXTE } from './translate.js';
+import { SPRACHEN } from './i18n.js';
+
+const FELDNAMEN = { taetigkeiten: 'Ausgeführte Arbeiten', material: 'Material und Geräte', bemerkungen: 'Bemerkungen' };
 
 const API = 'https://api.github.com';
 
@@ -195,16 +199,37 @@ export async function syncReport(settings, reportId) {
   if (!report.remoteDir) report.remoteDir = await chooseRemoteDir(gh, settings, report);
   const dir = folderPrefix(settings) + report.remoteDir;
 
+  // In einer anderen Sprache geschrieben: Freitexte für Repo und PDF ins Deutsche übersetzen.
+  const sprache = report.sprache || settings.lang || 'de';
+  let deutsch = null;
+  let fuerRepo = report;
+  if (sprache !== 'de') {
+    deutsch = await berichtInsDeutsche(report, sprache);
+    fuerRepo = { ...report, ...deutsch.text };
+  }
+
   // Fertiges PDF zum Weiterschicken; fällt es aus, wird der Rest trotzdem hochgeladen.
   let pdf = null;
   try {
-    pdf = await buildPdf(report, files, author);
+    pdf = await buildPdf(fuerRepo, files, author);
   } catch {
     // ohne PDF weiter
   }
+  let md = toMarkdown(fuerRepo, files, author, { pdfLink: Boolean(pdf) });
+  let json = toJson(fuerRepo, files, author);
+  if (deutsch) {
+    const name = SPRACHEN.find((l) => l.id === sprache)?.deutsch || sprache;
+    md += `\n## Original (${name})\n\n${deutsch.fehler ? `_Automatische Übersetzung unvollständig: ${deutsch.fehler}_\n\n` : '_Die Texte oben wurden automatisch übersetzt._\n\n'}`;
+    for (const f of FREITEXTE) if (deutsch.original[f]) md += `### ${FELDNAMEN[f]}\n\n${deutsch.original[f]}\n\n`;
+    const j = JSON.parse(json);
+    j.sprache = sprache;
+    j.original = deutsch.original;
+    j.uebersetzung = { automatisch: true, fehler: deutsch.fehler || undefined };
+    json = `${JSON.stringify(j, null, 2)}\n`;
+  }
   const entries = [
-    { path: `${dir}/bericht.md`, text: toMarkdown(report, files, author, { pdfLink: Boolean(pdf) }) },
-    { path: `${dir}/bericht.json`, text: toJson(report, files, author) },
+    { path: `${dir}/bericht.md`, text: md },
+    { path: `${dir}/bericht.json`, text: json },
   ];
   for (const f of files) {
     const path = `${dir}/${f.remoteName}`;
@@ -234,6 +259,10 @@ export async function syncReport(settings, reportId) {
   const latest = (await db.getReport(reportId)) || report;
   latest.remoteDir = report.remoteDir;
   latest.remoteFiles = [...wanted];
+  if (deutsch) {
+    latest.sprache = sprache;
+    latest.deutsch = deutsch;
+  }
   latest.syncedAt = Date.now();
   latest.syncError = null;
   latest.dirty = latest.updatedAt !== snapshot;
@@ -426,8 +455,11 @@ function blobToDataUrl(blob) {
   });
 }
 
-function fromJson(data, dir, paths) {
-  const { stundenNachKategorie, stunden, maschinenStunden, anhaenge, unterschrift, ...r } = data;
+function fromJson(data, dir, paths, { original = false } = {}) {
+  const { stundenNachKategorie, stunden, maschinenStunden, anhaenge, unterschrift, original: orig, uebersetzung, ...r } = data;
+  // Übersetzte Berichte: der Administrator bekommt den deutschen Text, der Verfasser sein Original.
+  if (orig && original) Object.assign(r, orig);
+  else if (orig) r.sprache = 'de';
   return {
     ...r,
     mitarbeiter: (data.mitarbeiter || []).map(({ stunden: h, ...e }) => e),
@@ -475,7 +507,7 @@ export async function pullReports(settings, { alle = false } = {}) {
     if (mine && (mine.dirty || (mine.remoteDir && mine.remoteDir !== dir) || (mine.updatedAt || 0) >= (data.updatedAt || 0))) continue;
 
     const paths = [...blobs.keys()].filter((p) => p.startsWith(`${prefix}${dir}/`));
-    const report = fromJson(data, dir, paths);
+    const report = fromJson(data, dir, paths, { original: vonMir && !alle });
     report.fremd = mine ? mine.fremd || false : !vonMir;
     const sigPath = `${prefix}${dir}/unterschrift.png`;
     if (data.unterschrift && blobs.has(sigPath)) {
