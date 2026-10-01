@@ -190,7 +190,7 @@ function block(title, text) {
   return text && text.trim() ? `\n## ${title}\n\n${text.trim()}\n` : '';
 }
 
-export function toMarkdown(r, files, author) {
+export function toMarkdown(r, files, author, options = {}) {
   const isRapport = r.art === 'rapport';
   const wetter = (r.wetter || [])
     .map((id) => WETTER.find((w) => w.id === id)?.label)
@@ -208,6 +208,7 @@ export function toMarkdown(r, files, author) {
   ].filter(([, v]) => v && String(v).trim());
 
   let md = `# ${artLabel(r)} ${formatDate(r.datum)}${r.baustelle ? ` – ${r.baustelle}` : ''}\n\n`;
+  if (options.pdfLink) md += 'Zum Verschicken: [bericht.pdf](bericht.pdf)\n\n';
   md += '| | |\n|---|---|\n';
   md += rows.map(([k, v]) => `| **${k}** | ${String(v).replace(/\|/g, '\\|').replace(/\n/g, ' ')} |`).join('\n') + '\n';
   const crew = crewOf(r);

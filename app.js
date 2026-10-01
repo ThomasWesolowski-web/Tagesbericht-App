@@ -4,9 +4,10 @@ import {
   WETTER, newReport, newSite, newPerson, crewOf, entryHours, KATEGORIEN, kategorieOf, sortCrew, hoursByKategorie, workedHours, formatHours, formatDate, weekday, monthLabel, parseDate, toMarkdown, ARTEN, artLabel,
   ABRECHNUNG, MASCHINEN_VORSCHLAEGE, maschinenStunden,
 } from './report.js';
+import { buildPdf, pdfFileName } from './pdf.js';
 import { isConfigured, syncAll, syncReport, testConnection, deleteRemote } from './sync.js';
 
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.8.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -43,6 +44,11 @@ function toast(msg, ms = 2600) {
   el.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('show'), ms);
+}
+
+function hideToast() {
+  clearTimeout(toastTimer);
+  $('#toast').classList.remove('show');
 }
 
 function timeLabel(ts) {
@@ -335,6 +341,7 @@ async function renderEditor(id) {
         <div class="thumbs" id="thumbs"></div>
       </section>
     </form>
+    ${isDraft ? '' : `<button class="btn soft block" id="pdf-btn">${ICON.share} Als PDF teilen</button>`}
     ${isDraft ? '' : `<button class="btn danger block" id="delete-btn">${ICON.trash} Bericht löschen</button>`}
     <div class="savebar"><div class="savebar-inner">
       <button class="btn ghost" id="cancel-btn">Abbrechen</button>
@@ -403,6 +410,8 @@ async function renderEditor(id) {
   $('#save-btn').onclick = save;
   const delBtn = $('#delete-btn');
   if (delBtn) delBtn.onclick = () => removeReport(report, true);
+  const pdfBtn = $('#pdf-btn');
+  if (pdfBtn) pdfBtn.onclick = () => shareReport(report);
 
   $$('[data-field]').forEach((el) => {
     el.addEventListener('input', () => {
@@ -657,7 +666,7 @@ async function renderEditor(id) {
   $('#menu-btn').onclick = (e) => {
     e.stopPropagation();
     openMenu([
-      { icon: ICON.share, label: 'Teilen', run: () => shareReport(report) },
+      { icon: ICON.share, label: 'Als PDF teilen', run: () => shareReport(report) },
       ...(isDraft ? [] : [{ icon: ICON.cloud, label: 'Jetzt hochladen', run: () => (isConfigured(settings) ? runSync(true) : (location.hash = '#/einstellungen')) }]),
       { icon: ICON.copy, label: 'Neuer Bericht mit diesen Angaben', run: () => duplicate(report) },
       { icon: ICON.trash, label: isDraft ? 'Verwerfen' : 'Bericht löschen', danger: true, run: () => (isDraft ? cancel() : removeReport(report, true)) },
@@ -693,22 +702,46 @@ function openFile(file) {
   a.remove();
 }
 
+// Bericht als PDF mit eingebauten Fotos teilen (Mail, WhatsApp …).
 async function shareReport(report) {
-  const files = await db.filesFor(report.id);
-  const text = toMarkdown(report, files.map((f) => ({ ...f, remoteName: f.name })), settings.author);
-  const title = `${artLabel(report)} ${formatDate(report.datum)}`;
-  const shareFiles = files.map((f) => new File([f.blob], f.name, { type: f.type }));
+  toast('PDF wird erstellt …', 6000);
+  let file;
+  let extras = [];
   try {
-    if (navigator.canShare && shareFiles.length && navigator.canShare({ files: shareFiles })) {
-      await navigator.share({ title, text, files: shareFiles });
-    } else if (navigator.share) {
-      await navigator.share({ title, text });
-    } else {
-      await navigator.clipboard.writeText(text);
-      toast('Bericht als Text kopiert.');
-    }
+    const files = await db.filesFor(report.id);
+    const pdf = await buildPdf(report, files, settings.author);
+    file = new File([pdf], pdfFileName(report), { type: 'application/pdf' });
+    // Andere Dokumente (z. B. Lieferscheine als PDF) werden mitgeschickt; Fotos stecken schon im PDF.
+    extras = files.filter((f) => !f.type.startsWith('image/')).map((f) => new File([f.blob], f.name, { type: f.type }));
   } catch (err) {
-    if (err.name !== 'AbortError') toast('Teilen hat nicht geklappt.');
+    toast(`PDF konnte nicht erstellt werden: ${err.message}`, 4000);
+    return;
+  }
+  hideToast();
+  const title = `${artLabel(report)} ${formatDate(report.datum)}${report.baustelle ? ` – ${report.baustelle}` : ''}`;
+  const share = async () => {
+    const all = [file, ...extras];
+    const list = navigator.canShare?.({ files: all }) ? all : [file];
+    if (navigator.canShare?.({ files: list })) await navigator.share({ title, files: list });
+    else openFile({ name: file.name, type: file.type, blob: file });
+  };
+  try {
+    await share();
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+    // iOS erlaubt Teilen nur direkt nach einem Tippen; dann nochmal antippen lassen.
+    const { sheet, close } = openSheet(`
+      <h2>PDF ist fertig</h2>
+      <p class="hint">${esc(file.name)} · ${formatBytes(file.size)}</p>
+      <div class="row">
+        <button type="button" class="btn ghost" id="pdf-open">Ansehen</button>
+        <button type="button" class="btn primary" id="pdf-share">Teilen</button>
+      </div>`);
+    $('#pdf-open', sheet).onclick = () => { close(); openFile({ name: file.name, type: file.type, blob: file }); };
+    $('#pdf-share', sheet).onclick = async () => {
+      close();
+      try { await share(); } catch (e) { if (e.name !== 'AbortError') toast('Teilen hat nicht geklappt.'); }
+    };
   }
 }
 

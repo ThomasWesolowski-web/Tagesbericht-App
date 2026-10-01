@@ -459,3 +459,4 @@ body.editing .toast { bottom: calc(96px + var(--safe-b)); }
 #masch-quick .chip { display: inline-flex; align-items: center; gap: 4px; }
 #masch-quick .chip svg { width: 16px; height: 16px; flex: none; }
 #abr-seg { margin-bottom: 0; }
+#pdf-btn { margin-bottom: 12px; }

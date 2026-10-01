@@ -4,6 +4,7 @@
 
 import * as db from './db.js';
 import { blobToBase64, safeFileName, slug } from './media.js';
+import { buildPdf } from './pdf.js';
 import { toJson, toMarkdown, formatDate, artLabel } from './report.js';
 
 const API = 'https://api.github.com';
@@ -150,7 +151,7 @@ export async function syncReport(settings, reportId) {
   const files = await db.filesFor(reportId);
 
   // Jeder Anhang bekommt einmal einen festen Dateinamen im Repo.
-  const taken = new Set(['bericht.md', 'bericht.json', 'unterschrift.png', ...files.map((f) => f.remoteName).filter(Boolean)]);
+  const taken = new Set(['bericht.md', 'bericht.json', 'bericht.pdf', 'unterschrift.png', ...files.map((f) => f.remoteName).filter(Boolean)]);
   for (const f of files) {
     if (!f.remoteName) {
       f.remoteName = safeFileName(f.name, taken);
@@ -161,15 +162,23 @@ export async function syncReport(settings, reportId) {
   if (!report.remoteDir) report.remoteDir = await chooseRemoteDir(gh, settings, report);
   const dir = folderPrefix(settings) + report.remoteDir;
 
+  // Fertiges PDF zum Weiterschicken; fällt es aus, wird der Rest trotzdem hochgeladen.
+  let pdf = null;
+  try {
+    pdf = await buildPdf(report, files, settings.author);
+  } catch {
+    // ohne PDF weiter
+  }
   const entries = [
-    { path: `${dir}/bericht.md`, text: toMarkdown(report, files, settings.author) },
+    { path: `${dir}/bericht.md`, text: toMarkdown(report, files, settings.author, { pdfLink: Boolean(pdf) }) },
     { path: `${dir}/bericht.json`, text: toJson(report, files, settings.author) },
   ];
   for (const f of files) {
     const path = `${dir}/${f.remoteName}`;
     if (f.uploadedPath !== path) entries.push({ path, blob: f.blob, file: f });
   }
-  const wanted = new Set([`${dir}/bericht.md`, `${dir}/bericht.json`, ...files.map((f) => `${dir}/${f.remoteName}`)]);
+  if (pdf) entries.push({ path: `${dir}/bericht.pdf`, blob: pdf });
+  const wanted = new Set([...(pdf ? [`${dir}/bericht.pdf`] : []), `${dir}/bericht.md`, `${dir}/bericht.json`, ...files.map((f) => `${dir}/${f.remoteName}`)]);
   if (report.art === 'rapport' && report.unterschrift?.dataUrl) {
     const blob = await (await fetch(report.unterschrift.dataUrl)).blob();
     entries.push({ path: `${dir}/unterschrift.png`, blob });
