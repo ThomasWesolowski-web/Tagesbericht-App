@@ -15,7 +15,7 @@ import {
 } from './sync.js';
 import { startI18n, SPRACHEN } from './i18n.js';
 
-const APP_VERSION = '1.16.0';
+const APP_VERSION = '1.16.1';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];

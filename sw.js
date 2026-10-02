@@ -1,6 +1,6 @@
 // Offline-Betrieb: die App-Dateien kommen aus dem Cache und werden im
 // Hintergrund aktualisiert. Anfragen an GitHub laufen nie über den Cache.
-const CACHE = 'tagesberichte-v26';
+const CACHE = 'tagesberichte-v27';
 const SHELL = [
   './',
   'index.html',
@@ -44,6 +44,8 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
+  // Videos und PDFs (Anleitung) direkt vom Netz laden, nicht durch die App ersetzen
+  if (req.headers.has('range') || /\.(mp4|pdf)$/i.test(url.pathname)) return;
 
   const key = req.mode === 'navigate' ? 'index.html' : req;
   event.respondWith(
