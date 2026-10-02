@@ -16,7 +16,7 @@ import {
 import { startI18n, SPRACHEN } from './i18n.js';
 import { openMarkup } from './markup.js';
 
-const APP_VERSION = '1.19.0';
+const APP_VERSION = '1.20.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -125,6 +125,12 @@ async function route() {
     location.replace(`#/bericht/${r.id}`);
     return;
   }
+  seitenMerken(hash);
+  await seiteZeigen(hash);
+  zurueckKnopf(hash);
+}
+
+function seiteZeigen(hash) {
   const m = /^#\/bericht\/(.+)$/.exec(hash);
   if (m) return renderEditor(decodeURIComponent(m[1]));
   const site = /^#\/baustelle\/(.+)$/.exec(hash);
@@ -134,6 +140,31 @@ async function route() {
   if (hash === '#/personal') return renderPeople();
   if (hash === '#/einstellungen') return renderSettings();
   return renderList();
+}
+
+// Verlauf der besuchten Seiten, damit „Zurück“ immer eine Ebene zurückspringt.
+const seitenVerlauf = [];
+function seitenMerken(hash) {
+  if (seitenVerlauf[seitenVerlauf.length - 1] === hash) return;
+  if (seitenVerlauf[seitenVerlauf.length - 2] === hash) seitenVerlauf.pop();
+  else seitenVerlauf.push(hash);
+  if (seitenVerlauf.length > 30) seitenVerlauf.shift();
+}
+
+// Seiten ohne eigenen Zurück-Knopf (Baustellen, Stunden, Einstellungen) bekommen einen.
+function zurueckKnopf(hash) {
+  if (hash === '#/' || $('#back', appbar)) return;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'icon-btn';
+  btn.id = 'back';
+  btn.setAttribute('aria-label', 'Zurück');
+  btn.innerHTML = ICON.back;
+  btn.onclick = () => {
+    const vorher = seitenVerlauf.slice(0, -1).reverse().find((h) => h !== hash && !/^#\/(neu|bericht\/)/.test(h));
+    location.hash = vorher || '#/';
+  };
+  appbar.prepend(btn);
 }
 
 // ---------- Übersicht ----------
@@ -848,7 +879,7 @@ async function sharePdfFile(file, title, extras) {
   const view = document.createElement('div');
   view.className = 'pdf-view';
   view.innerHTML = `
-    <header><button type="button" class="icon-btn" id="pdfv-close" aria-label="Schließen">${ICON.x}</button>
+    <header><button type="button" class="icon-btn" id="pdfv-close" aria-label="Zurück">${ICON.back}</button>
       <div><b>${esc(title)}</b><small id="pdfv-info">${esc(formatBytes(file.size))}</small></div></header>
     <div class="pdf-pages" id="pdfv-pages"><p class="hint" style="text-align:center;margin-top:40px">PDF wird geladen …</p></div>
     <footer><button type="button" class="btn primary block" id="pdfv-share">${ICON.share} Teilen oder speichern</button></footer>`;
@@ -1092,6 +1123,7 @@ async function openSitePicker(currentId, onSelect, currentFrei = '') {
   sheet.innerHTML = `
     <div class="sheet" role="dialog" aria-label="Baustelle auswählen">
       <div class="sheet-grip"></div>
+      <button type="button" class="sheet-zurueck" aria-label="Zurück">${ICON.back}</button>
       <h2>Baustelle auswählen</h2>
       ${sites.length ? `${sites.length > 6 ? `<label class="search">${ICON.search}<input id="sheet-search" type="search" placeholder="Baustelle suchen …" autocomplete="off"></label>` : ''}
         <div class="pick-list">${sites.map((s) => `<button type="button" class="pick ${s.id === currentId ? 'current' : ''}" data-id="${s.id}">
@@ -1122,6 +1154,7 @@ async function openSitePicker(currentId, onSelect, currentFrei = '') {
     setTimeout(() => sheet.remove(), 200);
   };
   sheet.onclick = (e) => { if (e.target === sheet) close(); };
+  $('.sheet-zurueck', sheet).onclick = close;
   $$('.pick', sheet).forEach((b) => {
     b.onclick = () => {
       close();
@@ -1258,7 +1291,7 @@ function openSignature(name, onDone) {
 function openSheet(html) {
   const sheet = document.createElement('div');
   sheet.className = 'sheet-backdrop';
-  sheet.innerHTML = `<div class="sheet" role="dialog"><div class="sheet-grip"></div>${html}</div>`;
+  sheet.innerHTML = `<div class="sheet" role="dialog"><div class="sheet-grip"></div><button type="button" class="sheet-zurueck" aria-label="Zurück">${ICON.back}</button>${html}</div>`;
   document.body.appendChild(sheet);
   requestAnimationFrame(() => sheet.classList.add('open'));
   const close = () => {
@@ -1266,6 +1299,7 @@ function openSheet(html) {
     setTimeout(() => sheet.remove(), 200);
   };
   sheet.onclick = (e) => { if (e.target === sheet) close(); };
+  $('.sheet-zurueck', sheet).onclick = close;
   return { sheet, close };
 }
 

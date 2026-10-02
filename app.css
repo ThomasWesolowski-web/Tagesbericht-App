@@ -564,3 +564,17 @@ html.mk-offen, html.mk-offen body { overflow: hidden; }
   .mk-farbe { width: 27px; height: 27px; }
   .mk-rueck span { display: none; }
 }
+
+/* Einheitlicher Zurück-Knopf: weißer Pfeil im halbdurchsichtigen Kreis */
+.appbar #back, #pdfv-close, .sheet-zurueck {
+  width: 36px; height: 36px; border-radius: 50%; border: 0; padding: 0; flex: none; cursor: pointer;
+  display: inline-grid; place-items: center; color: #fff; background: rgba(29, 35, 43, .38);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.appbar #back svg, #pdfv-close svg, .sheet-zurueck svg { width: 20px; height: 20px; margin-left: -2px; }
+.appbar #back:active, #pdfv-close:active, .sheet-zurueck:active { background: rgba(29, 35, 43, .55); }
+.appbar #back { margin-right: 8px; }
+#pdfv-close { background: rgba(255, 255, 255, .18); }
+.sheet { position: relative; }
+.sheet-zurueck { position: absolute; top: 14px; left: 14px; z-index: 1; }
+.sheet > h2:first-of-type { padding-left: 46px; min-height: 36px; display: flex; align-items: center; }
