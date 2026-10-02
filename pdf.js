@@ -3,7 +3,7 @@
 
 import {
   WETTER, ABRECHNUNG, artLabel, crewOf, sortCrew, kategorieOf, entryHours, hoursByKategorie,
-  workedHours, maschinenStunden, formatHours, formatDate, weekday,
+  workedHours, maschinenStunden, formatHours, formatDate, weekday, gewerkeText,
 } from './report.js';
 import { slug } from './media.js';
 import { sortStunden, summe, kw, hatZeiten, stundenOf, typLabel, monatLabel, tage } from './stunden.js';
@@ -296,7 +296,7 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
     }
     y += 4;
   };
-  textBlock('Ausgeführte Arbeiten', r.taetigkeiten);
+  textBlock('Ausgeführte Arbeiten', [gewerkeText(r) ? `Art der Arbeit: ${gewerkeText(r)}` : '', r.taetigkeiten].filter((x) => x && x.trim()).join('\n'));
   textBlock('Material und Geräte', r.material);
   textBlock('Bemerkungen / Besondere Vorkommnisse', r.bemerkungen);
 
@@ -437,7 +437,7 @@ export async function buildStundenPdf(name, ym, entries) {
     row([
       `${weekday(e.datum).slice(0, 2)} ${formatDate(e.datum).slice(0, 6)}`,
       typLabel(e.typ),
-      [e.baustelle, e.notiz].filter(Boolean).join(' · '),
+      [e.baustelle, gewerkeText(e), e.notiz].filter(Boolean).join(' · '),
       z ? e.beginn || '–' : '',
       z ? e.ende || '–' : '',
       z ? `${e.pause || 0} min` : '',
@@ -588,7 +588,7 @@ export async function buildSammelPdf({ titel, von, bis, items, author }) {
     const h = workedHours(r) || 0;
     gesamt += h;
     const crew = crewOf(r).map((e) => e.name).join(', ');
-    const t = (r.taetigkeiten || '').trim().replace(/\s+/g, ' ');
+    const t = [gewerkeText(r), (r.taetigkeiten || '').trim()].filter(Boolean).join(' – ').replace(/\s+/g, ' ');
     const kurz = t.length > 140 ? `${t.slice(0, 140)} …` : t;
     const base = [formatDate(r.datum).slice(0, 6) + formatDate(r.datum).slice(8), artLabel(r)];
     return mehrereBaustellen ? [...base, r.baustelle, crew, kurz, formatHours(h || null)] : [...base, crew, kurz, formatHours(h || null)];

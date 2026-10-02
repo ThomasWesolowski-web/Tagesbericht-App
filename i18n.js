@@ -259,6 +259,18 @@ const ROWS = [
   ['Entsperren', 'Odblokuj', 'Deblochează', 'Отклучи', 'Zhblloko'],
   ['PIN', 'PIN', 'PIN', 'PIN', 'PIN'],
 
+  ['Gerüstbau', 'Rusztowania', 'Schele', 'Скелиња', 'Skela'],
+  ['Putz', 'Tynk', 'Tencuială', 'Малтер', 'Suva'],
+  ['Malerarbeiten', 'Malowanie', 'Zugrăveli', 'Молерски работи', 'Lyerje'],
+  ['Trockenbau', 'Sucha zabudowa', 'Gips-carton', 'Сува градба', 'Gips-karton'],
+  ['Art der Arbeit', 'Rodzaj pracy', 'Tipul lucrării', 'Вид на работа', 'Lloji i punës'],
+  ['Andere Arbeit (Freitext)', 'Inna praca (dowolny tekst)', 'Altă lucrare (text liber)', 'Друга работа (слободен текст)', 'Punë tjetër (tekst i lirë)'],
+  ['Nur hier eintragen, ohne zu speichern', 'Wpisz tylko tutaj, bez zapisywania', 'Scrie doar aici, fără salvare', 'Внеси само тука, без зачувување', 'Shkruaj vetëm këtu, pa ruajtur'],
+  ['Für kleine Baustellen: erscheint nur hier, nicht in der Baustellen-Liste.', 'Dla małych budów: pojawia się tylko tutaj, nie na liście budów.', 'Pentru șantiere mici: apare doar aici, nu în lista de șantiere.', 'За мали градилишта: се појавува само тука, не во листата.', 'Për kantiere të vogla: shfaqet vetëm këtu, jo në listën e kantiereve.'],
+  ['z. B. Kleine Reparatur Müller', 'np. mała naprawa Müller', 'ex. reparație mică Müller', 'на пр. мала поправка Müller', 'p.sh. riparim i vogël Müller'],
+  ['Nur in diesem Bericht', 'Tylko w tym raporcie', 'Doar în acest raport', 'Само во овој извештај', 'Vetëm në këtë raport'],
+  ['Eintrag bearbeiten', 'Edytuj wpis', 'Editează înregistrarea', 'Уреди внес', 'Ndrysho regjistrimin'],
+
   // Allgemeine Knöpfe und Hinweise
   ['Baustelle, Arbeiten, Personal …', 'Budowa, prace, pracownicy …', 'Șantier, lucrări, personal …', 'Градилиште, работи, персонал …', 'Kantieri, punët, personeli …'],
   ['Hinweis schließen', 'Zamknij wskazówkę', 'Închide nota', 'Затвори напомена', 'Mbyll njoftimin'],

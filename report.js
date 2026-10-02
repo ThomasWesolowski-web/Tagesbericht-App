@@ -22,6 +22,12 @@ export const ABRECHNUNG = [
 // Häufige Fahrzeuge und Maschinen als Schnellauswahl beim Rapport.
 export const MASCHINEN_VORSCHLAEGE = ['LKW', 'Transporter'];
 
+// Art der Arbeit (Mehrfachauswahl) plus Freitext
+export const GEWERKE = ['Gerüstbau', 'Putz', 'Malerarbeiten', 'Trockenbau'];
+export function gewerkeText(x) {
+  return [...(x?.gewerke || []), (x?.gewerkFrei || '').trim()].filter(Boolean).join(', ');
+}
+
 export function maschinenStunden(r) {
   const h = (r.maschinen || []).map((m) => Number(String(m.stunden).replace(',', '.'))).filter((n) => n > 0);
   return h.length ? h.reduce((a, b) => a + b, 0) : null;
@@ -58,6 +64,8 @@ export function newReport() {
     mitarbeiter: [],
     wetter: [],
     temperatur: '',
+    gewerke: [],
+    gewerkFrei: '',
     taetigkeiten: '',
     material: '',
     bemerkungen: '',
@@ -201,6 +209,7 @@ export function toMarkdown(r, files, author, options = {}) {
     ['Baustelle / Projekt', r.baustelle],
     ['Adresse', r.adresse],
     ['Auftragsnummer', r.auftrag],
+    ['Art der Arbeit', gewerkeText(r)],
     ['Abrechnung', isRapport ? ABRECHNUNG.find((a) => a.id === (r.abrechnung || 'regie'))?.label : ''],
     ['Stunden gesamt', formatHours(workedHours(r))],
     ['Wetter', [wetter, r.temperatur ? `${r.temperatur} °C` : ''].filter(Boolean).join(', ')],

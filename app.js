@@ -2,7 +2,7 @@ import * as db from './db.js';
 import { prepareFile, formatBytes, MAX_FILE_BYTES } from './media.js';
 import {
   WETTER, newReport, newSite, newPerson, crewOf, entryHours, KATEGORIEN, kategorieOf, sortCrew, hoursByKategorie, workedHours, formatHours, formatDate, weekday, monthLabel, parseDate, toMarkdown, ARTEN, artLabel,
-  ABRECHNUNG, MASCHINEN_VORSCHLAEGE, maschinenStunden, today, newId,
+  ABRECHNUNG, MASCHINEN_VORSCHLAEGE, maschinenStunden, today, newId, GEWERKE, gewerkeText,
 } from './report.js';
 import {
   buildPdf, pdfFileName, buildStundenPdf, stundenPdfName, buildSammelPdf, sammelPdfName,
@@ -15,7 +15,7 @@ import {
 } from './sync.js';
 import { startI18n, SPRACHEN } from './i18n.js';
 
-const APP_VERSION = '1.15.2';
+const APP_VERSION = '1.16.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -332,6 +332,7 @@ async function renderEditor(id) {
 
       <section class="section">
         <h2>Ausgeführte Arbeiten</h2>
+        ${gewerkeHtml(report, 'gw')}
         <label class="field"><textarea data-field="taetigkeiten" placeholder="Was wurde heute gemacht?" rows="4">${esc(report.taetigkeiten)}</textarea></label>
       </section>
 
@@ -445,6 +446,7 @@ async function renderEditor(id) {
   const pdfBtn = $('#pdf-btn');
   if (pdfBtn) pdfBtn.onclick = () => shareReport(report);
 
+  gewerkeBinden(report, $('#gw'), () => changed());
   $$('[data-field]').forEach((el) => {
     el.addEventListener('input', () => {
       const key = el.dataset.field;
@@ -456,7 +458,7 @@ async function renderEditor(id) {
   });
   const drawSite = () => {
     $('#site-pick').innerHTML = report.baustelle
-      ? `${ICON.pin}<span><b>${esc(report.baustelle)}</b>${report.adresse ? `<small>${esc(report.adresse)}</small>` : ''}</span><em>Ändern</em>`
+      ? `${ICON.pin}<span><b>${esc(report.baustelle)}</b>${report.adresse ? `<small>${esc(report.adresse)}</small>` : report.baustelleId ? '' : '<small>Nur in diesem Bericht</small>'}</span><em>Ändern</em>`
       : `${ICON.pin}<span><b class="muted">Baustelle auswählen</b><small>oder neue Baustelle erstellen</small></span>`;
   };
   const chooseSite = () => openSitePicker(report.baustelleId, async (site) => {
@@ -467,12 +469,14 @@ async function renderEditor(id) {
       report.auftrag = site.auftrag;
       $('[data-field=auftrag]').value = site.auftrag;
     }
-    site.lastUsed = Date.now();
-    await db.putSite(site);
+    if (site.id) {
+      site.lastUsed = Date.now();
+      await db.putSite(site);
+    }
     drawSite();
     changed();
     if (!report.art) chooseArt();
-  });
+  }, report.baustelleId ? '' : report.baustelle);
   $('#site-pick').onclick = chooseSite;
   drawSite();
 
@@ -1002,7 +1006,31 @@ async function renderSiteEditor(id) {
 }
 
 // Auswahl im Bericht: gespeicherte Baustelle antippen oder neue anlegen.
-async function openSitePicker(currentId, onSelect) {
+// Art der Arbeit: Mehrfachauswahl (Gerüstbau, Putz, …) und ein Freitext
+function gewerkeHtml(x, id) {
+  const an = new Set(x.gewerke || []);
+  return `<div class="gewerke" id="${id}">
+    <div class="chips">${GEWERKE.map((g) => `<button type="button" class="chip" data-gw="${g}" aria-pressed="${an.has(g)}">${g}</button>`).join('')}</div>
+    <input type="text" class="gw-frei" value="${esc(x.gewerkFrei || '')}" placeholder="Andere Arbeit (Freitext)" autocomplete="off">
+  </div>`;
+}
+
+function gewerkeBinden(x, box, onChange) {
+  if (!box) return;
+  $$('.chip', box).forEach((c) => {
+    c.onclick = () => {
+      const set = new Set(x.gewerke || []);
+      if (set.has(c.dataset.gw)) set.delete(c.dataset.gw);
+      else set.add(c.dataset.gw);
+      x.gewerke = GEWERKE.filter((g) => set.has(g));
+      c.setAttribute('aria-pressed', set.has(c.dataset.gw));
+      onChange();
+    };
+  });
+  $('.gw-frei', box).oninput = (ev) => { x.gewerkFrei = ev.target.value; onChange(); };
+}
+
+async function openSitePicker(currentId, onSelect, currentFrei = '') {
   const sites = (await db.allSites()).filter((s) => !s.archived || s.id === currentId);
   const sheet = document.createElement('div');
   sheet.className = 'sheet-backdrop';
@@ -1014,6 +1042,13 @@ async function openSitePicker(currentId, onSelect) {
         <div class="pick-list">${sites.map((s) => `<button type="button" class="pick ${s.id === currentId ? 'current' : ''}" data-id="${s.id}">
           ${ICON.pin}<span><b>${esc(s.name)}</b>${s.adresse ? `<small>${esc(s.adresse)}</small>` : ''}</span></button>`).join('')}</div>`
         : '<p class="hint" style="text-align:center;margin:4px 0 0">Noch keine Baustellen gespeichert.</p>'}
+      <div class="sheet-or"><span>oder</span></div>
+      <div class="frei-site">
+        <label class="field"><span>Nur hier eintragen, ohne zu speichern</span>
+          <input type="text" id="sheet-frei" value="${esc(currentFrei)}" placeholder="z. B. Kleine Reparatur Müller" autocomplete="off"></label>
+        <button type="button" class="btn soft" id="sheet-frei-ok">Übernehmen</button>
+      </div>
+      <p class="hint" style="margin:-6px 0 4px">Für kleine Baustellen: erscheint nur hier, nicht in der Baustellen-Liste.</p>
       <div class="sheet-or"><span>oder</span></div>
       <button class="btn ghost block" id="sheet-new">${ICON.plus} Neue Baustelle erstellen</button>
       <form id="sheet-form" class="section" hidden onsubmit="return false">
@@ -1038,6 +1073,15 @@ async function openSitePicker(currentId, onSelect) {
       onSelect(sites.find((s) => s.id === b.dataset.id));
     };
   });
+  const frei = $('#sheet-frei', sheet);
+  const freiOk = () => {
+    const name = frei.value.trim();
+    if (!name) { toast('Bitte einen Namen für die Baustelle eingeben.'); frei.focus(); return; }
+    close();
+    onSelect({ id: null, name, adresse: '', frei: true });
+  };
+  $('#sheet-frei-ok', sheet).onclick = freiOk;
+  frei.onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); freiOk(); } };
   const search = $('#sheet-search', sheet);
   if (search) search.oninput = () => {
     const q = search.value.trim().toLowerCase();
@@ -1322,6 +1366,9 @@ function monatsGrenzen(delta) {
   return [iso(a), iso(b)];
 }
 
+// Gespeicherte Baustelle per ID, frei eingetragene per Name
+const siteKey = (r) => r.baustelleId || (r.baustelle ? `frei:${r.baustelle.trim().toLowerCase()}` : '');
+
 async function openZusammenfassung(preset = {}) {
   const reports = await db.allReports();
   if (!reports.length) { toast('Es gibt noch keine Berichte.'); return; }
@@ -1329,12 +1376,12 @@ async function openZusammenfassung(preset = {}) {
   const f = { baustelleId: preset.baustelleId || '', art: '', von: '', bis: '', gesamt: true };
   // „Gesamter Zeitraum“ = erster bis letzter Bericht der gewählten Baustelle/Art
   const gesamt = () => {
-    const d = reports.filter((r) => (!f.baustelleId || r.baustelleId === f.baustelleId) && (!f.art || (r.art || 'tagesbericht') === f.art)).map((r) => r.datum).sort();
+    const d = reports.filter((r) => (!f.baustelleId || siteKey(r) === f.baustelleId) && (!f.art || (r.art || 'tagesbericht') === f.art)).map((r) => r.datum).sort();
     if (d.length) { f.von = d[0]; f.bis = d[d.length - 1]; }
   };
   gesamt();
-  const siteName = (id) => sites.find((x) => x.id === id)?.name || reports.find((r) => r.baustelleId === id)?.baustelle || '';
-  const siteIds = [...new Set(reports.map((r) => r.baustelleId).filter(Boolean))].sort((a, b) => siteName(a).localeCompare(siteName(b), 'de'));
+  const siteName = (id) => sites.find((x) => x.id === id)?.name || reports.find((r) => siteKey(r) === id)?.baustelle || '';
+  const siteIds = [...new Set(reports.map(siteKey).filter(Boolean))].sort((a, b) => siteName(a).localeCompare(siteName(b), 'de'));
   const { sheet, close } = openSheet(`
     <h2>Zusammenfassung als PDF</h2>
     <label class="field"><span>Baustelle</span><select id="z-site">
@@ -1357,7 +1404,7 @@ async function openZusammenfassung(preset = {}) {
     <button type="button" class="btn primary block" id="z-ok">${ICON.share} PDF erstellen</button>
     <p class="hint" style="text-align:center">Enthält die Berichte, die auf diesem Handy gespeichert sind.</p>`);
 
-  const auswahl = () => reports.filter((r) => (!f.baustelleId || r.baustelleId === f.baustelleId)
+  const auswahl = () => reports.filter((r) => (!f.baustelleId || siteKey(r) === f.baustelleId)
     && (!f.art || (r.art || 'tagesbericht') === f.art) && r.datum >= f.von && r.datum <= f.bis);
   const draw = () => {
     if (f.gesamt) gesamt();
@@ -1606,7 +1653,7 @@ async function renderStunden() {
     const d = parseDate(e.datum);
     const z = hatZeiten(e.typ);
     const title = z ? (e.baustelle || (e.typ === 'schule' ? 'Berufsschule' : 'Ohne Baustelle')) : typLabel(e.typ);
-    const sub = z ? `${e.beginn || '–'} – ${e.ende || '–'}${Number(e.pause) ? ` · ${e.pause} min Pause` : ''}` : (e.notiz || '');
+    const sub = z ? `${e.beginn || '–'} – ${e.ende || '–'}${Number(e.pause) ? ` · ${e.pause} min Pause` : ''}${gewerkeText(e) ? ` · ${gewerkeText(e)}` : ''}` : (e.notiz || '');
     return `<button type="button" class="rcard stunde ${z ? '' : 'frei'}" data-id="${e.id}">
       <div class="date"><b>${d.getDate()}</b><span>${weekday(e.datum).slice(0, 2)}</span></div>
       <div class="body">
@@ -1702,7 +1749,7 @@ async function stundenAusBericht(e) {
   for (const r of await db.allReports()) {
     if (r.datum !== e.datum) continue;
     const m = crewOf(r).find((c) => (e.personId && c.personId === e.personId) || c.name.trim().toLowerCase() === e.name.trim().toLowerCase());
-    if (m) return { beginn: m.beginn, ende: m.ende, pause: m.pause, baustelleId: r.baustelleId, baustelle: r.baustelle };
+    if (m) return { beginn: m.beginn, ende: m.ende, pause: m.pause, baustelleId: r.baustelleId, baustelle: r.baustelle, gewerke: [...(r.gewerke || [])], gewerkFrei: r.gewerkFrei || '' };
   }
   return null;
 }
@@ -1716,6 +1763,7 @@ function openStundeEditor(e, isNew) {
       `<button type="button" class="chip" data-typ="${t.id}" aria-pressed="${e.typ === t.id}">${t.label}</button>`).join('')}</div>
     <div id="st-zeit">
       <div class="field"><span>Baustelle</span><button type="button" class="site-pick" id="st-site"></button></div>
+      <div class="field"><span>Art der Arbeit</span>${gewerkeHtml(e, 'st-gw')}</div>
       <div class="row three">
         <label class="field"><span>Beginn</span><input type="time" id="st-beginn" value="${esc(e.beginn)}"></label>
         <label class="field"><span>Ende</span><input type="time" id="st-ende" value="${esc(e.ende)}"></label>
@@ -1767,7 +1815,8 @@ function openStundeEditor(e, isNew) {
     e.baustelleId = site.id;
     e.baustelle = site.name;
     drawSite();
-  });
+  }, e.baustelleId ? '' : e.baustelle);
+  gewerkeBinden(e, $('#st-gw', sheet), () => {});
   for (const k of ['beginn', 'ende', 'pause']) {
     $(`#st-${k}`, sheet).oninput = (ev) => { e[k] = k === 'pause' ? (ev.target.value === '' ? '' : Number(ev.target.value)) : ev.target.value; drawHours(); };
   }
@@ -1776,7 +1825,7 @@ function openStundeEditor(e, isNew) {
   $('#st-save', sheet).onclick = async () => {
     if (!e.datum) { toast('Bitte ein Datum wählen.'); return; }
     if (hatZeiten(e.typ) && (!e.beginn || !e.ende)) { toast('Bitte Beginn und Ende eintragen.'); return; }
-    if (!hatZeiten(e.typ)) Object.assign(e, { beginn: '', ende: '', pause: '', baustelleId: null, baustelle: '' });
+    if (!hatZeiten(e.typ)) Object.assign(e, { beginn: '', ende: '', pause: '', baustelleId: null, baustelle: '', gewerke: [], gewerkFrei: '' });
     await db.putStunde(e);
     if (origMonth && origMonth.datum.slice(0, 7) !== e.datum.slice(0, 7)) db.markStundenDirty(origMonth);
     stundenMonat = e.datum.slice(0, 7);

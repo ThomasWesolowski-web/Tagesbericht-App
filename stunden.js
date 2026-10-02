@@ -1,6 +1,6 @@
 // Stundennachweis: tägliche Arbeitszeit pro Mitarbeiter.
 
-import { newId, entryHours, formatHours, formatDate, weekday, today } from './report.js';
+import { newId, entryHours, formatHours, formatDate, weekday, today, gewerkeText } from './report.js';
 
 export const TYPEN = [
   { id: 'arbeit', label: 'Arbeit' },
@@ -32,6 +32,8 @@ export function newStunde(fields = {}) {
     pause: '',
     baustelleId: null,
     baustelle: '',
+    gewerke: [],
+    gewerkFrei: '',
     notiz: '',
     createdAt: now,
     updatedAt: now,
@@ -102,11 +104,11 @@ export function stundenMarkdown(name, ym, entries) {
   const list = sortStunden(entries);
   const s = summe(list);
   let md = `# Stundennachweis ${monatLabel(ym)} – ${name}\n\n`;
-  md += '| Datum | Art | Baustelle | Beginn | Ende | Pause | Stunden | Notiz |\n|---|---|---|---|---|---|---|---|\n';
+  md += '| Datum | Art | Baustelle | Arbeit | Beginn | Ende | Pause | Stunden | Notiz |\n|---|---|---|---|---|---|---|---|---|\n';
   const cell = (t) => String(t ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
   for (const e of list) {
     const z = hatZeiten(e.typ);
-    md += `| ${weekday(e.datum).slice(0, 2)} ${formatDate(e.datum)} | ${typLabel(e.typ)} | ${cell(e.baustelle)} | ${z ? e.beginn || '–' : ''} | ${z ? e.ende || '–' : ''} | ${z ? `${e.pause || 0} min` : ''} | ${z ? formatHours(stundenOf(e)) : ''} | ${cell(e.notiz)} |\n`;
+    md += `| ${weekday(e.datum).slice(0, 2)} ${formatDate(e.datum)} | ${typLabel(e.typ)} | ${cell(e.baustelle)} | ${cell(gewerkeText(e))} | ${z ? e.beginn || '–' : ''} | ${z ? e.ende || '–' : ''} | ${z ? `${e.pause || 0} min` : ''} | ${z ? formatHours(stundenOf(e)) : ''} | ${cell(e.notiz)} |\n`;
   }
   md += `\n**Arbeitsstunden:** ${formatHours(s.stunden)} · **Arbeitstage:** ${s.arbeitstage}`;
   if (s.urlaub) md += ` · **Urlaub:** ${tage(s.urlaub)}`;

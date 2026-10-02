@@ -503,3 +503,15 @@ body.no-scroll { overflow: hidden; }
 /* Löschen: klein, links */
 .btn.del { display: flex; width: max-content; margin-right: auto; padding: 7px 12px; min-height: 36px; font-size: .85rem; font-weight: 650; gap: 6px; }
 .btn.del svg { width: 16px; height: 16px; }
+
+/* Baustelle als Freitext, Art der Arbeit */
+.frei-site { display: flex; gap: 8px; align-items: flex-end; }
+.frei-site .field { flex: 1; min-width: 0; margin-bottom: 14px; }
+.frei-site .btn { margin-bottom: 14px; }
+.gewerke { margin-bottom: 12px; }
+.gewerke .chips { margin-bottom: 8px; }
+.gewerke .gw-frei {
+  width: 100%; font: inherit; color: var(--ink); background: var(--surface-2);
+  border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; outline: none;
+}
+.gewerke .gw-frei:focus { border-color: var(--accent); }
