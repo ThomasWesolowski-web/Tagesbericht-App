@@ -629,7 +629,16 @@ html.mk-offen, html.mk-offen body { overflow: hidden; }
 .fa-knoepfe .chip { min-height: 32px; padding: 4px 12px; font-size: .82rem; background: rgba(255,255,255,.12); color: #fff; border-color: transparent; }
 .fa-knoepfe .chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
 .fa-flaeche { position: relative; }
-.fa-lupe { position: absolute; top: 10px; left: 10px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 4px 16px rgba(0,0,0,.5); pointer-events: none; background: #000; }
+.fa-fk { position: absolute; top: 8px; left: 8px; z-index: 1; border-radius: 14px; overflow: hidden; background: #111; box-shadow: 0 6px 20px rgba(0,0,0,.55); border: 2px solid #fff; }
+.fa-fk[hidden] { display: none; }
+.fa-fk canvas { display: block; touch-action: none; cursor: move; }
+.fa-fk-leiste { display: grid; grid-template-columns: repeat(6, 1fr); background: #1f2327; }
+.fa-fk-leiste button { all: unset; text-align: center; padding: 9px 0; color: #fff; font-size: .85rem; cursor: pointer; }
+.fa-fk-leiste button:active { background: rgba(255,255,255,.15); }
+.fa-fk-ok { background: var(--accent) !important; color: var(--accent-ink) !important; font-weight: 700; }
+.fa-fk.nur-lupe { pointer-events: none; }
+.fa-fk.nur-lupe .fa-fk-leiste { display: none; }
+.fa-raster[aria-pressed="true"] { color: #fff; background: rgba(255,255,255,.18); }
 .fa-view .mk-werkzeuge .mk-wz span { font-size: .66rem; white-space: nowrap; }
 .fa-regel { flex: 1; min-width: 0; font-size: .74rem; color: #aeb5bd; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fa-panel { position: absolute; left: 0; right: 0; bottom: 0; max-height: 72%; overflow-y: auto; z-index: 2; padding: 14px 14px calc(var(--safe-b, 0px) + 14px); background: #1f2327; border-radius: 16px 16px 0 0; box-shadow: 0 -8px 24px rgba(0,0,0,.45); display: grid; gap: 10px; touch-action: pan-y; }
@@ -652,3 +661,4 @@ html.mk-offen, html.mk-offen body { overflow: hidden; }
 .fa-li > div { display: grid; min-width: 0; }
 .fa-li small { color: #aeb5bd; }
 .fa-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--c); }
+.fa-view .fa-raster span { display: inline; }

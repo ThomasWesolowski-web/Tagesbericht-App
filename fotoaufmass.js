@@ -63,6 +63,8 @@ export function massstab(d) {
   const o = gueltig(L) ? L.a : H.a;
   return {
     beide,
+    pxProM: Math.min(Math.hypot(ux, uy), Math.hypot(vx, vy)),
+    inPx: ([X, Y]) => [o[0] + X * ux + Y * vx, o[1] + X * uy + Y * vy],
     inM: ([x, y]) => {
       const dx = x - o[0];
       const dy = y - o[1];
@@ -177,6 +179,54 @@ function wertText(x) {
   return `${masse}, ${x.abzug ? 'abgezogen' : 'übermessen'}${x.laibungTiefe ? `, Laibung ${fmt2(x.laibungLaenge)} m` : ''}`;
 }
 
+// ---------- Raster ----------
+
+// Mit Maßstab ein Meter-Raster entlang der Referenzachsen (ganze Meter kräftiger), sonst ein Bildraster.
+// abstand = kleinster Linienabstand in Bildpunkten, damit das Raster auf dem Handy lesbar bleibt.
+function rasterVon(d, W, H, abstand) {
+  const ms = massstab(d);
+  if (ms && !ms.fehler) {
+    const schritt = [0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10].find((x) => x * ms.pxProM >= abstand) || 10;
+    const ecken = [[0, 0], [W, 0], [0, H], [W, H]].map(ms.inM);
+    const xs = ecken.map((q) => q[0]);
+    const ys = ecken.map((q) => q[1]);
+    return {
+      ms, schritt,
+      x: [Math.floor(Math.min(...xs) / schritt), Math.ceil(Math.max(...xs) / schritt)],
+      y: [Math.floor(Math.min(...ys) / schritt), Math.ceil(Math.max(...ys) / schritt)],
+    };
+  }
+  return { schritt: abstand };
+}
+function rasterFang(r, p) {
+  if (!r.ms) return [Math.round(p[0] / r.schritt) * r.schritt, Math.round(p[1] / r.schritt) * r.schritt];
+  const m = r.ms.inM(p);
+  return r.ms.inPx([Math.round(m[0] / r.schritt) * r.schritt, Math.round(m[1] / r.schritt) * r.schritt]);
+}
+function zeichneRaster(ctx, r, W, H, basis) {
+  ctx.save();
+  const linie = (a, b, stark) => {
+    ctx.strokeStyle = stark ? 'rgba(255,255,255,.62)' : 'rgba(255,255,255,.3)';
+    ctx.lineWidth = basis * (stark ? 0.32 : 0.18);
+    ctx.beginPath();
+    ctx.moveTo(...a);
+    ctx.lineTo(...b);
+    ctx.stroke();
+  };
+  ctx.shadowColor = 'rgba(0,0,0,.6)';
+  ctx.shadowBlur = basis * 0.4;
+  if (r.ms) {
+    const s = r.schritt;
+    const ganz = (v) => Math.abs(v - Math.round(v)) < 1e-6;
+    for (let i = r.x[0]; i <= r.x[1]; i++) linie(r.ms.inPx([i * s, r.y[0] * s]), r.ms.inPx([i * s, r.y[1] * s]), ganz(i * s));
+    for (let j = r.y[0]; j <= r.y[1]; j++) linie(r.ms.inPx([r.x[0] * s, j * s]), r.ms.inPx([r.x[1] * s, j * s]), ganz(j * s));
+  } else {
+    for (let x = 0, i = 0; x <= W; x += r.schritt, i++) linie([x, 0], [x, H], i % 5 === 0);
+    for (let y = 0, j = 0; y <= H; y += r.schritt, j++) linie([0, y], [W, y], j % 5 === 0);
+  }
+  ctx.restore();
+}
+
 // ---------- Zeichnen ----------
 
 async function ladeBild(blob) {
@@ -216,10 +266,11 @@ function etikett(ctx, text, [x0, y0], groesse, farbe) {
   ctx.restore();
 }
 
-function zeichneAlles(ctx, img, d, { basis, entwurf = null, griffe = false, auswahl = null, vorschau = null }) {
+function zeichneAlles(ctx, img, d, { basis, entwurf = null, griffe = false, auswahl = null, vorschau = null, raster = null, aktiv = null }) {
   const W = img.naturalWidth;
   const H = img.naturalHeight;
   ctx.drawImage(img, 0, 0, W, H);
+  if (raster) zeichneRaster(ctx, raster, W, H, basis);
   const { teile } = auswerten(d);
   const werte = new Map(teile.map((x) => [x.t, x]));
   const schrift = basis * 4.2;
@@ -314,6 +365,16 @@ function zeichneAlles(ctx, img, d, { basis, entwurf = null, griffe = false, ausw
     for (const t of d.teile) t.punkte.forEach((q) => punkt(q, '#fff'));
     if (entwurf) entwurf.punkte.forEach((q, i) => punkt(q, i === 0 && entwurf.punkte.length > 2 && entwurf.typ !== 'linie' ? '#fdd835' : '#fff', i === 0));
     if (vorschau) punkt(vorschau, '#fff');
+    if (aktiv) {
+      // Gerade bearbeiteter Punkt: roter Ring
+      ctx.save();
+      ctx.strokeStyle = '#ff1744';
+      ctx.lineWidth = basis * 0.8;
+      ctx.beginPath();
+      ctx.arc(aktiv[0], aktiv[1], basis * 3.6, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 }
 
@@ -352,6 +413,9 @@ const WERKZEUGE = [
   { id: 'linie', label: 'Strecke', svg: '<path d="M4 18l6-9 5 5 5-9" fill="none" stroke="#1e88e5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' },
 ];
 const RUECK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4L4 9l5 5M4 9h10a6 6 0 0 1 0 12h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const RASTER = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zM9.3 4v16M14.7 4v16M4 9.3h16M4 14.7h16" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
+const RASTER_MODI = { aus: 'Raster aus', an: 'Raster', fang: 'Raster + Fangen' };
+const PFEILE = { l: [-1, 0, '◀'], o: [0, -1, '▲'], u: [0, 1, '▼'], r: [1, 0, '▶'] };
 const LISTE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4 6h.5M4 12h.5M4 18h.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
 
 const escH = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -369,6 +433,10 @@ export async function openFotoAufmass(blob, vorlage) {
   let ziehen = null; // aktuelle Fingerbewegung
   let auswahl = null;
   let geaendert = false;
+  let aktiv = null; // Punkt im Fadenkreuz-Fenster: { art: 'ref'|'teil'|'entwurf', … }
+  let fkZoom = 6;
+  let rasterModus = 'an';
+  try { rasterModus = localStorage.getItem('fa-raster') || 'an'; } catch { /* ohne Speicher */ }
 
   const view = document.createElement('div');
   view.className = 'mk-view fa-view';
@@ -379,12 +447,17 @@ export async function openFotoAufmass(blob, vorlage) {
       <button type="button" class="btn primary fa-fertig">Übernehmen</button>
     </div>
     <div class="fa-hinweis"><span class="fa-text"></span><span class="fa-knoepfe"></span></div>
-    <div class="mk-flaeche fa-flaeche"><canvas class="fa-bild"></canvas><canvas class="fa-lupe" width="240" height="240" hidden></canvas></div>
+    <div class="mk-flaeche fa-flaeche"><canvas class="fa-bild"></canvas><div class="fa-fk" hidden>
+      <canvas width="360" height="360"></canvas>
+      <div class="fa-fk-leiste">${Object.entries(PFEILE).map(([k, v]) => `<button type="button" data-pfeil="${k}" aria-label="Punkt verschieben">${v[2]}</button>`).join('')}
+        <button type="button" class="fa-fk-zoom">6×</button><button type="button" class="fa-fk-ok" aria-label="Fertig">✓</button></div>
+    </div></div>
     <div class="fa-panel" hidden></div>
     <div class="mk-leiste">
       <div class="mk-werkzeuge">${WERKZEUGE.map((w) => `<button type="button" class="mk-wz" data-wz="${w.id}"><svg viewBox="0 0 24 24" aria-hidden="true">${w.svg}</svg><span>${w.label}</span></button>`).join('')}</div>
       <div class="mk-farben">
-        <button type="button" class="mk-rueck fa-liste">${LISTE}<span>Liste und Regeln</span></button>
+        <button type="button" class="mk-rueck fa-liste">${LISTE}<span>Liste</span></button>
+        <button type="button" class="mk-rueck fa-raster">${RASTER}<span></span></button>
         <span class="fa-regel"></span>
         <button type="button" class="mk-rueck fa-rueck" aria-label="Rückgängig">${RUECK}<span>Rückgängig</span></button>
       </div>
@@ -398,8 +471,9 @@ export async function openFotoAufmass(blob, vorlage) {
   canvas.height = H;
   const ctx = canvas.getContext('2d');
   const flaeche = $('.fa-flaeche');
-  const lupe = $('.fa-lupe');
-  const lctx = lupe.getContext('2d');
+  const fk = $('.fa-fk');
+  const fkCanvas = fk.querySelector('canvas');
+  const fctx = fkCanvas.getContext('2d');
   const panel = $('.fa-panel');
 
   const einpassen = () => {
@@ -409,36 +483,142 @@ export async function openFotoAufmass(blob, vorlage) {
     canvas.style.height = `${Math.floor(H * s)}px`;
   };
   const vorschauPunkt = () => (ziehen?.art === 'neupunkt' ? ziehen.p : null);
+  const proPx = () => W / canvas.getBoundingClientRect().width; // Bildpunkte je Bildschirmpunkt
+  const raster = () => (rasterModus === 'aus' ? null : rasterVon(d, W, H, 26 * proPx()));
+  const fangen = (p) => (rasterModus === 'fang' ? rasterFang(raster(), p) : p);
+  const lage = (a) => {
+    if (!a) return null;
+    if (a.art === 'ref') return d.ref[a.key]?.[a.ende] || null;
+    if (a.art === 'teil') return d.teile.includes(a.t) ? a.t.punkte[a.i] || null : null;
+    return entwurf?.punkte[a.i] || null;
+  };
+  const setze = (a, p) => {
+    if (a.art === 'ref') d.ref[a.key][a.ende] = p;
+    else if (a.art === 'teil') a.t.punkte[a.i] = p;
+    else entwurf.punkte[a.i] = p;
+    geaendert = true;
+  };
   const neuZeichnen = () => {
     const tmp = ziehen?.art === 'refneu' ? { ...d, ref: { ...d.ref, [ziehen.key]: { a: ziehen.a, b: ziehen.b, m: d.ref[ziehen.key]?.m || '' } } } : d;
-    zeichneAlles(ctx, img, tmp, { basis, entwurf, griffe: true, auswahl, vorschau: vorschauPunkt() });
+    if (aktiv && !lage(aktiv)) { aktiv = null; if (!ziehen) fk.hidden = true; }
+    zeichneAlles(ctx, img, tmp, { basis, entwurf, griffe: true, auswahl, vorschau: vorschauPunkt(), raster: raster(), aktiv: lage(aktiv) });
     hinweis();
   };
-  const zeigeLupe = (p) => {
+
+  // Fadenkreuz-Fenster: stark vergrößerter Ausschnitt mit Fadenkreuz in der Mitte. Beim Antippen folgt
+  // es dem Finger; danach bleibt es für den zuletzt gesetzten Punkt offen. Bild im Fenster ziehen oder
+  // Pfeile tippen schiebt den Punkt genau aufs Fadenkreuz.
+  let FK = 180; // Fenstergröße in Bildschirmpunkten, passt sich dem freien Platz an
+  const fkQuelle = () => (FK / fkZoom) * proPx(); // gezeigter Ausschnitt in Bildpunkten
+  const zeigeFenster = (p) => {
+    if (!p) { fk.hidden = true; return; }
+    fk.classList.toggle('nur-lupe', !aktiv || Boolean(ziehen));
     const r = canvas.getBoundingClientRect();
     const fr = flaeche.getBoundingClientRect();
-    const proPx = W / r.width; // Bildpunkte je Bildschirmpunkt
-    const groesse = 120;
-    const ausschnitt = (groesse / 3) * proPx;
-    lupe.hidden = false;
-    lupe.style.width = `${groesse}px`;
-    lupe.style.height = `${groesse}px`;
-    // Lupe weg vom Finger: oben links, sonst oben rechts
-    const fingerX = r.left + p[0] / proPx - fr.left;
-    const fingerY = r.top + p[1] / proPx - fr.top;
-    const links = !(fingerX < groesse + 30 && fingerY < groesse + 40);
-    lupe.style.left = links ? '10px' : 'auto';
-    lupe.style.right = links ? 'auto' : '10px';
-    lctx.fillStyle = '#000';
-    lctx.fillRect(0, 0, 240, 240);
-    lctx.drawImage(canvas, p[0] - ausschnitt / 2, p[1] - ausschnitt / 2, ausschnitt, ausschnitt, 0, 0, 240, 240);
-    lctx.strokeStyle = '#fff';
-    lctx.lineWidth = 2;
-    lctx.beginPath();
-    lctx.moveTo(120, 96); lctx.lineTo(120, 112); lctx.moveTo(120, 128); lctx.lineTo(120, 144);
-    lctx.moveTo(96, 120); lctx.lineTo(112, 120); lctx.moveTo(128, 120); lctx.lineTo(144, 120);
-    lctx.stroke();
+    // Fenster möglichst neben das Foto (Platz darüber oder darunter), sonst in die Ecke weit weg vom Punkt
+    const leiste = 38; // Pfeilleiste immer einplanen, damit das Fenster nicht springt
+    const frei = Math.max(r.top - fr.top, fr.bottom - r.bottom) - leiste - 12;
+    FK = frei >= 120 ? Math.min(180, frei) : 150;
+    fkCanvas.style.width = `${FK}px`;
+    fkCanvas.style.height = `${FK}px`;
+    fk.style.width = `${FK}px`;
+    const hoch = FK + leiste + 4;
+    const px = r.left + p[0] / proPx() - fr.left;
+    const py = r.top + p[1] / proPx() - fr.top;
+    const oben = r.top - fr.top;
+    const unten = fr.bottom - r.bottom;
+    let x;
+    let y;
+    if (oben >= hoch + 8 || unten >= hoch + 8) {
+      y = oben >= hoch + 8 && (unten < hoch + 8 || py > fr.height / 2) ? oben - hoch - 4 : r.bottom - fr.top + 4;
+      x = Math.min(Math.max(8, px - FK / 2), fr.width - FK - 8);
+    } else {
+      x = px > fr.width / 2 ? 8 : fr.width - FK - 8;
+      y = py > fr.height / 2 ? 8 : fr.height - hoch - 8;
+    }
+    fk.style.left = `${x}px`;
+    fk.style.top = `${y}px`;
+    fk.style.right = 'auto';
+    fk.hidden = false;
+    const q = fkQuelle();
+    const sk = fkCanvas.width / q;
+    fctx.setTransform(1, 0, 0, 1, 0, 0);
+    fctx.fillStyle = '#000';
+    fctx.fillRect(0, 0, fkCanvas.width, fkCanvas.height);
+    fctx.setTransform(sk, 0, 0, sk, -(p[0] - q / 2) * sk, -(p[1] - q / 2) * sk);
+    fctx.imageSmoothingEnabled = fkZoom < 10;
+    fctx.drawImage(img, 0, 0, W, H);
+    // dünne Linien der Markierungen, damit Kanten sichtbar bleiben
+    fctx.lineWidth = 1.6 / sk;
+    const strich = (pts, farbe, zu) => {
+      if (!pts || pts.length < 2) return;
+      fctx.strokeStyle = farbe;
+      fctx.beginPath();
+      pts.forEach((q2, i) => (i ? fctx.lineTo(...q2) : fctx.moveTo(...q2)));
+      if (zu) fctx.closePath();
+      fctx.stroke();
+    };
+    for (const key of ['laenge', 'hoehe']) if (d.ref[key]) strich([d.ref[key].a, d.ref[key].b], FARBE.ref);
+    if (ziehen?.art === 'refneu') strich([ziehen.a, ziehen.b], FARBE.ref);
+    for (const t of d.teile) strich(t.punkte, t.typ === 'linie' ? FARBE.linie : t.typ === 'flaeche' ? FARBE.flaeche : FARBE.abzug, t.typ !== 'linie');
+    if (entwurf) strich(entwurf.punkte, '#fff');
+    fctx.setTransform(1, 0, 0, 1, 0, 0);
+    const c = fkCanvas.width / 2;
+    const kreuz = (farbe, breite) => {
+      fctx.strokeStyle = farbe;
+      fctx.lineWidth = breite;
+      fctx.beginPath();
+      fctx.moveTo(c, 0); fctx.lineTo(c, c - 10); fctx.moveTo(c, c + 10); fctx.lineTo(c, c * 2);
+      fctx.moveTo(0, c); fctx.lineTo(c - 10, c); fctx.moveTo(c + 10, c); fctx.lineTo(c * 2, c);
+      fctx.stroke();
+    };
+    kreuz('rgba(0,0,0,.7)', 4);
+    kreuz('#ff1744', 1.6);
+    fctx.fillStyle = '#ff1744';
+    fctx.fillRect(c - 1.5, c - 1.5, 3, 3);
   };
+  const fensterZu = () => { aktiv = null; fk.hidden = true; neuZeichnen(); };
+  const fensterAuf = () => { zeigeFenster(lage(aktiv)); };
+
+  // Im Fenster ziehen: das Bild wandert unter dem Fadenkreuz, der Punkt bewegt sich fein mit
+  let fkZug = null;
+  fkCanvas.addEventListener('pointerdown', (e) => {
+    if (!aktiv) return;
+    e.preventDefault();
+    fkCanvas.setPointerCapture(e.pointerId);
+    fkZug = { x: e.clientX, y: e.clientY, p: [...lage(aktiv)] };
+  });
+  fkCanvas.addEventListener('pointermove', (e) => {
+    if (!fkZug || !aktiv) return;
+    const f = fkQuelle() / FK;
+    const p = [
+      Math.min(W, Math.max(0, fkZug.p[0] - (e.clientX - fkZug.x) * f)),
+      Math.min(H, Math.max(0, fkZug.p[1] - (e.clientY - fkZug.y) * f)),
+    ];
+    setze(aktiv, p);
+    neuZeichnen();
+    fensterAuf();
+  });
+  const fkLos = () => { fkZug = null; };
+  fkCanvas.addEventListener('pointerup', fkLos);
+  fkCanvas.addEventListener('pointercancel', fkLos);
+  fk.querySelectorAll('[data-pfeil]').forEach((b) => {
+    b.onclick = () => {
+      const p = lage(aktiv);
+      if (!p) return;
+      const [dx, dy] = PFEILE[b.dataset.pfeil];
+      const schritt = Math.max(0.25, fkQuelle() / 90); // etwa 2 Fensterpunkte
+      setze(aktiv, [Math.min(W, Math.max(0, p[0] + dx * schritt)), Math.min(H, Math.max(0, p[1] + dy * schritt))]);
+      neuZeichnen();
+      fensterAuf();
+    };
+  });
+  fk.querySelector('.fa-fk-zoom').onclick = (e) => {
+    fkZoom = fkZoom === 3 ? 6 : fkZoom === 6 ? 12 : 3;
+    e.currentTarget.textContent = `${fkZoom}×`;
+    fensterAuf();
+  };
+  fk.querySelector('.fa-fk-ok').onclick = fensterZu;
 
   function hinweis() {
     const txt = $('.fa-text');
@@ -465,6 +645,7 @@ export async function openFotoAufmass(blob, vorlage) {
         : `${werkzeug === 'flaeche' ? 'Fläche' : 'Öffnung'}: Ecken nacheinander antippen. Punkte lassen sich danach verschieben.`;
       if (!ms.beide) t += ' Nur eine Referenz gesetzt: Maßstab gilt dann für beide Richtungen.';
     }
+    if (aktiv && !ziehen) t = `Roter Punkt: im Fadenkreuz-Fenster das Bild ziehen oder die Pfeile tippen, bis er genau sitzt. ${t}`;
     txt.textContent = t;
     kn.innerHTML = k;
     const pz = $('.fa-punkt-zurueck');
@@ -474,6 +655,9 @@ export async function openFotoAufmass(blob, vorlage) {
     view.querySelectorAll('.mk-wz').forEach((b) => b.setAttribute('aria-pressed', b.dataset.wz === werkzeug));
     $('.fa-regel').textContent = `${regelVon(d).label.replace(/ \(.*/, '')}: ${regelVon(d).schwelle ? `bis ${fmt(regelVon(d).schwelle)} m² übermessen` : 'alles abziehen'}`;
     $('.fa-rueck').disabled = !entwurf && !d.teile.length && !d.ref.laenge && !d.ref.hoehe;
+    const rb = $('.fa-raster');
+    rb.querySelector('span').textContent = RASTER_MODI[rasterModus];
+    rb.setAttribute('aria-pressed', rasterModus !== 'aus');
   }
 
   // Kleines Eingabefeld unten statt eines Dialogs
@@ -540,6 +724,7 @@ export async function openFotoAufmass(blob, vorlage) {
     if (!genug) return;
     const t = { id: neueId(), typ: entwurf.typ, name: naechsterName(entwurf.typ), punkte: entwurf.punkte };
     d.teile.push(t);
+    if (aktiv?.art === 'entwurf') aktiv = { art: 'teil', t, i: aktiv.i };
     entwurf = null;
     geaendert = true;
     neuZeichnen();
@@ -578,11 +763,12 @@ export async function openFotoAufmass(blob, vorlage) {
     if (!panel.hidden) return;
     e.preventDefault();
     canvas.setPointerCapture(e.pointerId);
-    const p = punkt(e);
-    const t = treffer(p);
+    const roh = punkt(e);
+    const p = fangen(roh);
+    const t = treffer(roh);
     if (t) {
       // Antippen fängt den vorhandenen Punkt (gemeinsame Ecken), Ziehen verschiebt ihn
-      ziehen = { ...t, start: p, p, tippen: true };
+      ziehen = { ...t, start: roh, p, tippen: true };
     } else if (werkzeug === 'laenge' || werkzeug === 'hoehe') {
       ziehen = { art: 'refneu', key: werkzeug, a: p, b: p };
     } else {
@@ -590,56 +776,61 @@ export async function openFotoAufmass(blob, vorlage) {
       ziehen = { art: 'neupunkt', p };
     }
     neuZeichnen();
-    zeigeLupe(p);
+    zeigeFenster(p);
   });
   canvas.addEventListener('pointermove', (e) => {
     if (!ziehen) return;
-    const p = punkt(e);
+    const roh = punkt(e);
+    const p = fangen(roh);
     ziehen.p = p;
-    if (ziehen.tippen && Math.hypot(p[0] - ziehen.start[0], p[1] - ziehen.start[1]) > fangRadius() / 3) {
+    if (ziehen.tippen && Math.hypot(roh[0] - ziehen.start[0], roh[1] - ziehen.start[1]) > fangRadius() / 3) {
       ziehen.tippen = false;
       if (ziehen.art === 'teil') auswahl = ziehen.t;
+      aktiv = ziehen.art === 'ref' ? { art: 'ref', key: ziehen.key, ende: ziehen.ende }
+        : ziehen.art === 'teil' ? { art: 'teil', t: ziehen.t, i: ziehen.i } : { art: 'entwurf', i: ziehen.i };
     }
-    if (ziehen.tippen) { zeigeLupe(p); return; }
+    if (ziehen.tippen) { zeigeFenster(roh); return; }
     if (ziehen.art === 'refneu') ziehen.b = p;
-    else if (ziehen.art === 'ref') d.ref[ziehen.key][ziehen.ende] = p;
-    else if (ziehen.art === 'teil') ziehen.t.punkte[ziehen.i] = p;
-    else if (ziehen.art === 'entwurf') entwurf.punkte[ziehen.i] = p;
-    if (ziehen.art !== 'neupunkt') geaendert = true;
+    else if (ziehen.art !== 'neupunkt') setze(aktiv, p);
     neuZeichnen();
-    zeigeLupe(p);
+    zeigeFenster(p);
   });
   const loslassen = () => {
     if (!ziehen) return;
     const z = ziehen;
     ziehen = null;
-    lupe.hidden = true;
-    const lage = (t) => (t.art === 'ref' ? d.ref[t.key][t.ende] : t.art === 'teil' ? t.t.punkte[t.i] : entwurf.punkte[t.i]);
     if (z.art === 'refneu') {
       if (Math.hypot(z.b[0] - z.a[0], z.b[1] - z.a[1]) > fangRadius()) {
         const neu = !d.ref[z.key];
         d.ref[z.key] = { a: z.a, b: z.b, m: d.ref[z.key]?.m || '' };
+        aktiv = { art: 'ref', key: z.key, ende: 'b' };
         geaendert = true;
         neuZeichnen();
+        fensterAuf();
         fragMass(z.key, neu);
         return;
       }
     } else if (z.art === 'neupunkt') {
       entwurf.punkte.push(z.p);
+      aktiv = { art: 'entwurf', i: entwurf.punkte.length - 1 };
     } else if (z.tippen) {
+      const hier = z.art === 'ref' ? { art: 'ref', key: z.key, ende: z.ende } : z.art === 'teil' ? { art: 'teil', t: z.t, i: z.i } : { art: 'entwurf', i: z.i };
       if (z.art === 'entwurf' && z.i === 0 && entwurf.typ !== 'linie' && entwurf.punkte.length >= 3) {
         abschliessen();
+        fensterAuf();
         return;
       }
-      if (werkzeug === 'laenge' || werkzeug === 'hoehe') {
-        if (z.art === 'ref') { fragMass(z.key, false); return; }
-      } else if (z.art !== 'entwurf') {
+      if (werkzeug === 'laenge' || werkzeug === 'hoehe' || z.art === 'entwurf') {
+        aktiv = hier; // vorhandenen Punkt zum Feinjustieren auswählen
+      } else {
         if (!entwurf || entwurf.typ !== werkzeug) entwurf = { typ: werkzeug, punkte: [] };
-        const q = lage(z);
+        const q = lage(hier);
         entwurf.punkte.push(Math.hypot(q[0] - z.start[0], q[1] - z.start[1]) < fangRadius() / 2 ? [...q] : z.p);
+        aktiv = { art: 'entwurf', i: entwurf.punkte.length - 1 };
       }
     }
     neuZeichnen();
+    fensterAuf();
   };
   canvas.addEventListener('pointerup', loslassen);
   canvas.addEventListener('pointercancel', loslassen);
@@ -655,7 +846,14 @@ export async function openFotoAufmass(blob, vorlage) {
       neuZeichnen();
     };
   });
+  $('.fa-raster').onclick = () => {
+    rasterModus = rasterModus === 'aus' ? 'an' : rasterModus === 'an' ? 'fang' : 'aus';
+    try { localStorage.setItem('fa-raster', rasterModus); } catch { /* egal */ }
+    neuZeichnen();
+  };
   $('.fa-rueck').onclick = () => {
+    aktiv = null;
+    fk.hidden = true;
     if (entwurf) { entwurf.punkte.pop(); if (!entwurf.punkte.length) entwurf = null; } else if (d.teile.length) d.teile.pop();
     else if (d.ref.hoehe) delete d.ref.hoehe;
     else delete d.ref.laenge;
