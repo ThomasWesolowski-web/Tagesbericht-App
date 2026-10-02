@@ -7,7 +7,7 @@ import { blobToBase64, safeFileName, slug } from './media.js';
 import { buildPdf, buildStundenPdf } from './pdf.js';
 import { stundenMarkdown, stundenJson, personKey } from './stunden.js';
 import { toJson, toMarkdown, formatDate, artLabel } from './report.js';
-import { berichtInsDeutsche, FREITEXTE } from './translate.js';
+import { berichtInsDeutsche, insDeutsche, FREITEXTE } from './translate.js';
 import { SPRACHEN } from './i18n.js';
 
 const FELDNAMEN = { taetigkeiten: 'Ausgeführte Arbeiten', material: 'Material und Geräte', bemerkungen: 'Bemerkungen' };
@@ -208,15 +208,28 @@ export async function syncReport(settings, reportId) {
     fuerRepo = { ...report, ...deutsch.text };
   }
 
+  // Bildtexte ebenfalls übersetzen; das Original bleibt in textOriginal.
+  let dateienFuerRepo = files;
+  if (sprache !== 'de' && files.some((f) => f.text)) {
+    dateienFuerRepo = await Promise.all(files.map(async (f) => {
+      if (!f.text) return f;
+      try {
+        return { ...f, text: await insDeutsche(f.text, sprache), textOriginal: f.text };
+      } catch {
+        return f;
+      }
+    }));
+  }
+
   // Fertiges PDF zum Weiterschicken; fällt es aus, wird der Rest trotzdem hochgeladen.
   let pdf = null;
   try {
-    pdf = await buildPdf(fuerRepo, files, author);
+    pdf = await buildPdf(fuerRepo, dateienFuerRepo, author);
   } catch {
     // ohne PDF weiter
   }
-  let md = toMarkdown(fuerRepo, files, author, { pdfLink: Boolean(pdf) });
-  let json = toJson(fuerRepo, files, author);
+  let md = toMarkdown(fuerRepo, dateienFuerRepo, author, { pdfLink: Boolean(pdf) });
+  let json = toJson(fuerRepo, dateienFuerRepo, author);
   if (deutsch) {
     const name = SPRACHEN.find((l) => l.id === sprache)?.deutsch || sprache;
     md += `\n## Original (${name})\n\n${deutsch.fehler ? `_Automatische Übersetzung unvollständig: ${deutsch.fehler}_\n\n` : '_Die Texte oben wurden automatisch übersetzt._\n\n'}`;
@@ -592,12 +605,19 @@ export async function pullReports(settings, { alle = false } = {}) {
     for (const a of data.anhaenge || []) {
       const p = `${prefix}${dir}/${a.datei}`;
       wanted.add(a.datei);
-      if (files.some((f) => f.remoteName === a.datei) || !blobs.has(p)) continue;
+      // Bildtext: der Verfasser bekommt sein Original, alle anderen die deutsche Fassung.
+      const text = (vonMir && !alle && a.textOriginal) || a.text || '';
+      const da = files.find((f) => f.remoteName === a.datei);
+      if (da) {
+        if ((da.text || '') !== text) await db.putFile({ ...da, text });
+        continue;
+      }
+      if (!blobs.has(p)) continue;
       const blob = await blobAt(gh, blobs.get(p), a.typ);
       await db.putFile({
         id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
         reportId: data.id, name: a.name || a.datei, type: a.typ || blob.type, size: blob.size, blob,
-        remoteName: a.datei, uploadedPath: p, addedAt: Date.now(),
+        remoteName: a.datei, uploadedPath: p, addedAt: Date.now(), text,
       });
     }
     for (const f of files) if (!wanted.has(f.remoteName)) await db.deleteFile(f.id);

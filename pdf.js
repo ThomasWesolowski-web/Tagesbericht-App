@@ -334,7 +334,11 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
         const s = Math.min(cellW / img.w, maxH / img.h);
         return { w: img.w * s, h: img.h * s };
       });
-      const rowH = Math.max(...sizes.map((s) => s.h)) + 7;
+      // Bildtexte unter dem Foto (höchstens 4 Zeilen)
+      font('normal', 8.5);
+      const texte = pair.map(({ f }) => (f.text ? doc.splitTextToSize(f.text, cellW - 2).slice(0, 4) : []));
+      const textH = Math.max(0, ...texte.map((t) => t.length)) * 3.6;
+      const rowH = Math.max(...sizes.map((s) => s.h)) + 7 + textH;
       ensure(rowH);
       pair.forEach(({ img, f }, k) => {
         const x = M + k * (cellW + gap);
@@ -345,8 +349,13 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
           doc.setDrawColor(...LINE);
           doc.rect(x, y, cellW, s.h);
         }
-        font('normal', 8); color(MUTED);
-        doc.text(doc.splitTextToSize(f.name, cellW)[0], x + cellW / 2, y + s.h + 4, { align: 'center' });
+        if (texte[k].length) {
+          font('normal', 8.5); color(INK);
+          doc.text(texte[k], x + cellW / 2, y + s.h + 4, { align: 'center', lineHeightFactor: 1.2 });
+        } else {
+          font('normal', 8); color(MUTED);
+          doc.text(doc.splitTextToSize(f.name, cellW)[0], x + cellW / 2, y + s.h + 4, { align: 'center' });
+        }
       });
       y += rowH + 3;
     }

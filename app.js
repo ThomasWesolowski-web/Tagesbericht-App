@@ -14,8 +14,9 @@ import {
   isConfigured, syncAll, syncReport, testConnection, deleteRemote, loadAdminConfig, saveAdminConfig, loadStundenRemote, meldeGeraet, ladeGeraete, setzeAdminFreigabe,
 } from './sync.js';
 import { startI18n, SPRACHEN } from './i18n.js';
+import { openMarkup } from './markup.js';
 
-const APP_VERSION = '1.18.0';
+const APP_VERSION = '1.19.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -74,6 +75,7 @@ const ICON = {
   more: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="19" r="1.8" fill="currentColor"/></svg>',
   camera: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.5-2.5h7L17 8h3v11H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
   clip: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5l-7.8 7.8a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+  pencil: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l4-1 11-11-3-3L5 16l-1 4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
   doc: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l5 5v13H7z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M14 3v5h5" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>',
   lock: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
   x: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>',
@@ -373,6 +375,7 @@ async function renderEditor(id) {
   let unsaved = false;
   const pendingAdds = new Set(); // neu angehängte Dateien, die bei „Abbrechen“ wieder weg müssen
   const pendingRemovals = new Set(); // entfernte Dateien, die erst beim Speichern gelöscht werden
+  const pendingTexte = new Map(); // geänderte Bildtexte, die erst beim Speichern übernommen werden
 
   const drawSum = () => {
     const groups = hoursByKategorie(report);
@@ -397,6 +400,7 @@ async function renderEditor(id) {
   const discard = async () => {
     for (const fid of pendingAdds) await db.deleteFile(fid);
     pendingAdds.clear();
+    pendingTexte.clear();
     drafts.delete(report.id);
   };
   const save = async () => {
@@ -422,8 +426,13 @@ async function renderEditor(id) {
     if (fresh) for (const k of ['syncedAt', 'syncError', 'remoteDir', 'remoteFiles']) report[k] = fresh[k];
     for (const k of ['personal', 'beginn', 'ende', 'pause']) delete report[k];
     for (const fid of pendingRemovals) await db.deleteFile(fid);
+    for (const [fid, text] of pendingTexte) {
+      const f = await db.getFile(fid);
+      if (f) await db.putFile({ ...f, text });
+    }
     pendingRemovals.clear();
     pendingAdds.clear();
+    pendingTexte.clear();
     report.updatedAt = Date.now();
     report.dirty = true;
     await db.putReport(report);
@@ -624,18 +633,64 @@ async function renderEditor(id) {
   const drawThumbs = async () => {
     const files = (await db.filesFor(report.id)).filter((f) => !pendingRemovals.has(f.id));
     $('#file-sum').textContent = files.length ? `${files.length} · ${formatBytes(files.reduce((s, f) => s + f.size, 0))}` : '';
+    const bildtext = (f) => (pendingTexte.has(f.id) ? pendingTexte.get(f.id) : f.text || '');
     $('#thumbs').innerHTML = files.map((f) => {
-      const inner = f.type.startsWith('image/')
+      const bild = f.type.startsWith('image/');
+      const inner = bild
         ? `<img src="${objectUrl(f.blob)}" alt="${esc(f.name)}" loading="lazy">`
         : `<div class="doc">${ICON.doc}<span>${esc(f.name)}</span></div>`;
-      return `<div class="thumb" data-id="${f.id}">
+      return `<div class="thumb-item" data-id="${f.id}"><div class="thumb">
         <button type="button" class="open" aria-label="${esc(f.name)} öffnen">${inner}</button>
         <span class="size">${formatBytes(f.size)}</span>
-        <button type="button" class="remove" aria-label="${esc(f.name)} entfernen">${ICON.x}</button></div>`;
+        ${bild ? `<button type="button" class="markieren" aria-label="Foto markieren">${ICON.pencil}</button>` : ''}
+        <button type="button" class="remove" aria-label="${esc(f.name)} entfernen">${ICON.x}</button></div>
+        ${bild ? `<button type="button" class="bildtext${bildtext(f) ? ' voll' : ''}">${bildtext(f) ? esc(bildtext(f)) : '+ Text zum Bild'}</button>` : ''}</div>`;
     }).join('');
-    $$('#thumbs .thumb').forEach((t) => {
+    $$('#thumbs .thumb-item').forEach((t) => {
       const file = files.find((f) => f.id === t.dataset.id);
       $('.open', t).onclick = () => openFile(file);
+      const mk = $('.markieren', t);
+      if (mk) mk.onclick = async () => {
+        let blob;
+        try {
+          blob = await openMarkup(file.blob);
+        } catch {
+          toast('Dieses Foto kann nicht bearbeitet werden.');
+          return;
+        }
+        if (!blob) return;
+        const name = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+        if (pendingAdds.has(file.id)) {
+          await db.putFile({ ...file, name, type: 'image/jpeg', blob, size: blob.size });
+        } else {
+          // Original bleibt bis zum Speichern erhalten, damit „Abbrechen“ es zurückholt.
+          const fid = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+          const { remoteName, uploadedPath, ...rest } = file;
+          await db.putFile({ ...rest, id: fid, name, type: 'image/jpeg', blob, size: blob.size, text: bildtext(file) });
+          if (pendingTexte.has(file.id)) { pendingTexte.set(fid, pendingTexte.get(file.id)); pendingTexte.delete(file.id); }
+          pendingAdds.add(fid);
+          pendingRemovals.add(file.id);
+        }
+        changed();
+        drawThumbs();
+      };
+      const bt = $('.bildtext', t);
+      if (bt) bt.onclick = () => {
+        const { sheet, close } = openSheet(`<h2>Text zum Bild</h2>
+          <label class="field"><span>Beschreibung</span><textarea id="bt-text" rows="3" placeholder="z. B. Riss an der Fassade, Nordseite"></textarea></label>
+          <div class="row sheet-actions"><button type="button" class="btn ghost" id="bt-cancel">Abbrechen</button><button type="button" class="btn primary" id="bt-ok">Übernehmen</button></div>`);
+        const ta = $('#bt-text', sheet);
+        ta.value = bildtext(file);
+        setTimeout(() => ta.focus(), 250);
+        $('#bt-cancel', sheet).onclick = close;
+        $('#bt-ok', sheet).onclick = () => {
+          const text = ta.value.trim();
+          if (text !== (file.text || '')) pendingTexte.set(file.id, text); else pendingTexte.delete(file.id);
+          close();
+          changed();
+          drawThumbs();
+        };
+      };
       $('.remove', t).onclick = async () => {
         if (!confirm(`„${file.name}“ aus dem Bericht entfernen?`)) return;
         if (pendingAdds.delete(file.id)) await db.deleteFile(file.id);

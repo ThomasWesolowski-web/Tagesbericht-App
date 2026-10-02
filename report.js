@@ -247,7 +247,7 @@ export function toMarkdown(r, files, author, options = {}) {
     md += '\n## Fotos und Dokumente\n\n';
     for (const f of files) {
       const link = encodeURI(f.remoteName);
-      md += f.type.startsWith('image/') ? `![${f.name}](${link})\n\n` : `- [${f.name}](${link})\n`;
+      md += f.type.startsWith('image/') ? `![${f.name}](${link})\n${f.text ? `\n_${f.text.replace(/\s*\n\s*/g, ' ')}_\n` : ''}\n` : `- [${f.name}](${link})\n`;
     }
   }
   return md;
@@ -274,7 +274,7 @@ export function toJson(r, files, author) {
       stunden: workedHours(r),
       ...rapport,
       erstelltVon: author || undefined,
-      anhaenge: files.map((f) => ({ name: f.name, datei: f.remoteName, typ: f.type, groesse: f.size })),
+      anhaenge: files.map((f) => ({ name: f.name, datei: f.remoteName, typ: f.type, groesse: f.size, ...(f.text ? { text: f.text } : {}), ...(f.textOriginal ? { textOriginal: f.textOriginal } : {}) })),
     },
     null,
     2,

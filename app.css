@@ -239,7 +239,7 @@ body.editing .view { padding-bottom: calc(110px + var(--safe-b)); }
 .btn[disabled] { opacity: .5; pointer-events: none; }
 .file-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
-.thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin-top: 12px; }
+.thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px 8px; margin-top: 12px; align-items: start; }
 .thumbs:empty { display: none; }
 .thumb {
   position: relative; aspect-ratio: 1; border-radius: 12px; overflow: hidden;
@@ -522,3 +522,45 @@ body.no-scroll { overflow: hidden; }
 .geraet small { display: block; color: var(--ink-3); font-size: .82rem; }
 .geraet.fehlt { opacity: .75; }
 .geraet-admin { margin: 8px 0 0; padding-top: 8px; border-top: 1px solid var(--line); }
+
+.thumb .markieren {
+  position: absolute; top: 4px; left: 4px; width: 32px; height: 32px; border-radius: 50%;
+  border: 0; background: var(--accent); color: #fff; display: grid; place-items: center; cursor: pointer;
+}
+.thumb .markieren svg { width: 17px; height: 17px; }
+.thumb-item .bildtext {
+  all: unset; display: block; box-sizing: border-box; width: 100%; margin-top: 4px; padding: 2px 2px; cursor: pointer;
+  font-size: .74rem; line-height: 1.25; color: var(--accent); font-weight: 600;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.thumb-item .bildtext.voll { color: var(--ink-2); font-weight: 500; }
+/* Foto markieren */
+html.mk-offen, html.mk-offen body { overflow: hidden; }
+.mk-view { position: fixed; inset: 0; z-index: 70; display: flex; flex-direction: column; background: #16191d; color: #fff; touch-action: none; }
+.mk-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: calc(var(--safe-t, 0px) + 8px) 12px 8px; }
+.mk-top b { font-size: 1rem; }
+.mk-top .btn { min-height: 40px; padding: 0 16px; }
+.mk-top .btn.ghost { background: rgba(255,255,255,.1); color: #fff; border-color: transparent; }
+.mk-flaeche { flex: 1; min-height: 0; display: grid; place-items: center; padding: 4px; }
+.mk-flaeche canvas { touch-action: none; border-radius: 4px; background: #000; }
+.mk-text { display: flex; gap: 8px; padding: 8px 12px; background: #23272c; }
+.mk-text[hidden] { display: none; }
+.mk-text input { flex: 1; min-width: 0; font-size: 16px; padding: 10px 12px; border-radius: 10px; border: 0; }
+.mk-leiste { padding: 8px 10px calc(var(--safe-b, 0px) + 10px); background: #1f2327; display: grid; gap: 10px; }
+.mk-werkzeuge { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.mk-wz { all: unset; display: grid; justify-items: center; gap: 2px; padding: 6px 0; border-radius: 10px; color: #cfd4da; cursor: pointer; font-size: .7rem; }
+.mk-wz svg { width: 24px; height: 24px; }
+.mk-wz[aria-pressed="true"] { background: rgba(255,255,255,.14); color: #fff; }
+.mk-farben { display: flex; align-items: center; gap: 8px; }
+.mk-farbe { all: unset; width: 30px; height: 30px; border-radius: 50%; background: var(--f); box-shadow: inset 0 0 0 2px rgba(255,255,255,.35); cursor: pointer; flex: none; }
+.mk-farbe[aria-pressed="true"] { box-shadow: 0 0 0 3px #16191d, 0 0 0 5px #fff; }
+.mk-dicke, .mk-rueck { all: unset; display: flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 10px; color: #cfd4da; font-size: .78rem; cursor: pointer; background: rgba(255,255,255,.08); }
+.mk-dicke { margin-left: auto; }
+.mk-dicke[aria-pressed="true"] { background: #fff; color: #16191d; font-weight: 700; }
+.mk-rueck svg { width: 18px; height: 18px; }
+.mk-rueck:disabled { opacity: .35; }
+@media (max-width: 420px) {
+  .mk-farben { gap: 6px; }
+  .mk-farbe { width: 27px; height: 27px; }
+  .mk-rueck span { display: none; }
+}

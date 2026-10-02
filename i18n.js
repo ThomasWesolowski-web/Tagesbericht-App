@@ -306,6 +306,22 @@ const ROWS = [
   ['Rapport: Bitte zuerst Personal mit Beginn und Ende eintragen.', 'Raport robót: najpierw dodaj pracowników z początkiem i końcem.', 'Raport de lucru: adaugă mai întâi personalul cu început și sfârșit.', 'Работен извештај: прво внеси персонал со почеток и крај.', 'Raport pune: shto fillimisht personelin me fillim dhe mbarim.'],
   ['Rapport: Bitte eintragen, welche Arbeiten ausgeführt wurden.', 'Raport robót: wpisz, jakie prace wykonano.', 'Raport de lucru: trece ce lucrări s-au executat.', 'Работен извештај: внеси кои работи се изведени.', 'Raport pune: shëno cilat punë u kryen.'],
   ['Rapport: Bitte zuerst vom Bauherrn unterschreiben lassen.', 'Raport robót: najpierw poproś inwestora o podpis.', 'Raport de lucru: cere mai întâi semnătura beneficiarului.', 'Работен извештај: прво побарај потпис од инвеститорот.', 'Raport pune: merr fillimisht nënshkrimin e investitorit.'],
+  ['Foto markieren', 'Oznacz zdjęcie', 'Marchează fotografia', 'Означи фотографија', 'Shëno foton'],
+  ['Fertig', 'Gotowe', 'Gata', 'Готово', 'Gati'],
+  ['Stift', 'Pisak', 'Creion', 'Пенкало', 'Laps'],
+  ['Pfeil', 'Strzałka', 'Săgeată', 'Стрелка', 'Shigjetë'],
+  ['Kreis', 'Koło', 'Cerc', 'Круг', 'Rreth'],
+  ['Rechteck', 'Prostokąt', 'Dreptunghi', 'Правоаголник', 'Drejtkëndësh'],
+  ['Text', 'Tekst', 'Text', 'Текст', 'Tekst'],
+  ['Dick', 'Gruby', 'Gros', 'Дебело', 'Trashë'],
+  ['Rückgängig', 'Cofnij', 'Anulează ultima', 'Врати', 'Zhbëj'],
+  ['Text eingeben', 'Wpisz tekst', 'Scrie textul', 'Внеси текст', 'Shkruaj tekstin'],
+  ['Markierungen verwerfen?', 'Odrzucić oznaczenia?', 'Renunți la marcaje?', 'Да се отфрлат ознаките?', 'Të hidhen poshtë shënimet?'],
+  ['+ Text zum Bild', '+ Tekst do zdjęcia', '+ Text la imagine', '+ Текст кон сликата', '+ Tekst për foton'],
+  ['Text zum Bild', 'Tekst do zdjęcia', 'Text la imagine', 'Текст кон сликата', 'Tekst për foton'],
+  ['Beschreibung', 'Opis', 'Descriere', 'Опис', 'Përshkrim'],
+  ['z. B. Riss an der Fassade, Nordseite', 'np. pęknięcie na elewacji, strona północna', 'de ex. fisură în fațadă, latura de nord', 'на пр. пукнатина на фасадата, северна страна', 'p.sh. çarje në fasadë, ana veriore'],
+  ['Dieses Foto kann nicht bearbeitet werden.', 'Tego zdjęcia nie można edytować.', 'Această fotografie nu poate fi editată.', 'Оваа фотографија не може да се уреди.', 'Kjo foto nuk mund të përpunohet.'],
 ];
 
 const WOCHENTAGE = {
