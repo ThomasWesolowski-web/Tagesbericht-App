@@ -15,7 +15,7 @@ import {
 } from './sync.js';
 import { startI18n, SPRACHEN } from './i18n.js';
 
-const APP_VERSION = '1.17.1';
+const APP_VERSION = '1.17.2';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -2021,6 +2021,28 @@ function geraetInfo() {
   };
 }
 
+// Ähnlichkeit zweier Namen von 0 bis 1: Groß-/Kleinschreibung, Akzente, Leerzeichen
+// und die Reihenfolge von Vor- und Nachname spielen keine Rolle.
+function namensAehnlichkeit(a, b) {
+  const norm = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ß/g, 'ss')
+    .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const sortiert = (s) => s.split(' ').sort().join(' ');
+  const abstand = (x, y) => {
+    let vor = Array.from({ length: y.length + 1 }, (_, j) => j);
+    for (let i = 1; i <= x.length; i++) {
+      const akt = [i];
+      for (let j = 1; j <= y.length; j++) akt[j] = Math.min(vor[j] + 1, akt[j - 1] + 1, vor[j - 1] + (x[i - 1] === y[j - 1] ? 0 : 1));
+      vor = akt;
+    }
+    return vor[y.length];
+  };
+  const wert = (x, y) => (x || y ? 1 - abstand(x, y) / Math.max(x.length, y.length) : 0);
+  const x = norm(a);
+  const y = norm(b);
+  if (!x || !y) return 0;
+  return Math.max(wert(x, y), wert(sortiert(x), sortiert(y)));
+}
+
 async function openGeraete() {
   const { sheet } = openSheet(`<h2>Wer hat die App eingerichtet?</h2>
     <p class="hint" style="margin-top:0">Ein Handy erscheint hier, sobald dort der Token eingetragen ist und die App einmal mit dem Repo abgeglichen hat.</p>
@@ -2035,11 +2057,26 @@ async function openGeraete() {
   }
   geraete.sort((a, b) => String(a.name).localeCompare(String(b.name), 'de'));
   const sprache = (id) => SPRACHEN.find((l) => l.id === id)?.deutsch || id || 'Deutsch';
-  const key = (n) => String(n || '').trim().toLowerCase();
-  const namen = new Set(geraete.map((g) => key(g.name)));
-  const fehlen = sortCrew((await db.allPeople()).filter((p) => !p.archived && p.name && !namen.has(key(p.name))));
+  // Jedes Gerät der ähnlichsten Person zuordnen (mindestens 90 % gleich).
+  const leute = (await db.allPeople()).filter((p) => !p.archived && p.name);
+  const paare = [];
+  geraete.forEach((g, gi) => leute.forEach((p, pi) => {
+    const w = namensAehnlichkeit(g.name, p.name);
+    if (w >= 0.9) paare.push({ gi, pi, w });
+  }));
+  paare.sort((x, y) => y.w - x.w);
+  const zugeordnet = new Map();
+  const vergeben = new Set();
+  for (const { gi, pi } of paare) {
+    if (zugeordnet.has(gi) || vergeben.has(pi)) continue;
+    zugeordnet.set(gi, leute[pi]);
+    vergeben.add(pi);
+  }
+  geraete.forEach((g, gi) => { g.person = zugeordnet.get(gi); });
+  const fehlen = sortCrew(leute.filter((p, pi) => !vergeben.has(pi)));
   const zeile = (g) => `<div class="geraet">
       <b>${esc(g.name || 'Ohne Namen')}${g.admin ? ' <span class="pill ok">Admin</span>' : ''}</b>
+      ${g.person && g.person.name.trim() !== String(g.name || '').trim() ? `<small>In der Personal-Liste: ${esc(g.person.name)}</small>` : ''}
       <small>${esc(g.plattform || '')} · ${esc(sprache(g.sprache))} · Version ${esc(g.version || '?')}</small>
       <small>${g.installiert ? 'Auf dem Home-Bildschirm installiert' : 'Nur im Browser geöffnet'}</small>
     </div>`;
@@ -2048,7 +2085,7 @@ async function openGeraete() {
     : '<p class="hint">Noch kein Handy hat sich gemeldet.</p>')
     + (fehlen.length
       ? `<h3 class="geraete-h">Noch nicht eingerichtet (${fehlen.length})</h3>${fehlen.map((p) => `<div class="geraet fehlt"><b>${esc(p.name)}</b></div>`).join('')}
-         <p class="hint">Verglichen wird mit dem Namen aus der Personal-Liste. Der Name in der App muss genauso geschrieben sein.</p>`
+         <p class="hint">Verglichen wird mit dem Namen aus der Personal-Liste. Der Name in der App muss zu mindestens 90 % gleich geschrieben sein.</p>`
       : '');
 }
 
