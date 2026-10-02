@@ -15,7 +15,7 @@ import {
 } from './sync.js';
 import { startI18n, SPRACHEN } from './i18n.js';
 
-const APP_VERSION = '1.17.0';
+const APP_VERSION = '1.17.1';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -2021,16 +2021,6 @@ function geraetInfo() {
   };
 }
 
-function vorZeit(iso) {
-  const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-  if (min < 2) return 'gerade eben';
-  if (min < 60) return `vor ${min} Minuten`;
-  const std = Math.round(min / 60);
-  if (std < 24) return std === 1 ? 'vor 1 Stunde' : `vor ${std} Stunden`;
-  const tage = Math.round(std / 24);
-  return tage === 1 ? 'gestern' : `vor ${tage} Tagen`;
-}
-
 async function openGeraete() {
   const { sheet } = openSheet(`<h2>Wer hat die App eingerichtet?</h2>
     <p class="hint" style="margin-top:0">Ein Handy erscheint hier, sobald dort der Token eingetragen ist und die App einmal mit dem Repo abgeglichen hat.</p>
@@ -2043,15 +2033,15 @@ async function openGeraete() {
     box.innerHTML = `<p class="hint">Konnte nicht geladen werden: ${esc(err.message)}</p>`;
     return;
   }
-  geraete.sort((a, b) => String(b.zuletzt).localeCompare(String(a.zuletzt)));
+  geraete.sort((a, b) => String(a.name).localeCompare(String(b.name), 'de'));
   const sprache = (id) => SPRACHEN.find((l) => l.id === id)?.deutsch || id || 'Deutsch';
   const key = (n) => String(n || '').trim().toLowerCase();
   const namen = new Set(geraete.map((g) => key(g.name)));
   const fehlen = sortCrew((await db.allPeople()).filter((p) => !p.archived && p.name && !namen.has(key(p.name))));
   const zeile = (g) => `<div class="geraet">
       <b>${esc(g.name || 'Ohne Namen')}${g.admin ? ' <span class="pill ok">Admin</span>' : ''}</b>
-      <small>Zuletzt aktiv ${esc(vorZeit(g.zuletzt))} · Version ${esc(g.version || '?')}</small>
-      <small>${esc(g.plattform || '')} · ${esc(sprache(g.sprache))} · ${g.installiert ? 'auf dem Home-Bildschirm' : 'nur im Browser geöffnet'}</small>
+      <small>${esc(g.plattform || '')} · ${esc(sprache(g.sprache))} · Version ${esc(g.version || '?')}</small>
+      <small>${g.installiert ? 'Auf dem Home-Bildschirm installiert' : 'Nur im Browser geöffnet'}</small>
     </div>`;
   box.innerHTML = (geraete.length
     ? `<h3 class="geraete-h">Eingerichtet (${geraete.length})</h3>${geraete.map(zeile).join('')}`

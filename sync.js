@@ -386,8 +386,9 @@ export async function loadStundenRemote(settings, ym, name) {
 }
 
 // ---------- Geräte: wer hat die App eingerichtet? ----------
-// Jedes Handy legt stammdaten/geraete/<name>_<id>.json an und frischt die Datei
-// höchstens alle 6 Stunden auf (oder wenn sich Name, Version oder Sprache ändert).
+// Jedes Handy legt stammdaten/geraete/<name>_<id>.json an und schreibt die Datei
+// nur neu, wenn sich Name, Version, Sprache oder Installation ändern.
+// Bewusst ohne Zeitpunkt der letzten Nutzung.
 
 const GERAETE_DIR = 'stammdaten/geraete';
 
@@ -397,7 +398,7 @@ export async function meldeGeraet(settings, info, { sofort = false } = {}) {
   const merk = `${name}|${info.version}|${info.sprache}|${info.installiert}|${info.admin}`;
   let zuletzt = {};
   try { zuletzt = JSON.parse(localStorage.getItem('tagesberichte.gemeldet') || '{}'); } catch { /* leer */ }
-  if (!sofort && zuletzt.merk === merk && Date.now() - (zuletzt.zeit || 0) < 6 * 3600 * 1000) return false;
+  if (!sofort && zuletzt.merk === merk) return false;
   const gh = client(settings);
   const path = `${GERAETE_DIR}/${slug(name) || 'ohne-name'}_${info.geraetId.slice(0, 8)}.json`;
   const alt = await getJson(gh, settings, path);
@@ -406,13 +407,12 @@ export async function meldeGeraet(settings, info, { sofort = false } = {}) {
     const vorher = await getJson(gh, settings, zuletzt.path).catch(() => null);
     if (vorher) await gh(contentsPath(zuletzt.path), { method: 'DELETE', body: { message: 'Gerät umbenannt', sha: vorher.sha, branch: settings.branch } }).catch(() => {});
   }
-  const jetzt = new Date().toISOString();
   const data = { name, geraet: info.geraetId, version: info.version, sprache: info.sprache, installiert: info.installiert,
-    plattform: info.plattform, admin: info.admin, ersteMeldung: alt?.data?.ersteMeldung || jetzt, zuletzt: jetzt };
+    plattform: info.plattform, admin: info.admin };
   const body = { message: `Gerät gemeldet: ${name || 'ohne Name'}`, content: await blobToBase64(new Blob([`${JSON.stringify(data, null, 2)}\n`])), branch: settings.branch };
   if (alt) body.sha = alt.sha;
-  await gh(contentsPath(path), { method: 'PUT', body });
-  localStorage.setItem('tagesberichte.gemeldet', JSON.stringify({ merk, zeit: Date.now(), path }));
+  if (!alt || JSON.stringify(alt.data) !== JSON.stringify(data)) await gh(contentsPath(path), { method: 'PUT', body });
+  localStorage.setItem('tagesberichte.gemeldet', JSON.stringify({ merk, path }));
   return true;
 }
 
