@@ -15,8 +15,9 @@ import {
 } from './sync.js';
 import { startI18n, SPRACHEN } from './i18n.js';
 import { openMarkup } from './markup.js';
+import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from './fotoaufmass.js';
 
-const APP_VERSION = '1.21.0';
+const APP_VERSION = '1.22.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -405,6 +406,10 @@ async function renderEditor(id) {
         <h2>Aufmaß <span class="h-right" id="am-sum-kurz"></span></h2>
         <div id="positionen" class="am-list"></div>
         <button type="button" class="btn soft block" id="add-pos">${ICON.plus} Position hinzufügen</button>
+        <div id="fa-karten" class="fa-karten"></div>
+        <label class="btn ghost block fa-start">${ICON.camera} Foto-Aufmaß
+          <input class="file-input" type="file" accept="image/*" id="fa-foto"></label>
+        <p class="hint">Foto-Aufmaß: zwei bekannte Maße im Foto markieren, dann Flächen, Öffnungen und Strecken antippen. Die Maße sind nur ungefähr.</p>
         <div id="am-summen" class="crew-sum"></div>
       </section>
 
@@ -583,6 +588,7 @@ async function renderEditor(id) {
   $$('.aufmass-only').forEach((el) => { el.hidden = report.art !== 'aufmass'; });
 
   // Aufmaß wie auf Papier: Position mit Messzeilen (Stück × Länge × Breite × Höhe), Abzüge, Netto
+  let aufmassNeu = () => {};
   if (report.art === 'aufmass') {
     report.positionen = (report.positionen || []).map(normPosition);
     const eh = (p) => einheitLabel(p.einheit);
@@ -692,6 +698,7 @@ async function renderEditor(id) {
     if (!report.positionen.length) report.positionen.push(newPosition(1));
     drawPositionen();
     drawSummen();
+    aufmassNeu = () => { drawPositionen(); drawSummen(); };
   }
 
   // Rapport: Abrechnung, Maschinenstunden, Unterschrift
@@ -817,7 +824,7 @@ async function renderEditor(id) {
   });
 
   const drawThumbs = async () => {
-    const files = (await db.filesFor(report.id)).filter((f) => !pendingRemovals.has(f.id));
+    const files = (await db.filesFor(report.id)).filter((f) => !pendingRemovals.has(f.id) && !f.fotoAufmass);
     $('#file-sum').textContent = files.length ? `${files.length} · ${formatBytes(files.reduce((s, f) => s + f.size, 0))}` : '';
     const bildtext = (f) => (pendingTexte.has(f.id) ? pendingTexte.get(f.id) : f.text || '');
     $('#thumbs').innerHTML = files.map((f) => {
@@ -914,6 +921,103 @@ async function renderEditor(id) {
   };
   $('#cam').onchange = (e) => { addFiles([...e.target.files]); e.target.value = ''; };
   $('#pick').onchange = (e) => { addFiles([...e.target.files]); e.target.value = ''; };
+
+  // Foto-Aufmaß: Original-Foto und Foto mit Maßen hängen als Dateien am Aufmaß, die Messung
+  // selbst steht in report.fotoAufmasse. Übernommene Positionen tragen fotoAufmass = id.
+  const faNeueDatei = async (blob, name, fa, extra = {}) => {
+    const fid = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+    pendingAdds.add(fid);
+    await db.putFile({ id: fid, reportId: report.id, name, type: 'image/jpeg', size: blob.size, blob, addedAt: Date.now(), fotoAufmass: fa, ...extra });
+  };
+  const faDateien = async (id) => (await db.filesFor(report.id)).filter((f) => f.fotoAufmass?.id === id && !pendingRemovals.has(f.id));
+  const faDateiWeg = async (f) => {
+    if (pendingAdds.delete(f.id)) await db.deleteFile(f.id);
+    else pendingRemovals.add(f.id);
+  };
+  const faPositionen = (daten) => {
+    const neu = alsPositionen(daten).map(normPosition);
+    const alte = report.positionen.filter((p) => p.fotoAufmass === daten.id);
+    const nummern = alte.map((p) => p.pos);
+    let max = Math.max(0, ...report.positionen.filter((p) => p.fotoAufmass !== daten.id && !positionLeer(p)).map((p) => parseInt(p.pos, 10) || 0));
+    for (const p of neu) p.pos = nummern.length ? nummern.shift() : String(++max);
+    const liste = [];
+    let eingefuegt = false;
+    for (const p of report.positionen) {
+      if (p.fotoAufmass === daten.id) {
+        if (!eingefuegt) { liste.push(...neu); eingefuegt = true; }
+      } else if (!positionLeer(p)) liste.push(p);
+    }
+    if (!eingefuegt) liste.push(...neu);
+    report.positionen = liste.length ? liste : [newPosition(1)];
+  };
+  const faOeffnen = async (blob, daten, neu) => {
+    let erg;
+    try {
+      erg = await openFotoAufmass(blob, daten);
+    } catch {
+      toast('Dieses Foto kann nicht geöffnet werden.');
+      return;
+    }
+    if (!erg) return;
+    const d = erg.daten;
+    const nr = d.titel.replace(/\D+/g, '') || '1';
+    if (neu) await faNeueDatei(blob, `foto-aufmass-${nr}-original.jpg`, { id: d.id, rolle: 'original' });
+    for (const f of await faDateien(d.id)) if (f.fotoAufmass.rolle === 'plan') await faDateiWeg(f);
+    await faNeueDatei(erg.plan, `foto-aufmass-${nr}.jpg`, { id: d.id, rolle: 'plan' }, { text: `${d.titel} (Maße aus Foto ermittelt, nur ungefähr)` });
+    const i = report.fotoAufmasse.findIndex((x) => x.id === d.id);
+    if (i >= 0) report.fotoAufmasse[i] = d; else report.fotoAufmasse.push(d);
+    faPositionen(d);
+    aufmassNeu();
+    changed();
+    drawFa();
+    toast('Foto-Aufmaß als Positionen übernommen.');
+  };
+  const drawFa = async () => {
+    const box = $('#fa-karten');
+    if (!box) return;
+    const files = await db.filesFor(report.id);
+    box.innerHTML = report.fotoAufmasse.map((d) => {
+      const plan = files.find((f) => f.fotoAufmass?.id === d.id && f.fotoAufmass.rolle === 'plan' && !pendingRemovals.has(f.id));
+      return `<div class="fa-karte" data-id="${d.id}">
+        <button type="button" class="fa-karte-bild" aria-label="Foto ansehen">${plan ? `<img src="${objectUrl(plan.blob)}" alt="">` : ICON.camera}</button>
+        <div class="fa-karte-text"><b>${esc(d.titel)}</b><small>${esc(kurzfassung(d))}</small></div>
+        <button type="button" class="btn soft fa-bearbeiten">${ICON.pencil}</button>
+        <button type="button" class="icon-btn fa-weg" aria-label="Foto-Aufmaß entfernen">${ICON.trash}</button>
+      </div>`;
+    }).join('');
+    $$('.fa-karte', box).forEach((el) => {
+      const d = report.fotoAufmasse.find((x) => x.id === el.dataset.id);
+      const plan = files.find((f) => f.fotoAufmass?.id === d.id && f.fotoAufmass.rolle === 'plan' && !pendingRemovals.has(f.id));
+      $('.fa-karte-bild', el).onclick = () => { if (plan) openFile(plan); };
+      $('.fa-bearbeiten', el).onclick = async () => {
+        const orig = (await faDateien(d.id)).find((f) => f.fotoAufmass.rolle === 'original');
+        if (!orig) { toast('Das Original-Foto fehlt auf diesem Handy.'); return; }
+        faOeffnen(orig.blob, d, false);
+      };
+      $('.fa-weg', el).onclick = async () => {
+        if (!confirm(`„${d.titel}“ und die daraus übernommenen Positionen entfernen?`)) return;
+        for (const f of await faDateien(d.id)) await faDateiWeg(f);
+        report.fotoAufmasse = report.fotoAufmasse.filter((x) => x !== d);
+        report.positionen = report.positionen.filter((p) => p.fotoAufmass !== d.id);
+        if (!report.positionen.length) report.positionen.push(newPosition(1));
+        aufmassNeu();
+        changed();
+        drawFa();
+      };
+    });
+  };
+  if (report.art === 'aufmass') {
+    report.fotoAufmasse = report.fotoAufmasse || [];
+    $('#fa-foto').onchange = async (e) => {
+      const file = e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+      const prepared = await prepareFile(file);
+      const nr = Math.max(0, ...report.fotoAufmasse.map((x) => parseInt(x.titel.replace(/\D+/g, ''), 10) || 0)) + 1;
+      faOeffnen(prepared.blob, neuesFotoAufmass(nr), true);
+    };
+    drawFa();
+  }
 
   function updateState() {
     const el = $('#sync-state');

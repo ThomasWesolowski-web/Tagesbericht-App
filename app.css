@@ -607,3 +607,48 @@ html.mk-offen, html.mk-offen body { overflow: hidden; }
 .am-netto { margin-left: auto; text-align: right; color: var(--ink-2); }
 .am-netto b { color: var(--ink); font-size: 1.05rem; white-space: nowrap; }
 .rcard .hours { white-space: nowrap; text-align: right; }
+
+/* Foto-Aufmaß */
+.fa-start { margin-top: 10px; }
+.fa-karten { display: grid; gap: 8px; margin-top: 12px; }
+.fa-karten:empty { display: none; }
+.fa-karte { display: grid; grid-template-columns: 64px 1fr auto auto; gap: 10px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); }
+.fa-karte-bild { width: 64px; height: 48px; padding: 0; border: 0; border-radius: 8px; overflow: hidden; background: var(--line); display: grid; place-items: center; cursor: pointer; color: var(--ink-3); }
+.fa-karte-bild img { width: 100%; height: 100%; object-fit: cover; }
+.fa-karte-bild svg { width: 22px; height: 22px; }
+.fa-karte-text { display: grid; min-width: 0; }
+.fa-karte-text small { color: var(--ink-2); }
+.fa-karte .btn { min-height: 36px; padding: 6px 10px; }
+.fa-karte .btn svg { width: 18px; height: 18px; }
+.fa-karte .fa-weg { color: var(--danger); width: 32px; height: 32px; }
+.fa-karte .fa-weg svg { width: 18px; height: 18px; }
+
+.fa-hinweis { display: flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: .82rem; line-height: 1.3; color: #e6e9ec; background: #23272c; height: 62px; box-sizing: border-box; overflow: hidden; flex: none; }
+.fa-text { flex: 1; min-width: 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.fa-knoepfe { display: flex; gap: 6px; }
+.fa-knoepfe .chip { min-height: 32px; padding: 4px 12px; font-size: .82rem; background: rgba(255,255,255,.12); color: #fff; border-color: transparent; }
+.fa-knoepfe .chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.fa-flaeche { position: relative; }
+.fa-lupe { position: absolute; top: 10px; left: 10px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 4px 16px rgba(0,0,0,.5); pointer-events: none; background: #000; }
+.fa-view .mk-werkzeuge .mk-wz span { font-size: .66rem; white-space: nowrap; }
+.fa-regel { flex: 1; min-width: 0; font-size: .74rem; color: #aeb5bd; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fa-panel { position: absolute; left: 0; right: 0; bottom: 0; max-height: 72%; overflow-y: auto; z-index: 2; padding: 14px 14px calc(var(--safe-b, 0px) + 14px); background: #1f2327; border-radius: 16px 16px 0 0; box-shadow: 0 -8px 24px rgba(0,0,0,.45); display: grid; gap: 10px; touch-action: pan-y; }
+.fa-panel[hidden] { display: none; }
+.fa-panel-kopf { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.fa-panel-knoepfe { display: flex; justify-content: flex-end; gap: 8px; }
+.fa-panel .btn.ghost { background: rgba(255,255,255,.1); color: #fff; border-color: transparent; }
+.fa-feld { display: grid; gap: 4px; font-size: .82rem; color: #cfd4da; }
+.fa-feld input, .fa-feld select { font: inherit; font-size: 16px; padding: 10px 12px; border-radius: 10px; border: 0; background: #fff; color: #111; width: 100%; box-sizing: border-box; }
+.fa-feld .seg { margin: 0; background: rgba(255,255,255,.08); border-color: transparent; }
+.fa-feld .seg button { color: #cfd4da; }
+.fa-zeile { display: grid; gap: 8px; }
+.fa-check { display: flex; align-items: center; gap: 8px; font-size: .88rem; color: #e6e9ec; }
+.fa-check input { width: 20px; height: 20px; }
+.fa-vorschlaege { display: flex; flex-wrap: wrap; gap: 6px; }
+.fa-vorschlaege .chip, .fa-li .chip { min-height: 30px; padding: 4px 10px; font-size: .8rem; background: rgba(255,255,255,.1); color: #fff; border-color: transparent; }
+.fa-klein { margin: 0; font-size: .76rem; color: #aeb5bd; }
+.fa-warn { color: #ffab91; }
+.fa-li { display: grid; grid-template-columns: 14px 1fr auto auto; gap: 8px; align-items: center; padding: 8px 0; border-top: 1px solid rgba(255,255,255,.08); }
+.fa-li > div { display: grid; min-width: 0; }
+.fa-li small { color: #aeb5bd; }
+.fa-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--c); }

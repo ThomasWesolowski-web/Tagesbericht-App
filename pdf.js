@@ -418,7 +418,7 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
   }
 
   // Fotos: zwei pro Zeile
-  const images = files.filter((f) => f.type?.startsWith('image/'));
+  const images = files.filter((f) => f.type?.startsWith('image/') && f.fotoAufmass?.rolle !== 'original');
   const others = files.filter((f) => !f.type?.startsWith('image/'));
   if (images.length) {
     const gap = 6;

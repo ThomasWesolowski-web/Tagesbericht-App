@@ -618,7 +618,7 @@ export async function pullReports(settings, { alle = false } = {}) {
       await db.putFile({
         id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
         reportId: data.id, name: a.name || a.datei, type: a.typ || blob.type, size: blob.size, blob,
-        remoteName: a.datei, uploadedPath: p, addedAt: Date.now(), text,
+        remoteName: a.datei, uploadedPath: p, addedAt: Date.now(), text, ...(a.fotoAufmass ? { fotoAufmass: a.fotoAufmass } : {}),
       });
     }
     for (const f of files) if (!wanted.has(f.remoteName)) await db.deleteFile(f.id);

@@ -19,6 +19,9 @@ In diesem Repo liegt nur der App-Code. Es enthält keine Berichte und keine Zuga
   Fotos werden auf etwa 1600 Pixel verkleinert
 - Alles wird sofort offline auf dem Handy gespeichert (IndexedDB) und kann jederzeit geändert werden
 - Upload als ein Commit pro Bericht, sobald Netz da ist
+- Foto-Aufmaß im Reiter Aufmaß: bekannte Länge und Höhe im Foto markieren, daraus den Maßstab
+  berechnen, Flächen, Öffnungen und Strecken antippen; Öffnungen nach VOB/C übermessen oder abziehen,
+  Laibungen gesondert. Läuft komplett im Browser, Maße sind nur ungefähr (`fotoaufmass.js`)
 
 ## Einrichten
 

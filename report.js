@@ -384,7 +384,7 @@ export function toJson(r, files, author) {
       ...rapport,
       ...aufmass,
       erstelltVon: author || undefined,
-      anhaenge: files.map((f) => ({ name: f.name, datei: f.remoteName, typ: f.type, groesse: f.size, ...(f.text ? { text: f.text } : {}), ...(f.textOriginal ? { textOriginal: f.textOriginal } : {}) })),
+      anhaenge: files.map((f) => ({ name: f.name, datei: f.remoteName, typ: f.type, groesse: f.size, ...(f.text ? { text: f.text } : {}), ...(f.textOriginal ? { textOriginal: f.textOriginal } : {}), ...(f.fotoAufmass ? { fotoAufmass: f.fotoAufmass } : {}) })),
     },
     null,
     2,
