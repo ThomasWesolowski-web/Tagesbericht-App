@@ -11,11 +11,11 @@ import {
   TYPEN, typLabel, hatZeiten, newStunde, stundenOf, personKey, kw, summe, sortStunden, monatLabel, shiftMonth,
 } from './stunden.js';
 import {
-  isConfigured, syncAll, syncReport, testConnection, deleteRemote, loadAdminConfig, saveAdminConfig, loadStundenRemote,
+  isConfigured, syncAll, syncReport, testConnection, deleteRemote, loadAdminConfig, saveAdminConfig, loadStundenRemote, meldeGeraet, ladeGeraete,
 } from './sync.js';
 import { startI18n, SPRACHEN } from './i18n.js';
 
-const APP_VERSION = '1.16.1';
+const APP_VERSION = '1.17.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -1905,6 +1905,7 @@ async function renderSettings() {
       ${isAdmin()
         ? '<div class="row"><button class="btn ghost" id="admin-pin">PIN ändern</button><button class="btn ghost" id="admin-out">Abmelden</button></div>'
         : '<button class="btn ghost block" id="admin-in">Als Administrator anmelden</button>'}
+      ${isAdmin() && isConfigured(s) ? `<button class="btn ghost block" id="geraete-btn" style="margin-top:10px">${ICON.people} Wer hat die App eingerichtet?</button>` : ''}
     </section>
 
     <section class="section">
@@ -1949,6 +1950,8 @@ async function renderSettings() {
   if (adminOut) adminOut.onclick = () => { setAdmin(false); toast('Abgemeldet.'); renderSettings(); };
   const adminPin = $('#admin-pin');
   if (adminPin) adminPin.onclick = () => changeAdminPin();
+  const geraeteBtn = $('#geraete-btn');
+  if (geraeteBtn) geraeteBtn.onclick = () => openGeraete();
 
   $('#test-btn').onclick = async () => {
     document.activeElement?.blur();
@@ -1963,6 +1966,7 @@ async function renderSettings() {
       const info = await testConnection(settings);
       $('#conn-state').innerHTML = '<span class="pill ok">Verbunden</span>';
       toast(`Verbunden mit ${info.name}${info.private ? ' (privat)' : ''}.`);
+      meldeGeraet(settings, geraetInfo(), { sofort: true }).catch(() => {});
       scheduleAutoSync(500);
     } catch (err) {
       $('#conn-state').innerHTML = '<span class="pill error">Fehler</span>';
@@ -1993,6 +1997,69 @@ async function renderSettings() {
     if (!persisted) html += '<p class="hint">Installiere die App auf dem Home-Bildschirm und richte den Sync ein, damit nichts verloren geht.</p>';
   }
   el.innerHTML = html;
+}
+
+// ---------- Geräte der Mitarbeiter ----------
+
+function geraetInfo() {
+  let id = '';
+  try {
+    id = localStorage.getItem('tagesberichte.geraet') || '';
+    if (!id) {
+      id = (crypto.randomUUID?.() || `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`).replace(/-/g, '');
+      localStorage.setItem('tagesberichte.geraet', id);
+    }
+  } catch { /* ohne Speicher keine Meldung */ }
+  const ua = navigator.userAgent;
+  return {
+    geraetId: id,
+    version: APP_VERSION,
+    sprache: settings.lang || 'de',
+    installiert: window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true,
+    plattform: /iPhone|iPad|iPod/.test(ua) ? 'iPhone' : /Android/.test(ua) ? 'Android' : 'Computer',
+    admin: isAdmin(),
+  };
+}
+
+function vorZeit(iso) {
+  const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (min < 2) return 'gerade eben';
+  if (min < 60) return `vor ${min} Minuten`;
+  const std = Math.round(min / 60);
+  if (std < 24) return std === 1 ? 'vor 1 Stunde' : `vor ${std} Stunden`;
+  const tage = Math.round(std / 24);
+  return tage === 1 ? 'gestern' : `vor ${tage} Tagen`;
+}
+
+async function openGeraete() {
+  const { sheet } = openSheet(`<h2>Wer hat die App eingerichtet?</h2>
+    <p class="hint" style="margin-top:0">Ein Handy erscheint hier, sobald dort der Token eingetragen ist und die App einmal mit dem Repo abgeglichen hat.</p>
+    <div id="geraete-liste"><p class="hint">Lade …</p></div>`);
+  const box = $('#geraete-liste', sheet);
+  let geraete;
+  try {
+    geraete = await ladeGeraete(settings);
+  } catch (err) {
+    box.innerHTML = `<p class="hint">Konnte nicht geladen werden: ${esc(err.message)}</p>`;
+    return;
+  }
+  geraete.sort((a, b) => String(b.zuletzt).localeCompare(String(a.zuletzt)));
+  const sprache = (id) => SPRACHEN.find((l) => l.id === id)?.deutsch || id || 'Deutsch';
+  const key = (n) => String(n || '').trim().toLowerCase();
+  const namen = new Set(geraete.map((g) => key(g.name)));
+  const fehlen = sortCrew((await db.allPeople()).filter((p) => !p.archived && p.name && !namen.has(key(p.name))));
+  const zeile = (g) => `<div class="geraet">
+      <b>${esc(g.name || 'Ohne Namen')}${g.admin ? ' <span class="pill ok">Admin</span>' : ''}</b>
+      <small>Zuletzt aktiv ${esc(vorZeit(g.zuletzt))} · Version ${esc(g.version || '?')}</small>
+      <small>${esc(g.plattform || '')} · ${esc(sprache(g.sprache))} · ${g.installiert ? 'auf dem Home-Bildschirm' : 'nur im Browser geöffnet'}</small>
+    </div>`;
+  box.innerHTML = (geraete.length
+    ? `<h3 class="geraete-h">Eingerichtet (${geraete.length})</h3>${geraete.map(zeile).join('')}`
+    : '<p class="hint">Noch kein Handy hat sich gemeldet.</p>')
+    + (fehlen.length
+      ? `<h3 class="geraete-h">Noch nicht eingerichtet (${fehlen.length})</h3>${fehlen.map((p) => `<div class="geraet fehlt"><b>${esc(p.name)}</b></div>`).join('')}
+         <p class="hint">Verglichen wird mit dem Namen aus der Personal-Liste. Der Name in der App muss genauso geschrieben sein.</p>`
+      : '');
 }
 
 // ---------- Sync ----------
@@ -2029,6 +2096,7 @@ async function runSync(manual) {
   } finally {
     syncing = false;
   }
+  meldeGeraet(settings, geraetInfo()).catch(() => {});
   if (manual || result.failed) {
     if (result.failed) toast(`${result.failed} Bericht(e) konnten nicht hochgeladen werden.`, 4000);
     else if (result.ok) toast(result.ok === 1 ? 'Bericht hochgeladen.' : `${result.ok} Berichte hochgeladen.`);

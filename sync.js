@@ -385,6 +385,51 @@ export async function loadStundenRemote(settings, ym, name) {
   return res?.data?.eintraege || [];
 }
 
+// ---------- Geräte: wer hat die App eingerichtet? ----------
+// Jedes Handy legt stammdaten/geraete/<name>_<id>.json an und frischt die Datei
+// höchstens alle 6 Stunden auf (oder wenn sich Name, Version oder Sprache ändert).
+
+const GERAETE_DIR = 'stammdaten/geraete';
+
+export async function meldeGeraet(settings, info, { sofort = false } = {}) {
+  if (!isConfigured(settings) || !info.geraetId) return false;
+  const name = (settings.author || '').trim();
+  const merk = `${name}|${info.version}|${info.sprache}|${info.installiert}|${info.admin}`;
+  let zuletzt = {};
+  try { zuletzt = JSON.parse(localStorage.getItem('tagesberichte.gemeldet') || '{}'); } catch { /* leer */ }
+  if (!sofort && zuletzt.merk === merk && Date.now() - (zuletzt.zeit || 0) < 6 * 3600 * 1000) return false;
+  const gh = client(settings);
+  const path = `${GERAETE_DIR}/${slug(name) || 'ohne-name'}_${info.geraetId.slice(0, 8)}.json`;
+  const alt = await getJson(gh, settings, path);
+  // Hat das Handy vorher unter anderem Namen gemeldet, die alte Datei entfernen.
+  if (zuletzt.path && zuletzt.path !== path) {
+    const vorher = await getJson(gh, settings, zuletzt.path).catch(() => null);
+    if (vorher) await gh(contentsPath(zuletzt.path), { method: 'DELETE', body: { message: 'Gerät umbenannt', sha: vorher.sha, branch: settings.branch } }).catch(() => {});
+  }
+  const jetzt = new Date().toISOString();
+  const data = { name, geraet: info.geraetId, version: info.version, sprache: info.sprache, installiert: info.installiert,
+    plattform: info.plattform, admin: info.admin, ersteMeldung: alt?.data?.ersteMeldung || jetzt, zuletzt: jetzt };
+  const body = { message: `Gerät gemeldet: ${name || 'ohne Name'}`, content: await blobToBase64(new Blob([`${JSON.stringify(data, null, 2)}\n`])), branch: settings.branch };
+  if (alt) body.sha = alt.sha;
+  await gh(contentsPath(path), { method: 'PUT', body });
+  localStorage.setItem('tagesberichte.gemeldet', JSON.stringify({ merk, zeit: Date.now(), path }));
+  return true;
+}
+
+export async function ladeGeraete(settings) {
+  const gh = client(settings);
+  let liste;
+  try {
+    liste = await gh(`${contentsPath(GERAETE_DIR)}?ref=${encodeURIComponent(settings.branch)}`);
+  } catch (err) {
+    if (err.status === 404) return [];
+    throw err;
+  }
+  const dateien = (Array.isArray(liste) ? liste : []).filter((f) => f.type === 'file' && f.name.endsWith('.json'));
+  const daten = await Promise.all(dateien.map((f) => getJson(gh, settings, f.path).then((r) => r?.data).catch(() => null)));
+  return daten.filter(Boolean);
+}
+
 // ---------- Stundennachweis ----------
 // Pro Mitarbeiter und Monat: stunden/<JJJJ-MM>_<name>.md, .json und .pdf
 

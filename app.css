@@ -515,3 +515,9 @@ body.no-scroll { overflow: hidden; }
   border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; outline: none;
 }
 .gewerke .gw-frei:focus { border-color: var(--accent); }
+
+.geraete-h { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); margin: 14px 0 6px; }
+.geraet { padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; margin-bottom: 8px; background: var(--surface); }
+.geraet b { display: block; font-weight: 650; }
+.geraet small { display: block; color: var(--ink-3); font-size: .82rem; }
+.geraet.fehlt { opacity: .75; }
