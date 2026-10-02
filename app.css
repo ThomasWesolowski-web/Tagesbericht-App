@@ -521,3 +521,4 @@ body.no-scroll { overflow: hidden; }
 .geraet b { display: block; font-weight: 650; }
 .geraet small { display: block; color: var(--ink-3); font-size: .82rem; }
 .geraet.fehlt { opacity: .75; }
+.geraet-admin { margin: 8px 0 0; padding-top: 8px; border-top: 1px solid var(--line); }

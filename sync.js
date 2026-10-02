@@ -379,6 +379,26 @@ export async function saveAdminConfig(settings, cfg) {
   await gh(contentsPath(ADMIN_PATH), { method: 'PUT', body });
 }
 
+// Admin-Freigabe pro Gerät (Liste admins in stammdaten/admin.json).
+export async function setzeAdminFreigabe(settings, geraetId, an) {
+  const gh = client(settings);
+  for (let versuch = 0; versuch < 2; versuch++) {
+    const alt = await getJson(gh, settings, ADMIN_PATH);
+    if (!alt) throw new GitHubError(404, 'Es ist noch keine Administrator-PIN eingerichtet.');
+    const admins = new Set(alt.data.admins || []);
+    if (an) admins.add(geraetId); else admins.delete(geraetId);
+    const cfg = { ...alt.data, admins: [...admins] };
+    const body = { message: an ? 'Administrator freigegeben' : 'Administrator entzogen',
+      content: await blobToBase64(new Blob([`${JSON.stringify(cfg, null, 2)}\n`])), branch: settings.branch, sha: alt.sha };
+    try {
+      await gh(contentsPath(ADMIN_PATH), { method: 'PUT', body });
+      return cfg;
+    } catch (err) {
+      if ((err.status !== 409 && err.status !== 422) || versuch) throw err;
+    }
+  }
+}
+
 // Hochgeladener Stundennachweis eines Mitarbeiters für einen Monat (für den Administrator).
 export async function loadStundenRemote(settings, ym, name) {
   const res = await getJson(client(settings), settings, `stunden/${ym}_${slug(name) || 'mitarbeiter'}.json`);

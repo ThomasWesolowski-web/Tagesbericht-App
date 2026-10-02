@@ -11,11 +11,11 @@ import {
   TYPEN, typLabel, hatZeiten, newStunde, stundenOf, personKey, kw, summe, sortStunden, monatLabel, shiftMonth,
 } from './stunden.js';
 import {
-  isConfigured, syncAll, syncReport, testConnection, deleteRemote, loadAdminConfig, saveAdminConfig, loadStundenRemote, meldeGeraet, ladeGeraete,
+  isConfigured, syncAll, syncReport, testConnection, deleteRemote, loadAdminConfig, saveAdminConfig, loadStundenRemote, meldeGeraet, ladeGeraete, setzeAdminFreigabe,
 } from './sync.js';
 import { startI18n, SPRACHEN } from './i18n.js';
 
-const APP_VERSION = '1.17.2';
+const APP_VERSION = '1.18.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -1476,8 +1476,8 @@ async function hashPin(pin, salt) {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-function setAdmin(on) {
-  settings = { ...settings, admin: on };
+function setAdmin(on, via = 'pin') {
+  settings = { ...settings, admin: on, adminVia: on ? via : undefined };
   db.saveSettings(settings);
 }
 
@@ -1587,7 +1587,9 @@ async function changeAdminPin() {
     if (pin !== $('#pin2', sheet).value.trim()) { toast('Die beiden PINs stimmen nicht überein.'); return; }
     try {
       const salt = newId();
-      await saveAdminConfig(settings, { salt, pinHash: await hashPin(pin, salt), erstellt: new Date().toISOString() });
+      // Freigegebene Admins (admins) bleiben beim PIN-Wechsel erhalten.
+      const alt = await loadAdminConfig(settings);
+      await saveAdminConfig(settings, { ...(alt || {}), salt, pinHash: await hashPin(pin, salt), erstellt: new Date().toISOString() });
     } catch (err) {
       toast(err.message, 4000);
       return;
@@ -1902,7 +1904,9 @@ async function renderSettings() {
       <p class="hint" style="margin-top:0">${isAdmin()
         ? 'Auf diesem Handy darfst du Baustellen und Personal löschen und die Stunden aller Mitarbeiter sehen.'
         : 'Baustellen und Personal löschen und die Stunden aller Mitarbeiter sehen darf nur der Administrator.'}</p>
-      ${isAdmin()
+      ${isAdmin() && s.adminVia === 'freigabe'
+        ? '<p class="hint">Vom Chef als Administrator freigegeben. Zurücknehmen kann nur er.</p>'
+        : isAdmin()
         ? '<div class="row"><button class="btn ghost" id="admin-pin">PIN ändern</button><button class="btn ghost" id="admin-out">Abmelden</button></div>'
         : '<button class="btn ghost block" id="admin-in">Als Administrator anmelden</button>'}
       ${isAdmin() && isConfigured(s) ? `<button class="btn ghost block" id="geraete-btn" style="margin-top:10px">${ICON.people} Wer hat die App eingerichtet?</button>` : ''}
@@ -2048,9 +2052,12 @@ async function openGeraete() {
     <p class="hint" style="margin-top:0">Ein Handy erscheint hier, sobald dort der Token eingetragen ist und die App einmal mit dem Repo abgeglichen hat.</p>
     <div id="geraete-liste"><p class="hint">Lade …</p></div>`);
   const box = $('#geraete-liste', sheet);
+  const darfVergeben = isAdmin() && settings.adminVia !== 'freigabe';
+  const meinGeraet = geraetInfo().geraetId;
   let geraete;
+  let cfg;
   try {
-    geraete = await ladeGeraete(settings);
+    [geraete, cfg] = await Promise.all([ladeGeraete(settings), darfVergeben ? loadAdminConfig(settings) : null]);
   } catch (err) {
     box.innerHTML = `<p class="hint">Konnte nicht geladen werden: ${esc(err.message)}</p>`;
     return;
@@ -2074,11 +2081,20 @@ async function openGeraete() {
   }
   geraete.forEach((g, gi) => { g.person = zugeordnet.get(gi); });
   const fehlen = sortCrew(leute.filter((p, pi) => !vergeben.has(pi)));
+  let admins = new Set(cfg?.admins || []);
+  const schalter = (g) => {
+    if (!darfVergeben || !g.geraet) return '';
+    if (g.geraet === meinGeraet) return '<small>Dein Handy</small>';
+    if (g.admin && !admins.has(g.geraet)) return '<small>Admin per PIN. Abmelden nur auf seinem Handy.</small>';
+    return `<div class="toggle geraet-admin"><span><b>Administrator</b><small>Wird beim nächsten Abgleich auf seinem Handy wirksam</small></span>
+      <label class="switch"><input type="checkbox" data-admin-geraet="${esc(g.geraet)}" ${admins.has(g.geraet) ? 'checked' : ''}><i></i></label></div>`;
+  };
   const zeile = (g) => `<div class="geraet">
-      <b>${esc(g.name || 'Ohne Namen')}${g.admin ? ' <span class="pill ok">Admin</span>' : ''}</b>
+      <b>${esc(g.name || 'Ohne Namen')}${g.admin || admins.has(g.geraet) ? ' <span class="pill ok">Admin</span>' : ''}</b>
       ${g.person && g.person.name.trim() !== String(g.name || '').trim() ? `<small>In der Personal-Liste: ${esc(g.person.name)}</small>` : ''}
       <small>${esc(g.plattform || '')} · ${esc(sprache(g.sprache))} · Version ${esc(g.version || '?')}</small>
       <small>${g.installiert ? 'Auf dem Home-Bildschirm installiert' : 'Nur im Browser geöffnet'}</small>
+      ${schalter(g)}
     </div>`;
   box.innerHTML = (geraete.length
     ? `<h3 class="geraete-h">Eingerichtet (${geraete.length})</h3>${geraete.map(zeile).join('')}`
@@ -2087,6 +2103,46 @@ async function openGeraete() {
       ? `<h3 class="geraete-h">Noch nicht eingerichtet (${fehlen.length})</h3>${fehlen.map((p) => `<div class="geraet fehlt"><b>${esc(p.name)}</b></div>`).join('')}
          <p class="hint">Verglichen wird mit dem Namen aus der Personal-Liste. Der Name in der App muss zu mindestens 90 % gleich geschrieben sein.</p>`
       : '');
+  box.querySelectorAll('[data-admin-geraet]').forEach((el) => {
+    el.onchange = async () => {
+      const g = geraete.find((d) => d.geraet === el.dataset.adminGeraet);
+      const name = g?.name || 'dieses Handy';
+      if (!confirm(el.checked ? `${name} zum Administrator machen?` : `${name} die Administrator-Rechte entziehen?`)) {
+        el.checked = !el.checked;
+        return;
+      }
+      el.disabled = true;
+      try {
+        const neu = await setzeAdminFreigabe(settings, el.dataset.adminGeraet, el.checked);
+        admins = new Set(neu.admins || []);
+        toast(el.checked ? `${name} ist ab dem nächsten Abgleich Administrator.` : `${name} ist ab dem nächsten Abgleich kein Administrator mehr.`, 3500);
+      } catch (err) {
+        el.checked = !el.checked;
+        toast(err.message, 4000);
+      } finally {
+        el.disabled = false;
+      }
+    };
+  });
+}
+
+// Vom Chef vergebene oder entzogene Admin-Rechte auf diesem Handy übernehmen.
+async function adminFreigabePruefen() {
+  let cfg;
+  try {
+    cfg = await loadAdminConfig(settings);
+  } catch {
+    return;
+  }
+  const frei = Boolean(cfg?.admins?.includes(geraetInfo().geraetId));
+  if (frei && !isAdmin()) {
+    setAdmin(true, 'freigabe');
+    toast('Du bist jetzt Administrator.', 3500);
+  } else if (!frei && isAdmin() && settings.adminVia === 'freigabe') {
+    setAdmin(false);
+    toast('Die Administrator-Rechte wurden zurückgenommen.', 3500);
+  } else return;
+  if (location.hash === '#/einstellungen') renderSettings();
 }
 
 // ---------- Sync ----------
@@ -2116,6 +2172,7 @@ async function runSync(manual) {
   }
   syncing = true;
   $('#sync-btn')?.classList.add('spin');
+  await adminFreigabePruefen();
   editorHooks?.refresh();
   let result;
   try {
