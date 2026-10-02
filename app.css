@@ -578,3 +578,32 @@ html.mk-offen, html.mk-offen body { overflow: hidden; }
 .sheet { position: relative; }
 .sheet-zurueck { position: absolute; top: 14px; left: 14px; z-index: 1; }
 .sheet > h2:first-of-type { padding-left: 46px; min-height: 36px; display: flex; align-items: center; }
+
+/* Aufmaß */
+.am-list { display: grid; gap: 12px; margin-bottom: 12px; }
+.am-pos { border: 1px solid var(--line); border-radius: 14px; padding: 10px 10px 12px; background: var(--surface-2); }
+.am-pos .field { margin-bottom: 8px; }
+.am-row1 { display: grid; grid-template-columns: 62px 1fr 34px; gap: 8px; align-items: end; }
+.am-row1 .am-del { margin-bottom: 14px; }
+.am-einheit { grid-template-columns: repeat(4, 1fr); margin: 0 0 10px; }
+.am-einheit button { padding: 6px 4px; }
+.am-kopf, .am-zeile { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.am-kopf span { font-size: .72rem; font-weight: 650; color: var(--ink-3); text-transform: uppercase; letter-spacing: .03em; padding-left: 4px; }
+.am-zeile { padding: 6px 0 8px; border-bottom: 1px dashed var(--line); }
+.am-zeile input { width: 100%; min-width: 0; padding: 8px 6px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); font: inherit; font-size: 16px; text-align: right; color: var(--ink); }
+.am-zfuss { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; }
+.am-zfuss .chip { min-height: 30px; padding: 4px 10px; font-size: .82rem; }
+.am-gleich { margin-left: auto; color: var(--ink-3); }
+.am-zfuss .am-wert { width: 96px; font-weight: 700; }
+.am-zfuss .am-wert[readonly] { border-color: transparent; background: transparent; }
+.am-eh { min-width: 26px; font-weight: 650; color: var(--ink-2); }
+.am-zeile.abzug input { color: var(--danger); }
+.am-zeile.abzug .am-wert { background: var(--danger-soft); }
+.am-zdel, .am-del { width: 30px; height: 30px; color: var(--ink-3); }
+.am-del { color: var(--danger); }
+.am-zdel svg, .am-del svg { width: 16px; height: 16px; }
+.am-pfuss { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.am-pfuss .btn { min-height: 36px; padding: 6px 12px; }
+.am-netto { margin-left: auto; text-align: right; color: var(--ink-2); }
+.am-netto b { color: var(--ink); font-size: 1.05rem; white-space: nowrap; }
+.rcard .hours { white-space: nowrap; text-align: right; }

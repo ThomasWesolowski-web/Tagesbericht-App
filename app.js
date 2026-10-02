@@ -1,7 +1,7 @@
 import * as db from './db.js';
 import { prepareFile, formatBytes, MAX_FILE_BYTES } from './media.js';
 import {
-  WETTER, newReport, newSite, newPerson, crewOf, entryHours, KATEGORIEN, kategorieOf, sortCrew, hoursByKategorie, workedHours, formatHours, formatDate, weekday, monthLabel, parseDate, toMarkdown, ARTEN, artLabel,
+  WETTER, newReport, newSite, newPerson, crewOf, entryHours, KATEGORIEN, kategorieOf, sortCrew, hoursByKategorie, workedHours, formatHours, formatDate, weekday, monthLabel, parseDate, toMarkdown, ARTEN, artLabel, EINHEITEN, einheitLabel, newPosition, newZeile, normPosition, zeileMenge, zeileLeer, positionSumme, positionLeer, positionMenge, aufmassSummen, formatMenge,
   ABRECHNUNG, MASCHINEN_VORSCHLAEGE, maschinenStunden, today, newId, GEWERKE, gewerkeText,
 } from './report.js';
 import {
@@ -16,7 +16,7 @@ import {
 import { startI18n, SPRACHEN } from './i18n.js';
 import { openMarkup } from './markup.js';
 
-const APP_VERSION = '1.20.0';
+const APP_VERSION = '1.21.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -117,8 +117,15 @@ async function route() {
     (a.dataset.tab === 'list' && hash === '#/')
     || (a.dataset.tab === 'sites' && hash.startsWith('#/baustelle'))
     || (a.dataset.tab === 'hours' && hash === '#/stunden')
+    || (a.dataset.tab === 'aufmass' && hash === '#/aufmass')
     || (a.dataset.tab === 'settings' && (hash === '#/einstellungen' || hash === '#/personal'))));
 
+  if (hash === '#/aufmass/neu') {
+    const r = { ...newReport(), art: 'aufmass' };
+    drafts.set(r.id, r);
+    location.replace(`#/bericht/${r.id}`);
+    return;
+  }
   if (hash === '#/neu') {
     const r = newReport();
     drafts.set(r.id, r);
@@ -139,6 +146,7 @@ function seiteZeigen(hash) {
   if (hash === '#/stunden') return renderStunden();
   if (hash === '#/personal') return renderPeople();
   if (hash === '#/einstellungen') return renderSettings();
+  if (hash === '#/aufmass') return renderList({ aufmass: true });
   return renderList();
 }
 
@@ -161,7 +169,7 @@ function zurueckKnopf(hash) {
   btn.setAttribute('aria-label', 'Zurück');
   btn.innerHTML = ICON.back;
   btn.onclick = () => {
-    const vorher = seitenVerlauf.slice(0, -1).reverse().find((h) => h !== hash && !/^#\/(neu|bericht\/)/.test(h));
+    const vorher = seitenVerlauf.slice(0, -1).reverse().find((h) => h !== hash && !/^#\/(neu|aufmass\/neu|bericht\/)/.test(h));
     location.hash = vorher || '#/';
   };
   appbar.prepend(btn);
@@ -169,20 +177,21 @@ function zurueckKnopf(hash) {
 
 // ---------- Übersicht ----------
 
-async function renderList() {
-  const reports = await db.allReports();
-  const pending = reports.filter((r) => r.dirty).length;
+async function renderList({ aufmass = false } = {}) {
+  const alle = await db.allReports();
+  const pending = alle.filter((r) => r.dirty).length;
+  const reports = alle.filter((r) => (r.art === 'aufmass') === aufmass);
   const configured = isConfigured(settings);
 
   appbar.innerHTML = `
-    <h1>Tagesberichte</h1>
-    <button class="icon-btn" id="sum-btn" aria-label="Zusammenfassung als PDF">${ICON.doc}</button>
+    <h1>${aufmass ? 'Aufmaß' : 'Tagesberichte'}</h1>
+    ${aufmass ? '' : `<button class="icon-btn" id="sum-btn" aria-label="Zusammenfassung als PDF">${ICON.doc}</button>`}
     <button class="icon-btn ${syncing ? 'spin' : ''}" id="sync-btn" aria-label="Jetzt hochladen">
       ${configured ? ICON.sync : ICON.cloud}
       ${pending && configured ? `<span class="badge">${pending}</span>` : ''}
     </button>`;
   $('#sync-btn').onclick = () => (configured ? runSync(true) : (location.hash = '#/einstellungen'));
-  $('#sum-btn').onclick = () => openZusammenfassung();
+  if (!aufmass) $('#sum-btn').onclick = () => openZusammenfassung();
 
   // Kennzahlen: Stunden diese Woche, Berichte diesen Monat, offene Uploads
   const now = new Date();
@@ -203,6 +212,16 @@ async function renderList() {
     html += `<div class="banner">${ICON.info}<div>Deine Berichte liegen bisher nur auf diesem Handy. <a href="#/einstellungen">Sync einrichten</a>, damit sie auch im Repo gesichert werden.</div></div>`;
   }
 
+  if (!reports.length && aufmass) {
+    view.innerHTML = html + `
+      <div class="empty">
+        <h2>Noch kein Aufmaß</h2>
+        <p>Positionen mit Länge und Breite erfassen, die Mengen rechnet die App selbst aus. Fotos können angehängt werden.</p>
+        <a class="btn primary" href="#/aufmass/neu">Erstes Aufmaß anlegen</a>
+      </div>`;
+    bindInstall();
+    return;
+  }
   if (!reports.length) {
     view.innerHTML = html + `
       <div class="empty">
@@ -223,7 +242,10 @@ async function renderList() {
     return;
   }
 
-  html += `
+  html += aufmass ? `
+    <label class="search">${ICON.search}<input id="search" type="search" placeholder="Baustelle, Position …" autocomplete="off"></label>
+    <div id="list"></div>
+    <a class="fab" href="#/aufmass/neu">${ICON.plus}<span>Neues Aufmaß</span></a>` : `
     <div class="stats">
       <div class="stat"><b>${formatHours(weekHours).replace(' h', '')}</b><span>Stunden diese Woche</span></div>
       <div class="stat"><b>${monthCount}</b><span>Berichte im ${monthLabel(new Date().toISOString().slice(0, 10)).split(' ')[0]}</span></div>
@@ -239,7 +261,7 @@ async function renderList() {
   const draw = (q) => {
     const needle = q.trim().toLowerCase();
     const shown = needle
-      ? reports.filter((r) => [r.baustelle, r.auftrag, r.taetigkeiten, r.material, r.bemerkungen, r.personal, ...(r.mitarbeiter || []).map((e) => e.name), formatDate(r.datum)]
+      ? reports.filter((r) => [r.baustelle, r.auftrag, r.taetigkeiten, r.material, r.bemerkungen, r.personal, ...(r.mitarbeiter || []).map((e) => e.name), ...(r.positionen || []).map((p) => p.bezeichnung), formatDate(r.datum)]
         .join(' ').toLowerCase().includes(needle))
       : reports;
     if (!shown.length) {
@@ -253,12 +275,15 @@ async function renderList() {
       if (label !== month) {
         if (month) out += '</div>';
         const monthHours = shown.filter((x) => monthLabel(x.datum) === label).reduce((s, x) => s + (workedHours(x) || 0), 0);
-        out += `<div class="month"><span>${label}</span><span>${formatHours(monthHours)}</span></div><div class="card-list">`;
+        out += `<div class="month"><span>${label}</span><span>${aufmass ? '' : formatHours(monthHours)}</span></div><div class="card-list">`;
         month = label;
       }
       const d = parseDate(r.datum);
       const n = fileCount.get(r.id);
-      const preview = (r.taetigkeiten || r.bemerkungen || '').split('\n')[0];
+      const preview = aufmass
+        ? (r.positionen || []).map((p) => p.bezeichnung).filter(Boolean).join(', ')
+        : (r.taetigkeiten || r.bemerkungen || '').split('\n')[0];
+      const rechts = aufmass ? aufmassSummen(r).map((s) => `${formatMenge(s.menge)} ${s.label}`).join('<br>') : formatHours(workedHours(r));
       out += `
         <a class="rcard" href="#/bericht/${encodeURIComponent(r.id)}">
           <div class="date"><b>${d.getDate()}</b><span>${weekday(r.datum).slice(0, 2)}</span></div>
@@ -267,7 +292,7 @@ async function renderList() {
             ${preview ? `<div class="preview">${esc(preview)}</div>` : ''}
             <div class="meta">${r.art === 'rapport' ? '<span class="pill art">Rapport</span>' : ''}${r.fremd && r.erstelltVon ? `<span class="pill von">von ${esc(r.erstelltVon)}</span>` : ''}${syncPill(r)}${n ? `<span>${ICON.clip} ${n}</span>` : ''}</div>
           </div>
-          <div class="hours">${formatHours(workedHours(r))}</div>
+          <div class="hours">${rechts}</div>
         </a>`;
     }
     listEl.innerHTML = out + '</div>';
@@ -319,7 +344,7 @@ async function renderEditor(id) {
 
   appbar.innerHTML = `
     <button class="icon-btn" id="back" aria-label="Zurück">${ICON.back}</button>
-    <h1 class="small"><span id="head-title">${isDraft ? 'Neuer Bericht' : artLabel(report)}</span><span class="sub" id="head-date">${weekday(report.datum)}, ${formatDate(report.datum)}</span></h1>
+    <h1 class="small"><span id="head-title">${isDraft ? (report.art === 'aufmass' ? 'Neues Aufmaß' : 'Neuer Bericht') : artLabel(report)}</span><span class="sub" id="head-date">${weekday(report.datum)}, ${formatDate(report.datum)}</span></h1>
     <button class="icon-btn" id="menu-btn" aria-label="Mehr">${ICON.more}</button>`;
   const wetterChips = WETTER.map((w) =>
     `<button type="button" class="chip" data-wetter="${w.id}" aria-pressed="${report.wetter.includes(w.id)}">${w.icon} ${w.label}</button>`).join('');
@@ -329,14 +354,16 @@ async function renderEditor(id) {
     <form id="form" autocomplete="off" onsubmit="return false">
       <section class="section">
         <h2>Allgemein</h2>
-        <div class="seg" id="art-seg" role="radiogroup" aria-label="Art">${ARTEN.map((a) =>
+        <div class="seg bericht-only" id="art-seg" role="radiogroup" aria-label="Art">${ARTEN.map((a) =>
           `<button type="button" role="radio" data-art="${a.id}" aria-checked="${report.art === a.id}">${a.label}</button>`).join('')}</div>
         <label class="field"><span>Datum</span><input type="date" data-field="datum" value="${esc(report.datum)}" required></label>
         <div class="field"><span>Baustelle</span><button type="button" class="site-pick" id="site-pick"></button></div>
         <label class="field"><span>Auftragsnummer</span><input type="text" data-field="auftrag" value="${esc(report.auftrag)}" placeholder="optional"></label>
+        <label class="field aufmass-only"><span>Auftraggeber</span><input type="text" data-field="auftraggeber" value="${esc(report.auftraggeber || '')}" placeholder="optional"></label>
+        <label class="field aufmass-only"><span>Art der Arbeit</span><input type="text" data-field="arbeitsart" value="${esc(report.arbeitsart || '')}" placeholder="z. B. Putz außen"></label>
       </section>
 
-      <section class="section">
+      <section class="section bericht-only">
         <h2>Personal und Arbeitszeit <span class="h-right" id="hours"></span></h2>
         <div id="crew" class="crew-list"></div>
         <div id="crew-sum" class="crew-sum"></div>
@@ -357,21 +384,28 @@ async function renderEditor(id) {
           <button type="button" class="chip" data-masch="">${ICON.plus} Andere Maschine</button></div>
       </section>
 
-      <section class="section">
+      <section class="section bericht-only">
         <h2>Wetter</h2>
         <div class="chips" id="wetter">${wetterChips}</div>
         <label class="field" style="margin-top:12px;max-width:160px"><span>Temperatur (°C)</span><input type="number" inputmode="decimal" data-field="temperatur" value="${esc(report.temperatur)}" placeholder="z. B. 14"></label>
       </section>
 
-      <section class="section">
+      <section class="section bericht-only">
         <h2>Ausgeführte Arbeiten</h2>
         ${gewerkeHtml(report, 'gw')}
         <label class="field"><textarea data-field="taetigkeiten" placeholder="Was wurde heute gemacht?" rows="4">${esc(report.taetigkeiten)}</textarea></label>
       </section>
 
-      <section class="section">
+      <section class="section bericht-only">
         <h2>Material und Geräte</h2>
         <label class="field"><textarea data-field="material" placeholder="Verbrauchtes Material, eingesetzte Maschinen …" rows="3">${esc(report.material)}</textarea></label>
+      </section>
+
+      <section class="section aufmass-only">
+        <h2>Aufmaß <span class="h-right" id="am-sum-kurz"></span></h2>
+        <div id="positionen" class="am-list"></div>
+        <button type="button" class="btn soft block" id="add-pos">${ICON.plus} Position hinzufügen</button>
+        <div id="am-summen" class="crew-sum"></div>
       </section>
 
       <section class="section">
@@ -379,8 +413,8 @@ async function renderEditor(id) {
         <label class="field"><textarea data-field="bemerkungen" placeholder="Behinderungen, Mängel, Absprachen, besondere Vorkommnisse …" rows="3">${esc(report.bemerkungen)}</textarea></label>
       </section>
 
-      <section class="section rapport-only">
-        <h2>Unterschrift Bauherr</h2>
+      <section class="section sign-only">
+        <h2>${report.art === 'aufmass' ? 'Anerkannt (Unterschrift Auftraggeber)' : 'Unterschrift Bauherr'}</h2>
         <div id="sign-box"></div>
       </section>
 
@@ -397,7 +431,7 @@ async function renderEditor(id) {
       </section>
     </form>
     ${isDraft ? '' : `<button class="btn soft block" id="pdf-btn">${ICON.share} Als PDF teilen</button>`}
-    ${isDraft ? '' : `<button class="btn danger del" id="delete-btn">${ICON.trash} Bericht löschen</button>`}
+    ${isDraft ? '' : `<button class="btn danger del" id="delete-btn">${ICON.trash} ${report.art === 'aufmass' ? 'Aufmaß' : 'Bericht'} löschen</button>`}
     <div class="savebar"><div class="savebar-inner">
       <button class="btn ghost" id="cancel-btn">Abbrechen</button>
       <button class="btn primary" id="save-btn">Speichern</button>
@@ -426,7 +460,7 @@ async function renderEditor(id) {
 
   const leave = () => {
     editorHooks = null;
-    location.hash = '#/';
+    location.hash = report.art === 'aufmass' ? '#/aufmass' : '#/';
   };
   const discard = async () => {
     for (const fid of pendingAdds) await db.deleteFile(fid);
@@ -441,6 +475,10 @@ async function renderEditor(id) {
       return;
     }
     if (!report.art) report.art = 'tagesbericht';
+    if (report.art === 'aufmass') {
+      report.positionen = (report.positionen || []).filter((p) => !positionLeer(p))
+        .map((p) => { const q = normPosition(p); const z = q.zeilen.filter((x) => !zeileLeer(x)); return { ...q, zeilen: z.length ? z : [newZeile()] }; });
+    }
     const fehlt = rapportFehlt(report);
     if (fehlt) {
       toast(fehlt.text, 4000);
@@ -469,7 +507,7 @@ async function renderEditor(id) {
     await db.putReport(report);
     if (drafts.delete(report.id)) requestPersistentStorage();
     unsaved = false;
-    toast('Bericht gespeichert.');
+    toast(report.art === 'aufmass' ? 'Aufmaß gespeichert.' : 'Bericht gespeichert.');
     scheduleAutoSync(1500);
     leave();
   };
@@ -520,7 +558,10 @@ async function renderEditor(id) {
   $('#site-pick').onclick = chooseSite;
   drawSite();
 
-  const showRapport = () => $$('.rapport-only').forEach((el) => { el.hidden = report.art !== 'rapport'; });
+  const showRapport = () => {
+    $$('.rapport-only').forEach((el) => { el.hidden = report.art !== 'rapport'; });
+    $$('.sign-only').forEach((el) => { el.hidden = report.art !== 'rapport' && report.art !== 'aufmass'; });
+  };
   const setArt = (art) => {
     report.art = art;
     showRapport();
@@ -538,6 +579,120 @@ async function renderEditor(id) {
   };
   if (isDraft && !report.baustelleId) setTimeout(chooseSite, 150);
   showRapport();
+  $$('.bericht-only').forEach((el) => { el.hidden = report.art === 'aufmass'; });
+  $$('.aufmass-only').forEach((el) => { el.hidden = report.art !== 'aufmass'; });
+
+  // Aufmaß wie auf Papier: Position mit Messzeilen (Stück × Länge × Breite × Höhe), Abzüge, Netto
+  if (report.art === 'aufmass') {
+    report.positionen = (report.positionen || []).map(normPosition);
+    const eh = (p) => einheitLabel(p.einheit);
+    const drawSummen = () => {
+      const s = aufmassSummen(report);
+      $('#am-summen').innerHTML = s.map((x) => `<div class="kv total"><span>Gesamt ${x.label}</span><b>${formatMenge(x.menge)} ${x.label}</b></div>`).join('');
+      $('#am-sum-kurz').textContent = s.map((x) => `${formatMenge(x.menge)} ${x.label}`).join(' · ');
+    };
+    const hatMasse = (z) => [z.laenge, z.breite, z.hoehe].some((v) => String(v ?? '').trim() !== '');
+    const zeileHtml = (p, z, j) => {
+      const m = zeileMenge(z, p.einheit);
+      return `
+        <div class="am-zeile${z.abzug ? ' abzug' : ''}" data-j="${j}">
+          <input type="text" inputmode="decimal" data-z="stueck" value="${esc(z.stueck)}" placeholder="1" aria-label="Stück">
+          <input type="text" inputmode="decimal" data-z="laenge" value="${esc(z.laenge)}" aria-label="Länge">
+          <input type="text" inputmode="decimal" data-z="breite" value="${esc(z.breite)}" aria-label="Breite">
+          <input type="text" inputmode="decimal" data-z="hoehe" value="${esc(z.hoehe)}" aria-label="Höhe">
+          <div class="am-zfuss">
+            <button type="button" class="chip am-abzug" aria-pressed="${!!z.abzug}">− Abzug</button>
+            <span class="am-gleich">=</span>
+            <input type="text" inputmode="decimal" class="am-wert" data-z="wert" value="${hatMasse(z) ? (m ? formatMenge(m) : '') : esc(z.wert)}" ${hatMasse(z) ? 'readonly tabindex="-1"' : 'placeholder="Meßgehalt"'} aria-label="Meßgehalt">
+            <span class="am-eh">${eh(p)}</span>
+            <button type="button" class="icon-btn am-zdel" aria-label="Zeile entfernen">${ICON.x}</button>
+          </div>
+        </div>`;
+    };
+    const nettoHtml = (p) => {
+      const s = positionSumme(p);
+      return s.abzug
+        ? `<span>${formatMenge(s.mess)} − ${formatMenge(s.abzug)} =</span> <b>${formatMenge(s.netto)} ${eh(p)}</b>`
+        : `<span>Netto</span> <b>${formatMenge(s.netto)} ${eh(p)}</b>`;
+    };
+    const drawPositionen = () => {
+      $('#positionen').innerHTML = report.positionen.map((p, i) => `
+        <div class="am-pos" data-i="${i}">
+          <div class="am-row1">
+            <label class="field am-nr"><span>Lfd. Nr.</span><input type="text" data-k="pos" value="${esc(p.pos)}"></label>
+            <label class="field am-bez"><span>Bezeichnung</span><input type="text" data-k="bezeichnung" value="${esc(p.bezeichnung)}" placeholder="z. B. Wand Nord, Fensterbank"></label>
+            <button type="button" class="icon-btn am-del" aria-label="Position entfernen">${ICON.trash}</button>
+          </div>
+          <div class="seg am-einheit" role="radiogroup" aria-label="Einheit">${EINHEITEN.map((x) => `<button type="button" role="radio" data-e="${x.id}" aria-checked="${p.einheit === x.id}">${x.label}</button>`).join('')}</div>
+          <div class="am-kopf"><span>Stück</span><span>Länge</span><span>Breite</span><span>Höhe</span></div>
+          <div class="am-zeilen">${p.zeilen.map((z, j) => zeileHtml(p, z, j)).join('')}</div>
+          <div class="am-pfuss">
+            <button type="button" class="btn soft am-addz">${ICON.plus} Zeile</button>
+            <div class="am-netto">${nettoHtml(p)}</div>
+          </div>
+        </div>`).join('');
+      $$('#positionen .am-pos').forEach((el) => {
+        const p = report.positionen[Number(el.dataset.i)];
+        const neuRechnen = () => { $('.am-netto', el).innerHTML = nettoHtml(p); drawSummen(); changed(); };
+        $$('.am-row1 input', el).forEach((inp) => { inp.oninput = () => { p[inp.dataset.k] = inp.value; changed(); }; });
+        $$('.am-einheit button', el).forEach((b) => {
+          b.onclick = () => { p.einheit = b.dataset.e; drawPositionen(); drawSummen(); changed(); };
+        });
+        $$('.am-zeile', el).forEach((zel) => {
+          const z = p.zeilen[Number(zel.dataset.j)];
+          const wert = $('.am-wert', zel);
+          $$('input', zel).forEach((inp) => {
+            inp.oninput = () => {
+              if (inp === wert && wert.readOnly) return;
+              z[inp.dataset.z] = inp.value;
+              if (inp !== wert) {
+                const mit = hatMasse(z);
+                wert.readOnly = mit;
+                wert.tabIndex = mit ? -1 : 0;
+                wert.placeholder = mit ? '' : 'Meßgehalt';
+                if (mit) { const m = zeileMenge(z, p.einheit); wert.value = m ? formatMenge(m) : ''; } else wert.value = z.wert || '';
+              }
+              neuRechnen();
+            };
+          });
+          $('.am-abzug', zel).onclick = (ev) => {
+            z.abzug = !z.abzug;
+            ev.currentTarget.setAttribute('aria-pressed', z.abzug);
+            zel.classList.toggle('abzug', z.abzug);
+            neuRechnen();
+          };
+          $('.am-zdel', zel).onclick = () => {
+            if (p.zeilen.length === 1) { p.zeilen[0] = newZeile(); } else p.zeilen.splice(Number(zel.dataset.j), 1);
+            drawPositionen(); drawSummen(); changed();
+          };
+        });
+        $('.am-addz', el).onclick = () => {
+          p.zeilen.push(newZeile());
+          drawPositionen(); changed();
+          const z = $$('.am-zeile', $$('#positionen .am-pos')[Number(el.dataset.i)]).pop();
+          $('input', z)?.focus();
+        };
+        $('.am-del', el).onclick = () => {
+          if (!positionLeer(p) && !confirm('Position entfernen?')) return;
+          report.positionen.splice(Number(el.dataset.i), 1);
+          if (!report.positionen.length) report.positionen.push(newPosition(1));
+          drawPositionen(); drawSummen(); changed();
+        };
+      });
+    };
+    $('#add-pos').onclick = () => {
+      const letzte = report.positionen[report.positionen.length - 1];
+      const nr = report.positionen.length ? (parseInt(letzte.pos, 10) || report.positionen.length) + 1 : 1;
+      report.positionen.push(newPosition(nr, letzte?.einheit || 'm2'));
+      drawPositionen(); drawSummen(); changed();
+      const neu = $$('#positionen .am-pos').pop();
+      neu?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      $('[data-k=bezeichnung]', neu)?.focus();
+    };
+    if (!report.positionen.length) report.positionen.push(newPosition(1));
+    drawPositionen();
+    drawSummen();
+  }
 
   // Rapport: Abrechnung, Maschinenstunden, Unterschrift
   $$('#abr-seg button').forEach((b) => {
@@ -586,7 +741,7 @@ async function renderEditor(id) {
           <small>${esc(u.name || 'Ohne Namen')} · ${new Date(u.zeit).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })}</small></div>
          <div class="row two"><button type="button" class="btn soft" id="sign-btn">Neu signieren</button>
          <button type="button" class="btn ghost" id="sign-del">Entfernen</button></div>`
-      : `<p class="hint" style="margin:0 0 12px">Der Bauherr bestätigt den Rapport mit dem Finger.</p>
+      : `<p class="hint" style="margin:0 0 12px">${report.art === 'aufmass' ? 'Der Auftraggeber erkennt das Aufmaß mit dem Finger an.' : 'Der Bauherr bestätigt den Rapport mit dem Finger.'}</p>
          <button type="button" class="btn soft block" id="sign-btn">Unterschreiben lassen</button>`;
     $('#sign-btn').onclick = () => openSignature(u?.name || '', (res) => { report.unterschrift = res; drawSign(); changed(); });
     const del = $('#sign-del');
@@ -791,7 +946,7 @@ async function renderEditor(id) {
       { icon: ICON.share, label: 'Als PDF teilen', run: () => shareReport(report) },
       ...(isDraft ? [] : [{ icon: ICON.cloud, label: 'Jetzt hochladen', run: () => (isConfigured(settings) ? runSync(true) : (location.hash = '#/einstellungen')) }]),
       { icon: ICON.copy, label: 'Neuer Bericht mit diesen Angaben', run: () => duplicate(report) },
-      { icon: ICON.trash, label: isDraft ? 'Verwerfen' : 'Bericht löschen', danger: true, run: () => (isDraft ? cancel() : removeReport(report, true)) },
+      { icon: ICON.trash, label: isDraft ? 'Verwerfen' : (report.art === 'aufmass' ? 'Aufmaß löschen' : 'Bericht löschen'), danger: true, run: () => (isDraft ? cancel() : removeReport(report, true)) },
     ]);
   };
 
@@ -1459,7 +1614,7 @@ function monatsGrenzen(delta) {
 const siteKey = (r) => r.baustelleId || (r.baustelle ? `frei:${r.baustelle.trim().toLowerCase()}` : '');
 
 async function openZusammenfassung(preset = {}) {
-  const reports = await db.allReports();
+  const reports = (await db.allReports()).filter((r) => r.art !== 'aufmass');
   if (!reports.length) { toast('Es gibt noch keine Berichte.'); return; }
   const sites = await db.allSites();
   const f = { baustelleId: preset.baustelleId || '', art: '', von: '', bis: '', gesamt: true };

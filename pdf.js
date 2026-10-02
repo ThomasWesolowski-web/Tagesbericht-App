@@ -2,7 +2,7 @@
 // jsPDF wird erst beim ersten Bedarf geladen und liegt offline im Cache.
 
 import {
-  WETTER, ABRECHNUNG, artLabel, crewOf, sortCrew, kategorieOf, entryHours, hoursByKategorie,
+  WETTER, ABRECHNUNG, artLabel, normPosition, positionLeer, positionSumme, zeileMenge, zeileLeer, aufmassSummen, formatMenge, formatMass, einheitLabel, crewOf, sortCrew, kategorieOf, entryHours, hoursByKategorie,
   workedHours, maschinenStunden, formatHours, formatDate, weekday, gewerkeText,
 } from './report.js';
 import { slug } from './media.js';
@@ -178,7 +178,13 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
 
   // Eckdaten als Kästchen
   const wetter = (r.wetter || []).map((id) => WETTER.find((w) => w.id === id)?.label).filter(Boolean).join(', ');
-  const facts = [
+  const isAufmass = r.art === 'aufmass';
+  const facts = isAufmass ? [
+    ['Auftraggeber', r.auftraggeber],
+    ['Art der Arbeit', r.arbeitsart],
+    ['Auftragsnummer', r.auftrag],
+    ['Aufgestellt von', author],
+  ].filter((f) => f[1] && String(f[1]).trim()) : [
     ['Auftragsnummer', r.auftrag],
     ['Stunden gesamt', formatHours(workedHours(r))],
     ['Wetter', [wetter, r.temperatur ? `${r.temperatur} °C` : ''].filter(Boolean).join(', ')],
@@ -249,6 +255,72 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
     y += 4;
   };
 
+  // Aufmaß wie auf dem Papierformular
+  const positionen = isAufmass ? (r.positionen || []).filter((q) => !positionLeer(q)).map(normPosition) : [];
+  if (positionen.length) {
+    heading('Aufmaß', 24);
+    const cols = [
+      { label: 'Lfd. Nr.', w: 14 }, { label: 'Bezeichnung', w: 0 }, { label: 'Stück', w: 13, align: 'right' },
+      { label: 'Länge', w: 15, align: 'right' }, { label: 'Breite', w: 15, align: 'right' }, { label: 'Höhe', w: 15, align: 'right' },
+      { label: 'Meßgehalt', w: 20, align: 'right' }, { label: 'Abzug', w: 17, align: 'right' }, { label: 'Netto-Meßgehalt', w: 28, align: 'right' },
+    ];
+    cols[1].w = CW - cols.reduce((a, c) => a + c.w, 0);
+    const rowH = 6.4;
+    const head = () => {
+      doc.setFillColor(...SOFT);
+      doc.rect(M, y - 4.5, CW, rowH, 'F');
+      font('bold', 7.8); color(MUTED);
+      let x = M;
+      for (const c of cols) {
+        doc.text(c.label, c.align === 'right' ? x + c.w - 1.5 : x + 1.5, y, { align: c.align === 'right' ? 'right' : 'left' });
+        x += c.w;
+      }
+      y += rowH;
+    };
+    const zeile = (cells, { bold = [], red = [] } = {}) => {
+      if (y + rowH > BOTTOM) { newPage(); head(); }
+      let x = M;
+      cells.forEach((cell, ci) => {
+        const c = cols[ci];
+        font(bold.includes(ci) ? 'bold' : 'normal', 9.2); color(red.includes(ci) ? [190, 40, 30] : INK);
+        const t = doc.splitTextToSize(String(cell ?? ''), c.w - 3)[0] || '';
+        doc.text(t, c.align === 'right' ? x + c.w - 1.5 : x + 1.5, y, { align: c.align === 'right' ? 'right' : 'left' });
+        x += c.w;
+      });
+      y += rowH;
+    };
+    head();
+    for (const q of positionen) {
+      const eh = einheitLabel(q.einheit);
+      const sum = positionSumme(q);
+      const zeilen = q.zeilen.filter((z) => !zeileLeer(z));
+      const bez = doc.splitTextToSize(q.bezeichnung || '', cols[1].w - 3);
+      const n = Math.max(zeilen.length, bez.length, 1);
+      if (y + Math.min(n, 4) * rowH > BOTTOM) { newPage(); head(); }
+      for (let i = 0; i < n; i++) {
+        const z = zeilen[i];
+        const m = z ? zeileMenge(z, q.einheit) : 0;
+        const last = i === n - 1;
+        zeile([
+          i ? '' : q.pos, bez[i] || '',
+          z ? formatMass(z.stueck) : '', z ? formatMass(z.laenge) : '', z ? formatMass(z.breite) : '', z ? formatMass(z.hoehe) : '',
+          z && !z.abzug && m ? formatMenge(m) : '', z && z.abzug && m ? formatMenge(m) : '',
+          last ? `${formatMenge(sum.netto)} ${eh}` : '',
+        ], { bold: last ? [8] : [], red: [7] });
+      }
+      doc.setDrawColor(...LINE);
+      doc.line(M, y - rowH + 2, M + CW, y - rowH + 2);
+    }
+    y += 3;
+    const summen = aufmassSummen(r);
+    ensure(10 + summen.length * 7);
+    table(
+      [{ label: 'Summe', w: CW - 38 }, { label: 'Menge', w: 24, align: 'right' }, { label: '', w: 14 }],
+      summen.map((x) => [`Gesamt ${x.label}`, formatMenge(x.menge), x.label]),
+      { boldLast: summen.length === 1 },
+    );
+  }
+
   // Personal
   const crew = sortCrew([...crewOf(r)]);
   if (crew.length) {
@@ -299,6 +371,32 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
   textBlock('Ausgeführte Arbeiten', [gewerkeText(r) ? `Art der Arbeit: ${gewerkeText(r)}` : '', r.taetigkeiten].filter((x) => x && x.trim()).join('\n'));
   textBlock('Material und Geräte', r.material);
   textBlock('Bemerkungen / Besondere Vorkommnisse', r.bemerkungen);
+
+  // Aufmaß: Aufgestellt / Anerkannt wie auf dem Formular
+  if (isAufmass) {
+    const img = r.unterschrift?.dataUrl ? await toJpeg(r.unterschrift.dataUrl, 900) : null;
+    ensure(46);
+    y += 4;
+    const bw = (CW - 12) / 2;
+    const top = y;
+    if (img) {
+      const w = 60;
+      const h = Math.min(26, (img.h / img.w) * w);
+      doc.addImage(img.data, 'JPEG', M + bw + 12, top + 26 - h, w, h);
+    }
+    font('normal', 10.5); color(INK);
+    if (author) doc.text(author, M, top + 24);
+    y = top + 28;
+    doc.setDrawColor(...INK);
+    doc.line(M, y, M + bw, y);
+    doc.line(M + bw + 12, y, M + CW, y);
+    y += 4.5;
+    font('normal', 8.5); color(MUTED);
+    doc.text('Aufgestellt, Unterschrift', M, y);
+    const when = r.unterschrift?.dataUrl ? ` · ${r.unterschrift.name || ''} · ${new Date(r.unterschrift.zeit).toLocaleDateString('de-DE')}` : '';
+    doc.text(`Anerkannt, Unterschrift${when}`, M + bw + 12, y);
+    y += 10;
+  }
 
   // Unterschrift (Rapport)
   if (isRapport && r.unterschrift?.dataUrl) {

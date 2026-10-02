@@ -172,7 +172,7 @@ function folderPrefix(settings) {
 }
 
 async function chooseRemoteDir(gh, settings, report) {
-  const base = `${report.datum}_${slug(report.baustelle) || 'bericht'}${report.art === 'rapport' ? '_rapport' : ''}`;
+  const base = `${report.datum}_${slug(report.baustelle) || 'bericht'}${report.art === 'rapport' ? '_rapport' : report.art === 'aufmass' ? '_aufmass' : ''}`;
   let dir = base;
   for (let i = 2; await pathExists(gh, settings, folderPrefix(settings) + dir); i++) dir = `${base}-${i}`;
   return dir;
@@ -250,7 +250,7 @@ export async function syncReport(settings, reportId) {
   }
   if (pdf) entries.push({ path: `${dir}/bericht.pdf`, blob: pdf });
   const wanted = new Set([...(pdf ? [`${dir}/bericht.pdf`] : []), `${dir}/bericht.md`, `${dir}/bericht.json`, ...files.map((f) => `${dir}/${f.remoteName}`)]);
-  if (report.art === 'rapport' && report.unterschrift?.dataUrl) {
+  if ((report.art === 'rapport' || report.art === 'aufmass') && report.unterschrift?.dataUrl) {
     const blob = await (await fetch(report.unterschrift.dataUrl)).blob();
     entries.push({ path: `${dir}/unterschrift.png`, blob });
     wanted.add(`${dir}/unterschrift.png`);
@@ -534,7 +534,7 @@ function blobToDataUrl(blob) {
 }
 
 function fromJson(data, dir, paths, { original = false } = {}) {
-  const { stundenNachKategorie, stunden, maschinenStunden, anhaenge, unterschrift, original: orig, uebersetzung, ...r } = data;
+  const { stundenNachKategorie, stunden, maschinenStunden, anhaenge, unterschrift, original: orig, uebersetzung, summen, ...r } = data;
   // Übersetzte Berichte: der Administrator bekommt den deutschen Text, der Verfasser sein Original.
   if (orig && original) Object.assign(r, orig);
   else if (orig) r.sprache = 'de';
@@ -542,6 +542,7 @@ function fromJson(data, dir, paths, { original = false } = {}) {
     ...r,
     mitarbeiter: (data.mitarbeiter || []).map(({ stunden: h, ...e }) => e),
     maschinen: data.maschinen || [],
+    positionen: (data.positionen || []).map(({ mess, abzug, netto, ...p }) => ({ ...p, zeilen: (p.zeilen || []).map(({ menge, ...z }) => z) })),
     abrechnung: data.abrechnung || 'regie',
     unterschrift: null,
     remoteDir: dir,

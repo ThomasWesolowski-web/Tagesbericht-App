@@ -34,7 +34,81 @@ export function maschinenStunden(r) {
 }
 
 export function artLabel(r) {
-  return r?.art === 'rapport' ? 'Rapport' : 'Tagesbericht';
+  return r?.art === 'rapport' ? 'Rapport' : r?.art === 'aufmass' ? 'Aufmaß' : 'Tagesbericht';
+}
+
+// ---------- Aufmaß ----------
+// Position: { pos, bezeichnung, anzahl, laenge, breite, einheit, abzug }
+export const EINHEITEN = [
+  { id: 'm2', label: 'm²' },
+  { id: 'm', label: 'lfm' },
+  { id: 'm3', label: 'm³' },
+  { id: 'stk', label: 'Stk' },
+];
+export const einheitLabel = (id) => EINHEITEN.find((e) => e.id === id)?.label || 'm²';
+export function zahl(v) {
+  const n = Number(String(v ?? '').trim().replace(/\s/g, '').replace(',', '.'));
+  return Number.isFinite(n) ? n : 0;
+}
+const leer = (v) => String(v ?? '').trim() === '';
+const rund = (n) => Math.round(n * 1000) / 1000;
+
+// Aufbau wie das Papier-Aufmaß: eine Position (Lfd. Nr., Bezeichnung, Einheit) mit mehreren Messzeilen
+// (Stück, Länge, Breite, Höhe). Abzugszeilen werden von der Position abgezogen.
+export function newZeile() {
+  return { stueck: '', laenge: '', breite: '', hoehe: '', wert: '', abzug: false };
+}
+export function newPosition(nr = 1, einheit = 'm2') {
+  return { pos: String(nr), bezeichnung: '', einheit, zeilen: [newZeile()] };
+}
+// Ältere Entwürfe hatten eine Zeile direkt in der Position.
+export function normPosition(p) {
+  if (Array.isArray(p.zeilen)) return p;
+  const { anzahl, laenge, breite, abzug, menge, ...rest } = p;
+  return { ...rest, einheit: rest.einheit || 'm2', zeilen: [{ ...newZeile(), stueck: anzahl === '1' ? '' : anzahl || '', laenge: laenge || '', breite: breite || '', abzug: !!abzug }] };
+}
+export function zeileLeer(z) {
+  return leer(z.stueck) && leer(z.laenge) && leer(z.breite) && leer(z.hoehe) && leer(z.wert);
+}
+// Meßgehalt einer Zeile: Stück × alle ausgefüllten Maße. Ohne Maße zählt ein direkt eingetragener Wert,
+// bei Stück-Positionen die Stückzahl.
+export function zeileMenge(z, einheit) {
+  const masse = [z.laenge, z.breite, z.hoehe].filter((v) => !leer(v)).map(zahl);
+  const stueck = leer(z.stueck) ? 1 : zahl(z.stueck);
+  if (masse.length) return rund(masse.reduce((a, b) => a * b, stueck));
+  if (!leer(z.wert)) return rund(zahl(z.wert));
+  if (einheit === 'stk' && !leer(z.stueck)) return rund(stueck);
+  return 0;
+}
+export function positionLeer(p) {
+  const q = normPosition(p);
+  return leer(q.bezeichnung) && q.zeilen.every(zeileLeer);
+}
+export function positionSumme(p) {
+  const q = normPosition(p);
+  let mess = 0;
+  let abzug = 0;
+  for (const z of q.zeilen) {
+    const m = zeileMenge(z, q.einheit);
+    if (z.abzug) abzug += m; else mess += m;
+  }
+  return { mess: rund(mess), abzug: rund(abzug), netto: rund(mess - abzug) };
+}
+export const positionMenge = (p) => positionSumme(p).netto;
+export function aufmassSummen(r) {
+  const s = {};
+  for (const p of r.positionen || []) {
+    if (positionLeer(p)) continue;
+    const e = p.einheit || 'm2';
+    s[e] = rund((s[e] || 0) + positionMenge(p));
+  }
+  return EINHEITEN.filter((e) => s[e.id] !== undefined).map((e) => ({ einheit: e.id, label: e.label, menge: s[e.id] }));
+}
+export function formatMenge(n) {
+  return n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+export function formatMass(v) {
+  return String(v ?? '').trim() === '' ? '' : zahl(v).toLocaleString('de-DE', { maximumFractionDigits: 3 });
 }
 
 export function today() {
@@ -72,6 +146,10 @@ export function newReport() {
     // nur beim Rapport
     abrechnung: 'regie',
     maschinen: [], // { bezeichnung, stunden }
+    // nur beim Aufmaß
+    positionen: [],
+    auftraggeber: '',
+    arbeitsart: '',
     unterschrift: null, // { name, dataUrl, zeit }
     dirty: true,
     syncedAt: null,
@@ -211,7 +289,7 @@ export function toMarkdown(r, files, author, options = {}) {
     ['Auftragsnummer', r.auftrag],
     ['Art der Arbeit', gewerkeText(r)],
     ['Abrechnung', isRapport ? ABRECHNUNG.find((a) => a.id === (r.abrechnung || 'regie'))?.label : ''],
-    ['Stunden gesamt', formatHours(workedHours(r))],
+    ['Stunden gesamt', r.art === 'aufmass' ? '' : formatHours(workedHours(r))],
     ['Wetter', [wetter, r.temperatur ? `${r.temperatur} °C` : ''].filter(Boolean).join(', ')],
     ['Erstellt von', author],
   ].filter(([, v]) => v && String(v).trim());
@@ -230,6 +308,7 @@ export function toMarkdown(r, files, author, options = {}) {
     for (const k of hoursByKategorie(r)) md += `| ${k.kategorie} | ${k.personen} | ${formatHours(k.stunden)} |\n`;
     md += `| **Gesamt** | **${crew.length}** | **${formatHours(workedHours(r))}** |\n`;
   }
+  if (r.art === 'aufmass') md += aufmassMarkdown(r);
   md += block('Ausgeführte Arbeiten', r.taetigkeiten);
   const maschinen = isRapport ? (r.maschinen || []).filter((m) => m.bezeichnung || m.stunden) : [];
   if (maschinen.length) {
@@ -253,9 +332,38 @@ export function toMarkdown(r, files, author, options = {}) {
   return md;
 }
 
+function aufmassMarkdown(r) {
+  const pos = (r.positionen || []).filter((p) => !positionLeer(p)).map(normPosition);
+  if (!pos.length) return '';
+  const esc = (s) => String(s ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+  let md = '\n## Aufmaß\n\n';
+  if (r.auftraggeber) md += `**Auftraggeber:** ${esc(r.auftraggeber)}  \n`;
+  if (r.arbeitsart) md += `**Art der Arbeit:** ${esc(r.arbeitsart)}  \n`;
+  md += '\n| Lfd. Nr. | Bezeichnung | Stück | Länge | Breite | Höhe | Meßgehalt | Abzug | Netto |\n|---|---|---|---|---|---|---|---|---|\n';
+  for (const p of pos) {
+    const zeilen = p.zeilen.filter((z) => !zeileLeer(z));
+    const sum = positionSumme(p);
+    const eh = einheitLabel(p.einheit);
+    (zeilen.length ? zeilen : [newZeile()]).forEach((z, i) => {
+      const m = zeileMenge(z, p.einheit);
+      const last = i === Math.max(zeilen.length, 1) - 1;
+      md += `| ${i ? '' : esc(p.pos)} | ${i ? '' : esc(p.bezeichnung)} | ${formatMass(z.stueck)} | ${formatMass(z.laenge)} | ${formatMass(z.breite)} | ${formatMass(z.hoehe)} | ${!z.abzug && m ? formatMenge(m) : ''} | ${z.abzug && m ? formatMenge(m) : ''} | ${last ? `**${formatMenge(sum.netto)} ${eh}**` : ''} |\n`;
+    });
+  }
+  for (const s of aufmassSummen(r)) md += `| | **Summe ${s.label}** | | | | | | | **${formatMenge(s.menge)} ${s.label}** |\n`;
+  return md;
+}
+
 // Maschinenlesbare Fassung, damit Berichte später ausgewertet werden können.
 export function toJson(r, files, author) {
-  const { dirty, syncError, remoteFiles, deutsch, abrechnung, maschinen, unterschrift, ...data } = r;
+  const { dirty, syncError, remoteFiles, deutsch, abrechnung, maschinen, unterschrift, positionen, ...data } = r;
+  const aufmass = r.art === 'aufmass'
+    ? {
+        positionen: (positionen || []).filter((p) => !positionLeer(p)).map(normPosition)
+          .map((p) => ({ ...p, einheit: p.einheit || 'm2', zeilen: p.zeilen.filter((z) => !zeileLeer(z)).map((z) => ({ ...z, menge: zeileMenge(z, p.einheit) })), ...positionSumme(p) })),
+        summen: Object.fromEntries(aufmassSummen(r).map((s) => [s.label, s.menge])),
+      }
+    : {};
   const rapport = r.art === 'rapport'
     ? {
         abrechnung: abrechnung || 'regie',
@@ -265,6 +373,7 @@ export function toJson(r, files, author) {
         unterschrift: unterschrift?.dataUrl ? { name: unterschrift.name, zeit: new Date(unterschrift.zeit).toISOString(), datei: 'unterschrift.png' } : null,
       }
     : {};
+  if (r.art === 'aufmass') aufmass.unterschrift = unterschrift?.dataUrl ? { name: unterschrift.name, zeit: new Date(unterschrift.zeit).toISOString(), datei: 'unterschrift.png' } : null;
   return JSON.stringify(
     {
       ...data,
@@ -273,6 +382,7 @@ export function toJson(r, files, author) {
       stundenNachKategorie: Object.fromEntries(hoursByKategorie(r).map((k) => [k.kategorie, k.stunden])),
       stunden: workedHours(r),
       ...rapport,
+      ...aufmass,
       erstelltVon: author || undefined,
       anhaenge: files.map((f) => ({ name: f.name, datei: f.remoteName, typ: f.type, groesse: f.size, ...(f.text ? { text: f.text } : {}), ...(f.textOriginal ? { textOriginal: f.textOriginal } : {}) })),
     },
