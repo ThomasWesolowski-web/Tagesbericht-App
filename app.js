@@ -17,7 +17,7 @@ import { startI18n, SPRACHEN } from './i18n.js';
 import { openMarkup } from './markup.js';
 import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from './fotoaufmass.js';
 
-const APP_VERSION = '1.29.1';
+const APP_VERSION = '1.30.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -2060,17 +2060,13 @@ async function renderStunden() {
   $('#m-prev').onclick = () => { stundenMonat = shiftMonth(stundenMonat, -1); renderStunden(); };
   $('#m-next').onclick = () => { stundenMonat = shiftMonth(stundenMonat, 1); renderStunden(); };
   $('#stunde-neu').onclick = () => {
-    const last = sortStunden(all.filter((e) => hatZeiten(e.typ))).pop();
+    // Neuer Eintrag startet leer: Art, Baustelle, Art der Arbeit und Zeiten werden aktiv gewählt.
     const datum = stundenMonat === today().slice(0, 7) ? today() : `${stundenMonat}-01`;
     openStundeEditor(newStunde({
       personId: person.personId || null,
       name: person.name,
       datum,
-      beginn: last?.beginn || '07:00',
-      ende: last?.ende || '16:00',
-      pause: last?.pause ?? 30,
-      baustelleId: last?.baustelleId || null,
-      baustelle: last?.baustelle || '',
+      typ: '',
     }), true);
   };
   $$('.rcard.stunde').forEach((b) => {
@@ -2112,16 +2108,6 @@ async function chooseStundenPerson() {
   };
 }
 
-// Zeiten aus einem Bericht desselben Tages vorschlagen, in dem die Person eingetragen ist.
-async function stundenAusBericht(e) {
-  for (const r of await db.allReports()) {
-    if (r.datum !== e.datum) continue;
-    const m = crewOf(r).find((c) => (e.personId && c.personId === e.personId) || c.name.trim().toLowerCase() === e.name.trim().toLowerCase());
-    if (m) return { beginn: m.beginn, ende: m.ende, pause: m.pause, baustelleId: r.baustelleId, baustelle: r.baustelle, gewerke: [...(r.gewerke || [])], gewerkFrei: r.gewerkFrei || '' };
-  }
-  return null;
-}
-
 function openStundeEditor(e, isNew) {
   const origMonth = isNew ? null : { ...e };
   const { sheet, close } = openSheet(`
@@ -2138,7 +2124,6 @@ function openStundeEditor(e, isNew) {
         <label class="field"><span>Pause</span><input type="number" inputmode="numeric" min="0" step="5" id="st-pause" value="${esc(e.pause)}" placeholder="Min."></label>
       </div>
       <div class="crew-sum"><div class="kv total" style="border:0;margin:0;padding-top:4px"><span>Arbeitszeit</span><b id="st-h"></b></div></div>
-      <p class="hint" id="st-hint" style="margin:-4px 0 12px" hidden></p>
     </div>
     <label class="field"><span>Notiz</span><input type="text" id="st-notiz" value="${esc(e.notiz)}" placeholder="optional, z. B. Fahrzeit, Überstunden"></label>
     <div class="row sheet-actions">
@@ -2150,7 +2135,7 @@ function openStundeEditor(e, isNew) {
   const drawSite = () => {
     $('#st-site', sheet).innerHTML = e.baustelle
       ? `${ICON.pin}<span><b>${esc(e.baustelle)}</b></span><em>Ändern</em>`
-      : `${ICON.pin}<span><b class="muted">Baustelle wählen</b><small>optional</small></span>`;
+      : `${ICON.pin}<span><b class="muted">Baustelle wählen</b><small>${e.typ === 'arbeit' ? 'Pflicht' : 'optional'}</small></span>`;
   };
   const drawHours = () => {
     $('#st-h', sheet).textContent = formatHours(entryHours(e));
@@ -2158,26 +2143,13 @@ function openStundeEditor(e, isNew) {
   const drawTyp = () => {
     $$('#st-typ .chip', sheet).forEach((c) => c.setAttribute('aria-pressed', c.dataset.typ === e.typ));
     $('#st-zeit', sheet).hidden = !hatZeiten(e.typ);
-  };
-  const fromReport = async () => {
-    const hit = await stundenAusBericht(e);
-    if (!hit) return;
-    Object.assign(e, hit);
-    $('#st-beginn', sheet).value = e.beginn || '';
-    $('#st-ende', sheet).value = e.ende || '';
-    $('#st-pause', sheet).value = e.pause ?? '';
-    const hint = $('#st-hint', sheet);
-    hint.textContent = `Zeiten aus dem Bericht ${e.baustelle ? `„${e.baustelle}“ ` : ''}übernommen.`;
-    hint.hidden = false;
     drawSite();
-    drawHours();
   };
   drawSite();
   drawHours();
   drawTyp();
-  if (isNew) fromReport();
 
-  $('#st-datum', sheet).onchange = (ev) => { e.datum = ev.target.value; if (isNew) fromReport(); };
+  $('#st-datum', sheet).onchange = (ev) => { e.datum = ev.target.value; };
   $$('#st-typ .chip', sheet).forEach((c) => { c.onclick = () => { e.typ = c.dataset.typ; drawTyp(); }; });
   $('#st-site', sheet).onclick = () => openSitePicker(e.baustelleId, (site) => {
     e.baustelleId = site.id;
@@ -2191,8 +2163,12 @@ function openStundeEditor(e, isNew) {
   $('#st-notiz', sheet).oninput = (ev) => { e.notiz = ev.target.value; };
   $('#st-cancel', sheet).onclick = close;
   $('#st-save', sheet).onclick = async () => {
+    // Pflichtangaben wie beim Rapport
     if (!e.datum) { toast('Bitte ein Datum wählen.'); return; }
-    if (hatZeiten(e.typ) && (!e.beginn || !e.ende)) { toast('Bitte Beginn und Ende eintragen.'); return; }
+    if (!e.typ) { toast('Bitte Arbeit, Urlaub, Krank, Feiertag oder Berufsschule wählen.', 3500); return; }
+    if (e.typ === 'arbeit' && !e.baustelle) { toast('Bitte eine Baustelle wählen.'); return; }
+    if (e.typ === 'arbeit' && !(e.gewerke || []).length && !(e.gewerkFrei || '').trim()) { toast('Bitte die Art der Arbeit eintragen.'); return; }
+    if (hatZeiten(e.typ) && (!e.beginn || !e.ende || e.pause === '' || e.pause == null)) { toast('Bitte Beginn, Ende und Pause eintragen.'); return; }
     if (!hatZeiten(e.typ)) Object.assign(e, { beginn: '', ende: '', pause: '', baustelleId: null, baustelle: '', gewerke: [], gewerkFrei: '' });
     await db.putStunde(e);
     if (origMonth && origMonth.datum.slice(0, 7) !== e.datum.slice(0, 7)) db.markStundenDirty(origMonth);
