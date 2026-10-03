@@ -776,18 +776,18 @@ export async function openFotoAufmass(blob, vorlage) {
           : `${NAMEN[entwurf.typ]}: die Endpunkte an die richtige Stelle ziehen.`;
       k = knopf('fa-verwerfen', 'Verwerfen') + knopf('fa-schliessen', 'Fertig', true);
     } else if (auswahl) {
-      t = `${auswahl.name}: Ecken ziehen, ⊕ ziehen = neue Ecke.`;
       const eckeWeg = aktiv?.art === 'teil' && aktiv.t === auswahl && auswahl.punkte.length > mindest(auswahl.typ);
-      k = knopf('fa-t-aendern', 'Ändern') + (eckeWeg ? knopf('fa-ecke-weg', 'Ecke löschen') : '') + knopf('fa-t-fertig', 'Fertig', true);
+      t = eckeWeg ? auswahl.name : `${auswahl.name}: Ecken ziehen, ⊕ = neue Ecke. Lange drücken und ziehen verschiebt alles.`;
+      k = knopf('fa-t-aendern', 'Name') + (eckeWeg ? knopf('fa-ecke-weg', 'Ecke weg') : '') + knopf('fa-t-weg', 'Löschen') + knopf('fa-t-fertig', 'Fertig', true);
     } else if (aktiv?.art === 'ref') {
-      t = aktiv.key === 'rahmen' ? 'Rahmen: Ecken ziehen, bis sie genau auf dem Rechteck sitzen.' : `${NAMEN[aktiv.key]}: Endpunkte ziehen.`;
+      t = aktiv.key === 'rahmen' ? 'Rahmen: Ecken ziehen, bis sie genau auf dem Rechteck sitzen.' : rahmenFertig(d.ref.rahmen) ? `${NAMEN[aktiv.key]}: wird nicht gebraucht, der Rahmen gibt den Maßstab vor.` : `${NAMEN[aktiv.key]}: Endpunkte ziehen.`;
       k = knopf('fa-ref-mass', 'Maße ändern') + knopf('fa-t-fertig', 'Fertig', true);
     } else if (!ms) {
       t = 'Zuerst „Rahmen“ tippen: ein Rechteck erscheint, dessen Ecken du auf ein Fenster, eine Tür oder die Wand ziehst.';
     } else if (ms.fehler) {
       t = ms.fehler;
     } else {
-      t = 'Fläche, Öffnung oder Strecke tippen: die Form erscheint auf dem Foto und wird über die Ecken angepasst. Ein Finger verschiebt das Foto, zwei Finger zoomen.';
+      t = 'Fläche, Öffnung oder Strecke tippen: die Form erscheint auf dem Foto und wird über die Ecken angepasst. Lange antippen wählt ein Teil zum Verschieben oder Löschen.';
       if (!ms.beide) t += ' Nur eine Referenz gesetzt: Maßstab gilt dann für beide Richtungen.';
     }
     txt.textContent = t;
@@ -797,9 +797,17 @@ export async function openFotoAufmass(blob, vorlage) {
     an('fa-schliessen', () => abschliessen());
     an('fa-t-aendern', () => teilFragen(auswahl, false));
     an('fa-ecke-weg', () => { auswahl.punkte.splice(aktiv.i, 1); aktiv = null; fk.hidden = true; geaendert = true; neuZeichnen(); });
+    an('fa-t-weg', () => {
+      if (!confirm(`„${auswahl.name}“ löschen?`)) return;
+      d.teile.splice(d.teile.indexOf(auswahl), 1);
+      auswahl = null; aktiv = null; fk.hidden = true; geaendert = true; neuZeichnen();
+    });
     an('fa-t-fertig', () => { auswahl = null; aktiv = null; fk.hidden = true; neuZeichnen(); });
     an('fa-ref-mass', () => (aktiv.key === 'rahmen' ? fragRahmen(false) : fragMass(aktiv.key, false)));
-    view.querySelectorAll('.mk-wz').forEach((b) => b.setAttribute('aria-pressed', b.dataset.wz === (entwurf?.typ || '')));
+    view.querySelectorAll('.mk-wz').forEach((b) => {
+      b.setAttribute('aria-pressed', b.dataset.wz === (entwurf?.typ || ''));
+      b.classList.toggle('fa-unnoetig', (b.dataset.wz === 'laenge' || b.dataset.wz === 'hoehe') && rahmenFertig(d.ref.rahmen));
+    });
     $('.fa-regel').textContent = `${regelVon(d).label.replace(/ \(.*/, '')}: ${regelVon(d).schwelle ? `bis ${fmt(regelVon(d).schwelle)} m² übermessen` : 'alles abziehen'}`;
     $('.fa-rueck').disabled = !entwurf && !d.teile.length && !d.ref.laenge && !d.ref.hoehe && !d.ref.rahmen;
     const rb = $('.fa-raster');
@@ -1011,8 +1019,44 @@ export async function openFotoAufmass(blob, vorlage) {
     return best;
   };
 
+  // Teil unter dem Finger: Strecken (nah an einer Linie) vor Öffnungen vor Flächen
+  const abstandStrecke = (p, a, b) => {
+    const vx = b[0] - a[0];
+    const vy = b[1] - a[1];
+    const l2 = vx * vx + vy * vy || 1;
+    const k = Math.max(0, Math.min(1, ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / l2));
+    return Math.hypot(p[0] - a[0] - k * vx, p[1] - a[1] - k * vy);
+  };
+  const teilUnter = (p) => {
+    const r = fangRadius();
+    const neu = [...d.teile].reverse();
+    return neu.find((t) => t.typ === 'linie' && t.punkte.slice(1).some((q, i) => abstandStrecke(p, t.punkte[i], q) < r))
+      || neu.find((t) => t.typ === 'oeffnung' && innen(p, t.punkte))
+      || neu.find((t) => t.typ === 'flaeche' && innen(p, t.punkte))
+      || null;
+  };
+
   const finger = new Map();
   let pinch = null;
+  let langTimer = null;
+  const langAus = () => { clearTimeout(langTimer); langTimer = null; };
+  // Lange antippen: Teil auswählen; weiterziehen verschiebt das ganze Teil
+  const langStart = (p) => {
+    langAus();
+    langTimer = setTimeout(() => {
+      langTimer = null;
+      if (!ziehen || ziehen.bewegt || finger.size !== 1 || entwurf) return;
+      const t = ziehen.art === 'griff' && ziehen.ziel.art === 'teil' ? ziehen.ziel.t : teilUnter(p);
+      if (!t) return;
+      if (ziehen.art === 'griff') setze(ziehen.ziel, ziehen.startP);
+      auswahl = t;
+      aktiv = null;
+      fk.hidden = true;
+      ziehen = { art: 'teilzug', t, x0: ziehen.x0, y0: ziehen.y0, start: t.punkte.map((q) => [...q]), bewegt: false };
+      try { navigator.vibrate?.(30); } catch { /* egal */ }
+      neuZeichnen();
+    }, 500);
+  };
   const fingerMitte = () => {
     const [a, b] = [...finger.values()];
     return { d: Math.hypot(b.x - a.x, b.y - a.y) || 1, m: [(a.x + b.x) / 2, (a.y + b.y) / 2] };
@@ -1031,10 +1075,12 @@ export async function openFotoAufmass(blob, vorlage) {
     finger.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (finger.size >= 2) {
       abbrechen();
+      langAus();
       if (finger.size === 2) pinch = { ...fingerMitte(), von: { ...zoom } };
       return;
     }
     const p = punkt(e);
+    langStart(p);
     let t = treffer(p);
     if (t?.art === 'kante') {
       // Neue Ecke in der Kantenmitte einfügen und gleich ziehen
@@ -1068,9 +1114,14 @@ export async function openFotoAufmass(blob, vorlage) {
     if (!ziehen) return;
     const dx = e.clientX - ziehen.x0;
     const dy = e.clientY - ziehen.y0;
-    if (Math.hypot(dx, dy) > 4) ziehen.bewegt = true;
+    if (Math.hypot(dx, dy) > 4) { ziehen.bewegt = true; langAus(); }
     if (!ziehen.bewegt) return;
-    if (ziehen.art === 'griff') {
+    if (ziehen.art === 'teilzug') {
+      const f = proPx();
+      ziehen.t.punkte = ziehen.start.map(([x, y]) => [x + dx * f, y + dy * f]);
+      geaendert = true;
+      neuZeichnen();
+    } else if (ziehen.art === 'griff') {
       // Punkt wandert um dieselbe Strecke wie der Finger, liegt also nie unter dem Finger
       const f = proPx();
       const p = fangen([
@@ -1087,16 +1138,17 @@ export async function openFotoAufmass(blob, vorlage) {
   });
   const hoch = (e) => {
     finger.delete(e.pointerId);
+    langAus();
     if (pinch) { if (finger.size < 2) pinch = null; ziehen = null; return; }
     const z = ziehen;
     ziehen = null;
     if (!z) return;
+    if (z.art === 'teilzug') { neuZeichnen(); return; }
     if (z.art === 'schieben') {
       if (z.bewegt) { zoomSetzen(); return; }
       // Antippen ohne Bewegung: Teil unter dem Finger auswählen, sonst Auswahl aufheben
       if (!entwurf) {
-        const getroffen = [...d.teile].reverse().find((t) => ZU.includes(t.typ) && innen(z.p, t.punkte));
-        auswahl = getroffen || null;
+        auswahl = teilUnter(z.p);
         aktiv = null;
         fk.hidden = true;
       }
@@ -1112,6 +1164,10 @@ export async function openFotoAufmass(blob, vorlage) {
   view.querySelectorAll('.mk-wz').forEach((b) => {
     b.onclick = () => {
       const typ = b.dataset.wz;
+      if ((typ === 'laenge' || typ === 'hoehe') && rahmenFertig(d.ref.rahmen) && !d.ref[typ]) {
+        alert('Mit fertigem Rahmen braucht es keine Länge oder Höhe: der Rahmen gibt den Maßstab vor.');
+        return;
+      }
       // Vorhandene Referenz nicht doppelt anlegen, sondern zum Anpassen auswählen
       if (REF_WZ.includes(typ) && d.ref[typ] && !entwurf) {
         auswahl = null;

@@ -669,3 +669,4 @@ html.mk-offen, html.mk-offen body { overflow: hidden; }
 .fa-zoomknoepfe button { width: 44px; height: 44px; border-radius: 50%; border: 0; background: rgba(20,22,25,.78); color: #fff; font-size: 1.4rem; line-height: 1; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
 .fa-zoomknoepfe button:active { background: var(--accent); color: var(--accent-ink); }
 .fa-view .fa-bild { touch-action: none; }
+.fa-view .mk-wz.fa-unnoetig { opacity: .35; }
