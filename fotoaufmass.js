@@ -358,7 +358,7 @@ function etikett(ctx, text, [x0, y0], groesse, farbe) {
   ctx.restore();
 }
 
-function zeichneAlles(ctx, img, d, { basis, entwurf = null, griffe = false, auswahl = null, vorschau = null, raster = null, aktiv = null, kanten = [] }) {
+function zeichneAlles(ctx, img, d, { basis, entwurf = null, griffe = false, auswahl = null, vorschau = null, raster = null, aktiv = null, kanten = [], schieber = null }) {
   const W = img.naturalWidth;
   const H = img.naturalHeight;
   ctx.drawImage(img, 0, 0, W, H);
@@ -474,6 +474,37 @@ function zeichneAlles(ctx, img, d, { basis, entwurf = null, griffe = false, ausw
       ctx.stroke();
       ctx.restore();
     };
+    // Blauer Schiebepunkt: verschiebt das ausgewählte Teil als Ganzes, Ecken bleiben, wie sie sind
+    if (schieber) {
+      const [x, y] = schieber;
+      const r = basis * 3.4;
+      const pfeil = basis * 2.3;
+      const spitze = basis * 0.8;
+      ctx.save();
+      ctx.fillStyle = '#1e88e5';
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = basis * 0.5;
+      ctx.shadowColor = 'rgba(0,0,0,.5)';
+      ctx.shadowBlur = basis;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.lineWidth = basis * 0.45;
+      ctx.beginPath();
+      ctx.moveTo(x - pfeil, y); ctx.lineTo(x + pfeil, y);
+      ctx.moveTo(x, y - pfeil); ctx.lineTo(x, y + pfeil);
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const sx = x + dx * pfeil;
+        const sy = y + dy * pfeil;
+        ctx.moveTo(sx - dx * spitze - dy * spitze, sy - dy * spitze - dx * spitze);
+        ctx.lineTo(sx, sy);
+        ctx.lineTo(sx - dx * spitze + dy * spitze, sy - dy * spitze + dx * spitze);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
     // Kleine Punkte auf den Kantenmitten: ziehen fügt eine Ecke ein
     for (const k of kanten) {
       ctx.save();
@@ -650,11 +681,22 @@ export async function openFotoAufmass(blob, vorlage) {
     }
     return k;
   };
+  // Lage des blauen Schiebepunkts: außerhalb, mittig unter dem ausgewählten Teil (passt er dort
+  // nicht mehr aufs Foto, darüber), damit Ecken und Beschriftung frei bleiben
+  const schieberVon = () => {
+    if (!auswahl || entwurf || !d.teile.includes(auswahl)) return null;
+    const p = auswahl.punkte;
+    const abstand = 38 * proPx();
+    const ys = p.map((q) => q[1]);
+    const x = mitte(p)[0];
+    const unten = Math.max(...ys) + abstand;
+    return [x, unten <= H ? unten : Math.max(0, Math.min(...ys) - abstand)];
+  };
   const neuZeichnen = () => {
     if (aktiv && !lage(aktiv)) { aktiv = null; if (!ziehen) fk.hidden = true; }
     if (auswahl && !d.teile.includes(auswahl)) auswahl = null;
     // Beim Hineinzoomen bleiben Linien, Punkte und Schrift gleich groß auf dem Bildschirm
-    zeichneAlles(ctx, img, d, { basis: basis / zoom.z, entwurf, griffe: true, auswahl, raster: raster(), aktiv: lage(aktiv), kanten: kantenVon().map((k) => k.p) });
+    zeichneAlles(ctx, img, d, { basis: basis / zoom.z, entwurf, griffe: true, auswahl, raster: raster(), aktiv: lage(aktiv), kanten: kantenVon().map((k) => k.p), schieber: schieberVon() });
     hinweis();
   };
 
@@ -790,7 +832,7 @@ export async function openFotoAufmass(blob, vorlage) {
       k = knopf('fa-verwerfen', 'Verwerfen') + knopf('fa-schliessen', 'Fertig', true);
     } else if (auswahl) {
       const eckeWeg = aktiv?.art === 'teil' && aktiv.t === auswahl && auswahl.punkte.length > mindest(auswahl.typ);
-      t = `${auswahl.name}: lange drücken = verschieben`;
+      t = `${auswahl.name} (blauer Punkt: verschieben)`;
       k = knopf('fa-t-aendern', 'Name') + (eckeWeg ? knopf('fa-ecke-weg', 'Ecke weg') : knopf('fa-t-kopie', 'Kopie')) + knopf('fa-t-weg', 'Löschen') + knopf('fa-t-fertig', 'Fertig', true);
     } else if (aktiv?.art === 'ref') {
       t = aktiv.key === 'rahmen' ? 'Rahmen: Ecken ziehen, bis sie genau auf dem Rechteck sitzen.' : rahmenFertig(d.ref.rahmen) ? `${NAMEN[aktiv.key]}: wird nicht gebraucht, der Rahmen gibt den Maßstab vor.` : `${NAMEN[aktiv.key]}: Endpunkte ziehen.`;
@@ -1021,6 +1063,8 @@ export async function openFotoAufmass(blob, vorlage) {
       if (dd < bestD) { bestD = dd; best = ziel; }
     };
     // Reihenfolge: zuletzt geprüft gewinnt bei gleichem Abstand nicht, also Wichtigstes zuerst
+    const sp = schieberVon();
+    if (sp) pruefe(sp, { art: 'schieber', t: auswahl });
     if (entwurf) entwurf.punkte.forEach((q, i) => pruefe(q, { art: 'entwurf', i }));
     if (auswahl) auswahl.punkte.forEach((q, i) => pruefe(q, { art: 'teil', t: auswahl, i }));
     (d.ref.rahmen?.punkte || []).forEach((q, i) => pruefe(q, { art: 'ref', key: 'rahmen', i }));
@@ -1148,7 +1192,13 @@ export async function openFotoAufmass(blob, vorlage) {
       t = { ...ziel, i: ziel.i + 1 };
       geaendert = true;
     }
-    if (t) {
+    if (t?.art === 'schieber') {
+      langAus();
+      aktiv = null;
+      fk.hidden = true;
+      ziehen = { art: 'teilzug', t: t.t, x0: e.clientX, y0: e.clientY, p0: p, start: t.t.punkte.map((q) => [...q]), bewegt: false };
+      neuZeichnen();
+    } else if (t) {
       if (t.art === 'teil') auswahl = t.t;
       aktiv = t;
       ziehen = { art: 'griff', ziel: t, x0: e.clientX, y0: e.clientY, startP: [...lage(t)], bewegt: false };
