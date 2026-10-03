@@ -665,3 +665,7 @@ html.mk-offen, html.mk-offen body { overflow: hidden; }
 .fa-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--c); }
 .fa-view .fa-raster span { display: inline; }
 .fa-flaeche { overflow: hidden; }
+.fa-zoomknoepfe { position: absolute; right: 8px; bottom: 8px; display: flex; flex-direction: column; gap: 6px; z-index: 3; }
+.fa-zoomknoepfe button { width: 44px; height: 44px; border-radius: 50%; border: 0; background: rgba(20,22,25,.78); color: #fff; font-size: 1.4rem; line-height: 1; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+.fa-zoomknoepfe button:active { background: var(--accent); color: var(--accent-ink); }
+.fa-view .fa-bild { touch-action: none; }

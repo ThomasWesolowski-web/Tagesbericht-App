@@ -345,7 +345,7 @@ function etikett(ctx, text, [x0, y0], groesse, farbe) {
   ctx.restore();
 }
 
-function zeichneAlles(ctx, img, d, { basis, entwurf = null, griffe = false, auswahl = null, vorschau = null, raster = null, aktiv = null }) {
+function zeichneAlles(ctx, img, d, { basis, entwurf = null, griffe = false, auswahl = null, vorschau = null, raster = null, aktiv = null, kanten = [] }) {
   const W = img.naturalWidth;
   const H = img.naturalHeight;
   ctx.drawImage(img, 0, 0, W, H);
@@ -433,34 +433,56 @@ function zeichneAlles(ctx, img, d, { basis, entwurf = null, griffe = false, ausw
     const farbe = t.typ === 'linie' ? '#90caf9' : t.typ === 'flaeche' ? '#a5d6a7' : (x && !x.abzug ? '#ffcc80' : '#ef9a9a');
     etikett(ctx, wert ? `${t.name}\n${wert}` : t.name, pos, t.typ === 'flaeche' ? schrift : schrift * 0.85, farbe);
   }
-  // Entwurf (gerade gezeichnetes Teil)
+  // Entwurf (vorgeschlagene Form, wird über die Ecken angepasst)
   if (entwurf) {
     const p = vorschau ? [...entwurf.punkte, vorschau] : entwurf.punkte;
-    const farbe = entwurf.typ === 'linie' ? FARBE.linie : entwurf.typ === 'flaeche' ? FARBE.flaeche : entwurf.typ === 'rahmen' ? FARBE.ref : FARBE.abzug;
+    const farbe = entwurf.typ === 'linie' ? FARBE.linie : entwurf.typ === 'flaeche' ? FARBE.flaeche : entwurf.typ === 'oeffnung' ? FARBE.abzug : FARBE.ref;
+    const zu = ['rahmen', 'flaeche', 'oeffnung'].includes(entwurf.typ);
     ctx.save();
+    pfad(p, zu);
+    if (zu) { ctx.fillStyle = hexA(farbe, 0.16); ctx.fill(); }
     ctx.strokeStyle = farbe;
     ctx.lineWidth = basis * 1.1;
     ctx.setLineDash([basis * 2.5, basis * 1.5]);
-    if (p.length > 1) { pfad(p, false); ctx.stroke(); }
+    ctx.shadowColor = 'rgba(0,0,0,.6)';
+    ctx.shadowBlur = basis;
+    if (p.length > 1) ctx.stroke();
     ctx.restore();
   }
   if (griffe) {
-    const punkt = ([x, y], farbe, gross) => {
+    const punkt = ([x, y], farbe, r = 2.4) => {
       ctx.save();
       ctx.fillStyle = farbe;
       ctx.strokeStyle = '#111';
       ctx.lineWidth = basis * 0.5;
       ctx.beginPath();
-      ctx.arc(x, y, basis * (gross ? 2.6 : 1.8), 0, Math.PI * 2);
+      ctx.arc(x, y, basis * r, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
       ctx.restore();
     };
+    // Kleine Punkte auf den Kantenmitten: ziehen fügt eine Ecke ein
+    for (const k of kanten) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,255,255,.75)';
+      ctx.strokeStyle = '#111';
+      ctx.lineWidth = basis * 0.4;
+      ctx.beginPath();
+      ctx.arc(k[0], k[1], basis * 1.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = '#111';
+      ctx.lineWidth = basis * 0.35;
+      ctx.beginPath();
+      ctx.moveTo(k[0] - basis * 0.8, k[1]); ctx.lineTo(k[0] + basis * 0.8, k[1]);
+      ctx.moveTo(k[0], k[1] - basis * 0.8); ctx.lineTo(k[0], k[1] + basis * 0.8);
+      ctx.stroke();
+      ctx.restore();
+    }
     for (const key of ['laenge', 'hoehe']) if (d.ref[key]) { punkt(d.ref[key].a, FARBE.ref); punkt(d.ref[key].b, FARBE.ref); }
     (d.ref.rahmen?.punkte || []).forEach((q) => punkt(q, FARBE.ref));
-    for (const t of d.teile) t.punkte.forEach((q) => punkt(q, '#fff'));
-    if (entwurf) entwurf.punkte.forEach((q, i) => punkt(q, i === 0 && entwurf.punkte.length > 2 && entwurf.typ !== 'linie' && entwurf.typ !== 'rahmen' ? '#fdd835' : '#fff', i === 0));
-    if (vorschau) punkt(vorschau, '#fff');
+    for (const t of d.teile) t.punkte.forEach((q) => punkt(q, '#fff', t === auswahl ? 2.8 : 1.6));
+    if (entwurf) entwurf.punkte.forEach((q) => punkt(q, entwurf.typ === 'rahmen' ? FARBE.ref : '#fff', 2.8));
     if (aktiv) {
       // Gerade bearbeiteter Punkt: roter Ring
       ctx.save();
@@ -525,14 +547,14 @@ export async function openFotoAufmass(blob, vorlage) {
   const d = JSON.parse(JSON.stringify(vorlage));
   d.ref = d.ref || {};
   d.teile = d.teile || [];
-  let werkzeug = d.ref.rahmen || d.ref.laenge ? 'flaeche' : 'rahmen';
   const REF_WZ = ['rahmen', 'laenge', 'hoehe'];
-  const mindest = (typ) => (typ === 'linie' ? 2 : typ === 'rahmen' ? 4 : 3);
-  let entwurf = null; // { typ, punkte }
+  const ZU = ['rahmen', 'flaeche', 'oeffnung']; // geschlossene Formen
+  const mindest = (typ) => (typ === 'rahmen' ? 4 : ZU.includes(typ) ? 3 : 2);
+  let entwurf = null; // neue Form, die gerade abgesteckt wird: { typ, punkte }
   let ziehen = null; // aktuelle Fingerbewegung
-  let auswahl = null;
+  let auswahl = null; // ausgewähltes Teil (Ecken und Kantenpunkte sichtbar)
   let geaendert = false;
-  let zoom = { z: 1, x: 0, y: 0 }; // Zwei-Finger-Zoom des Fotos
+  let zoom = { z: 1, x: 0, y: 0 };
   let aktiv = null; // Punkt im Fadenkreuz-Fenster: { art: 'ref'|'teil'|'entwurf', … }
   let fkZoom = 6;
   let rasterModus = 'an';
@@ -551,7 +573,9 @@ export async function openFotoAufmass(blob, vorlage) {
       <canvas width="360" height="360"></canvas>
       <div class="fa-fk-leiste">${Object.entries(PFEILE).map(([k, v]) => `<button type="button" data-pfeil="${k}" aria-label="Punkt verschieben">${v[2]}</button>`).join('')}
         <button type="button" class="fa-fk-zoom">6×</button><button type="button" class="fa-fk-ok" aria-label="Fertig">✓</button></div>
-    </div></div>
+    </div>
+    <div class="fa-zoomknoepfe"><button type="button" data-zoom="-" aria-label="Verkleinern">−</button><button type="button" data-zoom="+" aria-label="Vergrößern">+</button><button type="button" data-zoom="0" aria-label="Ganzes Foto">⤢</button></div>
+    </div>
     <div class="fa-panel" hidden></div>
     <div class="mk-leiste">
       <div class="mk-werkzeuge">${WERKZEUGE.map((w) => `<button type="button" class="mk-wz" data-wz="${w.id}"><svg viewBox="0 0 24 24" aria-hidden="true">${w.svg}</svg><span>${w.label}</span></button>`).join('')}</div>
@@ -582,28 +606,42 @@ export async function openFotoAufmass(blob, vorlage) {
     canvas.style.width = `${Math.floor(W * s)}px`;
     canvas.style.height = `${Math.floor(H * s)}px`;
   };
-  const vorschauPunkt = () => (ziehen?.art === 'neupunkt' ? ziehen.p : null);
   const proPx = () => W / canvas.getBoundingClientRect().width; // Bildpunkte je Bildschirmpunkt
   const raster = () => (rasterModus === 'aus' ? null : rasterVon(d, W, H, 26 * proPx()));
   const fangen = (p) => (rasterModus === 'fang' ? rasterFang(raster(), p) : p);
+  const punkteVon = (a) => {
+    if (a.art === 'ref') return a.key === 'rahmen' ? d.ref.rahmen?.punkte : null;
+    if (a.art === 'teil') return d.teile.includes(a.t) ? a.t.punkte : null;
+    return entwurf?.punkte || null;
+  };
   const lage = (a) => {
     if (!a) return null;
-    if (a.art === 'ref') return a.key === 'rahmen' ? d.ref.rahmen?.punkte[a.i] || null : d.ref[a.key]?.[a.ende] || null;
-    if (a.art === 'teil') return d.teile.includes(a.t) ? a.t.punkte[a.i] || null : null;
-    return entwurf?.punkte[a.i] || null;
+    if (a.art === 'ref' && a.key !== 'rahmen') return d.ref[a.key]?.[a.ende] || null;
+    return punkteVon(a)?.[a.i] || null;
   };
   const setze = (a, p) => {
-    if (a.art === 'ref' && a.key === 'rahmen') d.ref.rahmen.punkte[a.i] = p;
-    else if (a.art === 'ref') d.ref[a.key][a.ende] = p;
-    else if (a.art === 'teil') a.t.punkte[a.i] = p;
-    else entwurf.punkte[a.i] = p;
+    if (a.art === 'ref' && a.key !== 'rahmen') d.ref[a.key][a.ende] = p;
+    else punkteVon(a)[a.i] = p;
     geaendert = true;
   };
+  // Kantenpunkte (zum Einfügen einer weiteren Ecke) für die Form in Bearbeitung
+  const kantenVon = () => {
+    const f = entwurf ? { punkte: entwurf.punkte, typ: entwurf.typ, ziel: { art: 'entwurf' } } : auswahl ? { punkte: auswahl.punkte, typ: auswahl.typ, ziel: { art: 'teil', t: auswahl } } : null;
+    if (!f || f.typ === 'rahmen' || f.typ === 'laenge' || f.typ === 'hoehe') return [];
+    const n = f.punkte.length;
+    const k = [];
+    for (let i = 0; i < (ZU.includes(f.typ) ? n : n - 1); i++) {
+      const a = f.punkte[i];
+      const b = f.punkte[(i + 1) % n];
+      k.push({ p: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], ziel: { ...f.ziel, i } });
+    }
+    return k;
+  };
   const neuZeichnen = () => {
-    const tmp = ziehen?.art === 'refneu' ? { ...d, ref: { ...d.ref, [ziehen.key]: { a: ziehen.a, b: ziehen.b, m: d.ref[ziehen.key]?.m || '' } } } : d;
     if (aktiv && !lage(aktiv)) { aktiv = null; if (!ziehen) fk.hidden = true; }
+    if (auswahl && !d.teile.includes(auswahl)) auswahl = null;
     // Beim Hineinzoomen bleiben Linien, Punkte und Schrift gleich groß auf dem Bildschirm
-    zeichneAlles(ctx, img, tmp, { basis: basis / zoom.z, entwurf, griffe: true, auswahl, vorschau: vorschauPunkt(), raster: raster(), aktiv: lage(aktiv) });
+    zeichneAlles(ctx, img, d, { basis: basis / zoom.z, entwurf, griffe: true, auswahl, raster: raster(), aktiv: lage(aktiv), kanten: kantenVon().map((k) => k.p) });
     hinweis();
   };
 
@@ -662,7 +700,6 @@ export async function openFotoAufmass(blob, vorlage) {
     };
     for (const key of ['laenge', 'hoehe']) if (d.ref[key]) strich([d.ref[key].a, d.ref[key].b], FARBE.ref);
     if (d.ref.rahmen?.punkte?.length === 4) strich(ordneEcken(d.ref.rahmen.punkte), FARBE.ref, true);
-    if (ziehen?.art === 'refneu') strich([ziehen.a, ziehen.b], FARBE.ref);
     for (const t of d.teile) strich(t.punkte, t.typ === 'linie' ? FARBE.linie : t.typ === 'flaeche' ? FARBE.flaeche : FARBE.abzug, t.typ !== 'linie');
     if (entwurf) strich(entwurf.punkte, '#fff');
     fctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -723,43 +760,46 @@ export async function openFotoAufmass(blob, vorlage) {
   };
   fk.querySelector('.fa-fk-ok').onclick = fensterZu;
 
+  const NAMEN = { rahmen: 'Rahmen', laenge: 'Länge', hoehe: 'Höhe', flaeche: 'Fläche', oeffnung: 'Öffnung', linie: 'Strecke' };
   function hinweis() {
     const txt = $('.fa-text');
     const kn = $('.fa-knoepfe');
     const ms = massstab(d);
     let t;
     let k = '';
+    const knopf = (cls, label, an = false) => `<button type="button" class="chip ${cls}"${an ? ' aria-pressed="true"' : ''}>${label}</button>`;
     if (entwurf) {
-      const n = entwurf.punkte.length;
-      t = entwurf.typ === 'linie' ? `Tippe die Punkte der Strecke an (${n} gesetzt).`
-        : entwurf.typ === 'rahmen' ? `Rahmen: die 4 Ecken des Rechtecks antippen (${n} von 4).`
-          : `Tippe die Ecken an (${n} gesetzt). Zum Schließen den gelben ersten Punkt antippen.`;
-      k = `<button type="button" class="chip fa-punkt-zurueck">Punkt zurück</button>${n >= mindest(entwurf.typ) && entwurf.typ !== 'rahmen' ? '<button type="button" class="chip fa-schliessen" aria-pressed="true">Fertig</button>' : ''}`;
-    } else if (werkzeug === 'rahmen') {
-      t = d.ref.rahmen
-        ? 'Rahmen gesetzt. Ecken lassen sich verschieben; neu antippen ersetzt ihn. Weiter mit Fläche, Öffnung oder Strecke.'
-        : 'Rahmen: die 4 Ecken eines Rechtecks auf der Wand antippen, dessen Breite und Höhe du kennst (Fenster, Tür, Wand). Das entzerrt die Perspektive.';
-    } else if (werkzeug === 'laenge' || werkzeug === 'hoehe') {
-      t = werkzeug === 'laenge'
-        ? 'Ziehe eine Linie über eine bekannte waagerechte Länge (z. B. Fensterbreite, Zollstock).'
-        : 'Ziehe eine Linie über eine bekannte senkrechte Höhe (z. B. Türhöhe, Geschosshöhe).';
+      t = entwurf.typ === 'rahmen'
+        ? 'Rahmen: die 4 gelben Ecken auf ein Rechteck ziehen, dessen Breite und Höhe du kennst (Fenster, Tür, Wand).'
+        : ZU.includes(entwurf.typ)
+          ? `${NAMEN[entwurf.typ]}: Ecken an die richtige Stelle ziehen. ⊕ auf einer Kante ziehen = neue Ecke.`
+          : `${NAMEN[entwurf.typ]}: die Endpunkte an die richtige Stelle ziehen.`;
+      k = knopf('fa-verwerfen', 'Verwerfen') + knopf('fa-schliessen', 'Fertig', true);
+    } else if (auswahl) {
+      t = `${auswahl.name}: Ecken ziehen, ⊕ ziehen = neue Ecke.`;
+      const eckeWeg = aktiv?.art === 'teil' && aktiv.t === auswahl && auswahl.punkte.length > mindest(auswahl.typ);
+      k = knopf('fa-t-aendern', 'Ändern') + (eckeWeg ? knopf('fa-ecke-weg', 'Ecke löschen') : '') + knopf('fa-t-fertig', 'Fertig', true);
+    } else if (aktiv?.art === 'ref') {
+      t = aktiv.key === 'rahmen' ? 'Rahmen: Ecken ziehen, bis sie genau auf dem Rechteck sitzen.' : `${NAMEN[aktiv.key]}: Endpunkte ziehen.`;
+      k = knopf('fa-ref-mass', 'Maße ändern') + knopf('fa-t-fertig', 'Fertig', true);
     } else if (!ms) {
-      t = 'Zuerst eine Referenz setzen: am besten „Rahmen“ (4 Ecken eines bekannten Rechtecks), sonst „Länge“ und „Höhe“.';
+      t = 'Zuerst „Rahmen“ tippen: ein Rechteck erscheint, dessen Ecken du auf ein Fenster, eine Tür oder die Wand ziehst.';
     } else if (ms.fehler) {
       t = ms.fehler;
     } else {
-      t = werkzeug === 'linie' ? 'Strecke: Punkte antippen, dann „Fertig“.'
-        : `${werkzeug === 'flaeche' ? 'Fläche' : 'Öffnung'}: Ecken nacheinander antippen. Punkte lassen sich danach verschieben.`;
+      t = 'Fläche, Öffnung oder Strecke tippen: die Form erscheint auf dem Foto und wird über die Ecken angepasst. Ein Finger verschiebt das Foto, zwei Finger zoomen.';
       if (!ms.beide) t += ' Nur eine Referenz gesetzt: Maßstab gilt dann für beide Richtungen.';
     }
-    if (aktiv && !ziehen) t = `Roter Punkt: im Fadenkreuz-Fenster das Bild ziehen oder die Pfeile tippen, bis er genau sitzt. ${t}`;
     txt.textContent = t;
     kn.innerHTML = k;
-    const pz = $('.fa-punkt-zurueck');
-    if (pz) pz.onclick = () => { entwurf.punkte.pop(); if (!entwurf.punkte.length) entwurf = null; neuZeichnen(); };
-    const sc = $('.fa-schliessen');
-    if (sc) sc.onclick = () => abschliessen();
-    view.querySelectorAll('.mk-wz').forEach((b) => b.setAttribute('aria-pressed', b.dataset.wz === werkzeug));
+    const an = (cls, fn) => { const b = kn.querySelector(`.${cls}`); if (b) b.onclick = fn; };
+    an('fa-verwerfen', () => { entwurf = null; aktiv = null; fk.hidden = true; neuZeichnen(); });
+    an('fa-schliessen', () => abschliessen());
+    an('fa-t-aendern', () => teilFragen(auswahl, false));
+    an('fa-ecke-weg', () => { auswahl.punkte.splice(aktiv.i, 1); aktiv = null; fk.hidden = true; geaendert = true; neuZeichnen(); });
+    an('fa-t-fertig', () => { auswahl = null; aktiv = null; fk.hidden = true; neuZeichnen(); });
+    an('fa-ref-mass', () => (aktiv.key === 'rahmen' ? fragRahmen(false) : fragMass(aktiv.key, false)));
+    view.querySelectorAll('.mk-wz').forEach((b) => b.setAttribute('aria-pressed', b.dataset.wz === (entwurf?.typ || '')));
     $('.fa-regel').textContent = `${regelVon(d).label.replace(/ \(.*/, '')}: ${regelVon(d).schwelle ? `bis ${fmt(regelVon(d).schwelle)} m² übermessen` : 'alles abziehen'}`;
     $('.fa-rueck').disabled = !entwurf && !d.teile.length && !d.ref.laenge && !d.ref.hoehe && !d.ref.rahmen;
     const rb = $('.fa-raster');
@@ -788,15 +828,13 @@ export async function openFotoAufmass(blob, vorlage) {
       if (!(zahl(v) > 0)) { p.querySelector('.fa-m').focus(); return false; }
       d.ref[key].m = v;
       geaendert = true;
-      if (key === 'laenge' && !d.ref.hoehe) werkzeug = 'hoehe';
-      else if (werkzeug === 'laenge' || werkzeug === 'hoehe') werkzeug = 'flaeche';
       return true;
-    }, () => { if (neu) delete d.ref[key]; });
+    }, () => { if (neu) { entwurf = { typ: key, punkte: [d.ref[key].a, d.ref[key].b] }; delete d.ref[key]; } });
   };
 
   const fragRahmen = (neu) => {
     const r = d.ref.rahmen;
-    frage(`<p class="fa-klein">Maße des Rechtecks, dessen Ecken du angetippt hast (z. B. Fenster außen, Tür, ganze Wand):</p>
+    frage(`<p class="fa-klein">Maße des Rechtecks, dessen Ecken du abgesteckt hast (z. B. Fenster außen, Tür, ganze Wand):</p>
       <div class="fa-zeile fa-zwei"><label class="fa-feld"><span>Breite in m</span><input type="text" inputmode="decimal" class="fa-rb" value="${escH(r.b)}" placeholder="z. B. 1,01"></label>
       <label class="fa-feld"><span>Höhe in m</span><input type="text" inputmode="decimal" class="fa-rh" value="${escH(r.h)}" placeholder="z. B. 1,385"></label></div>`, (p) => {
       const b = p.querySelector('.fa-rb').value.trim();
@@ -806,9 +844,8 @@ export async function openFotoAufmass(blob, vorlage) {
       r.b = b;
       r.h = h;
       geaendert = true;
-      if (REF_WZ.includes(werkzeug)) werkzeug = 'flaeche';
       return true;
-    }, () => { if (neu) delete d.ref.rahmen; });
+    }, () => { if (neu) { entwurf = { typ: 'rahmen', punkte: r.punkte }; delete d.ref.rahmen; } });
   };
 
   const naechsterName = (typ) => {
@@ -829,7 +866,7 @@ export async function openFotoAufmass(blob, vorlage) {
       if (oe) t.laibung = { tiefe: p.querySelector('.fa-tiefe').value.trim(), unten: p.querySelector('.fa-unten').checked };
       geaendert = true;
       return true;
-    }, () => { if (neu) { d.teile.splice(d.teile.indexOf(t), 1); } });
+    }, () => { if (neu) { d.teile.splice(d.teile.indexOf(t), 1); entwurf = { typ: t.typ, punkte: t.punkte }; } });
     panel.querySelectorAll('.fa-vorschlaege .chip').forEach((b) => {
       b.onclick = () => {
         const v = b.dataset.v;
@@ -843,86 +880,148 @@ export async function openFotoAufmass(blob, vorlage) {
   };
 
   const abschliessen = () => {
-    if (!entwurf) return;
-    if (entwurf.punkte.length < mindest(entwurf.typ)) return;
-    if (entwurf.typ === 'rahmen') {
+    if (!entwurf || entwurf.punkte.length < mindest(entwurf.typ)) return;
+    const { typ, punkte } = entwurf;
+    entwurf = null;
+    aktiv = null;
+    fk.hidden = true;
+    geaendert = true;
+    if (typ === 'rahmen') {
       const alt = d.ref.rahmen;
-      d.ref.rahmen = { punkte: entwurf.punkte.slice(0, 4), b: alt?.b || '', h: alt?.h || '' };
-      if (aktiv?.art === 'entwurf') aktiv = { art: 'ref', key: 'rahmen', i: aktiv.i };
-      entwurf = null;
-      geaendert = true;
+      d.ref.rahmen = { punkte, b: alt?.b || '', h: alt?.h || '' };
       neuZeichnen();
       fragRahmen(!alt);
       return;
     }
-    const t = { id: neueId(), typ: entwurf.typ, name: naechsterName(entwurf.typ), punkte: entwurf.punkte };
+    if (typ === 'laenge' || typ === 'hoehe') {
+      const alt = d.ref[typ];
+      d.ref[typ] = { a: punkte[0], b: punkte[1], m: alt?.m || '' };
+      neuZeichnen();
+      fragMass(typ, !alt);
+      return;
+    }
+    const t = { id: neueId(), typ, name: naechsterName(typ), punkte };
     d.teile.push(t);
-    if (aktiv?.art === 'entwurf') aktiv = { art: 'teil', t, i: aktiv.i };
-    entwurf = null;
-    geaendert = true;
+    auswahl = null;
     neuZeichnen();
     teilFragen(t, true);
   };
 
   einpassen();
-  neuZeichnen();
   window.addEventListener('resize', einpassen);
 
+  // ---------- Zoomen und Verschieben ----------
+  // Ein Finger auf dem Foto verschiebt es, zwei Finger zoomen, die Knöpfe +, − und ⤢ ebenso.
+  const lageBox = () => {
+    const fr = flaeche.getBoundingClientRect();
+    return { fr, lx: fr.left + canvas.offsetLeft, ly: fr.top + canvas.offsetTop, cw: canvas.offsetWidth, ch: canvas.offsetHeight };
+  };
+  const zoomSetzen = () => {
+    if (zoom.z <= 1.01) zoom = { z: 1, x: 0, y: 0 };
+    else {
+      // Foto nicht ganz aus dem Bild schieben: mindestens 60 Punkte bleiben sichtbar
+      const { fr, lx, ly, cw, ch } = lageBox();
+      const rand = 60;
+      zoom.x = Math.min(fr.right - rand - lx, Math.max(fr.left + rand - lx - cw * zoom.z, zoom.x));
+      zoom.y = Math.min(fr.bottom - rand - ly, Math.max(fr.top + rand - ly - ch * zoom.z, zoom.y));
+    }
+    canvas.style.transformOrigin = '0 0';
+    canvas.style.transform = zoom.z === 1 ? '' : `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.z})`;
+    neuZeichnen();
+    if (aktiv) fensterAuf();
+  };
+  // Zoomen um einen Bildschirmpunkt (der Punkt bleibt, wo er ist)
+  const zoomUm = (z, [mx, my], von = zoom, [ax, ay] = [mx, my]) => {
+    const { lx, ly } = lageBox();
+    const lokal = [(ax - lx - von.x) / von.z, (ay - ly - von.y) / von.z];
+    const neu = Math.min(12, Math.max(1, z));
+    zoom = { z: neu, x: mx - lx - neu * lokal[0], y: my - ly - neu * lokal[1] };
+    zoomSetzen();
+  };
+  const mitteFlaeche = () => {
+    const fr = flaeche.getBoundingClientRect();
+    return [fr.left + fr.width / 2, fr.top + fr.height / 2];
+  };
+  view.querySelectorAll('[data-zoom]').forEach((b) => {
+    b.onclick = () => {
+      if (b.dataset.zoom === '0') { zoom = { z: 1, x: 0, y: 0 }; zoomSetzen(); return; }
+      zoomUm(zoom.z * (b.dataset.zoom === '+' ? 1.6 : 1 / 1.6), mitteFlaeche());
+    };
+  });
+  flaeche.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    zoomUm(zoom.z * Math.exp(-e.deltaY / 300), [e.clientX, e.clientY]);
+  }, { passive: false });
+
+  // Sichtbarer Bildausschnitt in Bildpunkten, für neue Formen
+  const sichtbar = () => {
+    const r = canvas.getBoundingClientRect();
+    const fr = flaeche.getBoundingClientRect();
+    const f = proPx();
+    const x0 = Math.max(0, (fr.left - r.left) * f);
+    const x1 = Math.min(W, (fr.right - r.left) * f);
+    const y0 = Math.max(0, (fr.top - r.top) * f);
+    const y1 = Math.min(H, (fr.bottom - r.top) * f);
+    return { c: [(x0 + x1) / 2, (y0 + y1) / 2], w: x1 - x0, h: y1 - y0 };
+  };
+  // Neue Form als Vorschlag mitten im sichtbaren Ausschnitt abstecken
+  const abstecken = (typ) => {
+    const { c, w, h } = sichtbar();
+    const bx = w * 0.3;
+    const by = h * 0.3;
+    let punkte;
+    if (typ === 'laenge') punkte = [[c[0] - bx, c[1]], [c[0] + bx, c[1]]];
+    else if (typ === 'hoehe') punkte = [[c[0], c[1] - by], [c[0], c[1] + by]];
+    else if (typ === 'linie') punkte = [[c[0] - bx, c[1] + by * 0.5], [c[0] + bx, c[1] + by * 0.5]];
+    else {
+      const sx = typ === 'oeffnung' ? bx * 0.5 : bx;
+      const sy = typ === 'oeffnung' ? by * 0.7 : by;
+      punkte = [[c[0] - sx, c[1] - sy], [c[0] + sx, c[1] - sy], [c[0] + sx, c[1] + sy], [c[0] - sx, c[1] + sy]];
+    }
+    entwurf = { typ, punkte };
+    auswahl = null;
+    aktiv = null;
+    fk.hidden = true;
+    neuZeichnen();
+  };
+
+  // ---------- Finger auf dem Foto ----------
   const punkt = (e) => {
     const r = canvas.getBoundingClientRect();
-    return [
-      Math.min(W, Math.max(0, ((e.clientX - r.left) / r.width) * W)),
-      Math.min(H, Math.max(0, ((e.clientY - r.top) / r.height) * H)),
-    ];
+    return [((e.clientX - r.left) / r.width) * W, ((e.clientY - r.top) / r.height) * H];
   };
-  const fangRadius = () => (24 * W) / canvas.getBoundingClientRect().width;
+  const fangRadius = () => 26 * proPx();
   const treffer = (p) => {
-    const rad = fangRadius();
     let best = null;
-    let bestD = rad;
+    let bestD = fangRadius();
     const pruefe = (q, ziel) => {
       const dd = Math.hypot(q[0] - p[0], q[1] - p[1]);
       if (dd < bestD) { bestD = dd; best = ziel; }
     };
+    // Reihenfolge: zuletzt geprüft gewinnt bei gleichem Abstand nicht, also Wichtigstes zuerst
     if (entwurf) entwurf.punkte.forEach((q, i) => pruefe(q, { art: 'entwurf', i }));
+    if (auswahl) auswahl.punkte.forEach((q, i) => pruefe(q, { art: 'teil', t: auswahl, i }));
     (d.ref.rahmen?.punkte || []).forEach((q, i) => pruefe(q, { art: 'ref', key: 'rahmen', i }));
     for (const key of ['laenge', 'hoehe']) {
       if (d.ref[key]) { pruefe(d.ref[key].a, { art: 'ref', key, ende: 'a' }); pruefe(d.ref[key].b, { art: 'ref', key, ende: 'b' }); }
     }
-    for (const t of d.teile) t.punkte.forEach((q, i) => pruefe(q, { art: 'teil', t, i }));
+    if (!entwurf) for (const t of d.teile) if (t !== auswahl) t.punkte.forEach((q, i) => pruefe(q, { art: 'teil', t, i }));
+    // Kantenpunkte nur, wenn keine Ecke näher liegt
+    if (!best) kantenVon().forEach((k) => pruefe(k.p, { art: 'kante', ziel: k.ziel }));
     return best;
   };
 
-  // Zwei Finger: Foto vergrößern und verschieben (wie in der Galerie)
   const finger = new Map();
   let pinch = null;
-  const zielVon = (t) => (t.art === 'ref' ? { art: 'ref', key: t.key, ende: t.ende, i: t.i } : t.art === 'teil' ? { art: 'teil', t: t.t, i: t.i } : { art: 'entwurf', i: t.i });
-  const zoomSetzen = () => {
-    canvas.style.transformOrigin = '0 0';
-    canvas.style.transform = zoom.z === 1 ? '' : `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.z})`;
-  };
   const fingerMitte = () => {
     const [a, b] = [...finger.values()];
     return { d: Math.hypot(b.x - a.x, b.y - a.y) || 1, m: [(a.x + b.x) / 2, (a.y + b.y) / 2] };
   };
   const abbrechen = () => {
-    if (ziehen && !ziehen.tippen && ziehen.alt) setze(zielVon(ziehen), ziehen.alt);
+    if (ziehen?.art === 'griff' && ziehen.bewegt) setze(ziehen.ziel, ziehen.startP);
     ziehen = null;
-    if (entwurf && !entwurf.punkte.length) entwurf = null;
     neuZeichnen();
     if (aktiv) fensterAuf(); else fk.hidden = true;
-  };
-  const pinchZug = () => {
-    const { d: dd, m } = fingerMitte();
-    const fr = flaeche.getBoundingClientRect();
-    const lx = fr.left + canvas.offsetLeft;
-    const ly = fr.top + canvas.offsetTop;
-    const z = Math.min(10, Math.max(1, (pinch.z * dd) / pinch.d));
-    const lokal = [(pinch.m[0] - lx - pinch.x) / pinch.z, (pinch.m[1] - ly - pinch.y) / pinch.z];
-    zoom = z <= 1.02 ? { z: 1, x: 0, y: 0 } : { z, x: m[0] - lx - z * lokal[0], y: m[1] - ly - z * lokal[1] };
-    zoomSetzen();
-    neuZeichnen();
-    if (aktiv) fensterAuf();
   };
 
   canvas.addEventListener('pointerdown', (e) => {
@@ -932,98 +1031,96 @@ export async function openFotoAufmass(blob, vorlage) {
     finger.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (finger.size >= 2) {
       abbrechen();
-      if (finger.size === 2) pinch = { ...fingerMitte(), ...zoom };
+      if (finger.size === 2) pinch = { ...fingerMitte(), von: { ...zoom } };
       return;
     }
-    const roh = punkt(e);
-    const p = fangen(roh);
-    const t = treffer(roh);
-    if (t) {
-      // Antippen fängt den vorhandenen Punkt (gemeinsame Ecken), Ziehen verschiebt ihn
-      ziehen = { ...t, start: roh, p, tippen: true, alt: [...lage(zielVon(t))] };
-    } else if (werkzeug === 'laenge' || werkzeug === 'hoehe') {
-      ziehen = { art: 'refneu', key: werkzeug, a: p, b: p };
-    } else {
-      if (!entwurf || entwurf.typ !== werkzeug) entwurf = { typ: werkzeug, punkte: [] };
-      ziehen = { art: 'neupunkt', p };
+    const p = punkt(e);
+    let t = treffer(p);
+    if (t?.art === 'kante') {
+      // Neue Ecke in der Kantenmitte einfügen und gleich ziehen
+      const ziel = t.ziel;
+      const pts = punkteVon(ziel);
+      const a = pts[ziel.i];
+      const b = pts[(ziel.i + 1) % pts.length];
+      pts.splice(ziel.i + 1, 0, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]);
+      t = { ...ziel, i: ziel.i + 1 };
+      geaendert = true;
     }
-    neuZeichnen();
-    zeigeFenster(p);
+    if (t) {
+      if (t.art === 'teil') auswahl = t.t;
+      aktiv = t;
+      ziehen = { art: 'griff', ziel: t, x0: e.clientX, y0: e.clientY, startP: [...lage(t)], bewegt: false };
+      neuZeichnen();
+      zeigeFenster(lage(t));
+    } else {
+      ziehen = { art: 'schieben', x0: e.clientX, y0: e.clientY, von: { ...zoom }, bewegt: false, p };
+    }
   });
   canvas.addEventListener('pointermove', (e) => {
     if (finger.has(e.pointerId)) finger.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pinch) { if (finger.size >= 2) pinchZug(); return; }
-    if (!ziehen) return;
-    const roh = punkt(e);
-    const p = fangen(roh);
-    ziehen.p = p;
-    if (ziehen.tippen && Math.hypot(roh[0] - ziehen.start[0], roh[1] - ziehen.start[1]) > fangRadius() / 3) {
-      ziehen.tippen = false;
-      if (ziehen.art === 'teil') auswahl = ziehen.t;
-      aktiv = ziehen.art === 'ref' ? { art: 'ref', key: ziehen.key, ende: ziehen.ende, i: ziehen.i }
-        : ziehen.art === 'teil' ? { art: 'teil', t: ziehen.t, i: ziehen.i } : { art: 'entwurf', i: ziehen.i };
+    if (pinch) {
+      if (finger.size >= 2) {
+        const { d: dd, m } = fingerMitte();
+        zoomUm((pinch.von.z * dd) / pinch.d, m, pinch.von, pinch.m);
+      }
+      return;
     }
-    if (ziehen.tippen) { zeigeFenster(roh); return; }
-    if (ziehen.art === 'refneu') ziehen.b = p;
-    else if (ziehen.art !== 'neupunkt') setze(aktiv, p);
-    neuZeichnen();
-    zeigeFenster(p);
+    if (!ziehen) return;
+    const dx = e.clientX - ziehen.x0;
+    const dy = e.clientY - ziehen.y0;
+    if (Math.hypot(dx, dy) > 4) ziehen.bewegt = true;
+    if (!ziehen.bewegt) return;
+    if (ziehen.art === 'griff') {
+      // Punkt wandert um dieselbe Strecke wie der Finger, liegt also nie unter dem Finger
+      const f = proPx();
+      const p = fangen([
+        Math.min(W, Math.max(0, ziehen.startP[0] + dx * f)),
+        Math.min(H, Math.max(0, ziehen.startP[1] + dy * f)),
+      ]);
+      setze(ziehen.ziel, p);
+      neuZeichnen();
+      zeigeFenster(p);
+    } else if (zoom.z > 1) {
+      zoom = { ...zoom, x: ziehen.von.x + dx, y: ziehen.von.y + dy };
+      canvas.style.transform = `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.z})`;
+    }
   });
-  const loslassen = () => {
-    if (!ziehen) return;
-    const z = ziehen;
-    ziehen = null;
-    if (z.art === 'refneu') {
-      if (Math.hypot(z.b[0] - z.a[0], z.b[1] - z.a[1]) > fangRadius()) {
-        const neu = !d.ref[z.key];
-        d.ref[z.key] = { a: z.a, b: z.b, m: d.ref[z.key]?.m || '' };
-        aktiv = { art: 'ref', key: z.key, ende: 'b' };
-        geaendert = true;
-        neuZeichnen();
-        fensterAuf();
-        fragMass(z.key, neu);
-        return;
-      }
-    } else if (z.art === 'neupunkt') {
-      entwurf.punkte.push(z.p);
-      aktiv = { art: 'entwurf', i: entwurf.punkte.length - 1 };
-    } else if (z.tippen) {
-      const hier = z.art === 'ref' ? { art: 'ref', key: z.key, ende: z.ende, i: z.i } : z.art === 'teil' ? { art: 'teil', t: z.t, i: z.i } : { art: 'entwurf', i: z.i };
-      if (z.art === 'entwurf' && z.i === 0 && entwurf.typ !== 'linie' && entwurf.punkte.length >= 3) {
-        abschliessen();
-        fensterAuf();
-        return;
-      }
-      if (werkzeug === 'laenge' || werkzeug === 'hoehe' || z.art === 'entwurf' || (werkzeug === 'rahmen' && z.art === 'ref')) {
-        aktiv = hier; // vorhandenen Punkt zum Feinjustieren auswählen
-      } else {
-        if (!entwurf || entwurf.typ !== werkzeug) entwurf = { typ: werkzeug, punkte: [] };
-        const q = lage(hier);
-        entwurf.punkte.push(Math.hypot(q[0] - z.start[0], q[1] - z.start[1]) < fangRadius() / 2 ? [...q] : z.p);
-        aktiv = { art: 'entwurf', i: entwurf.punkte.length - 1 };
-      }
-    }
-    if (entwurf?.typ === 'rahmen' && entwurf.punkte.length === 4) abschliessen();
-    neuZeichnen();
-    fensterAuf();
-  };
   const hoch = (e) => {
     finger.delete(e.pointerId);
-    if (pinch) { if (finger.size < 2) pinch = null; return; }
-    loslassen();
+    if (pinch) { if (finger.size < 2) pinch = null; ziehen = null; return; }
+    const z = ziehen;
+    ziehen = null;
+    if (!z) return;
+    if (z.art === 'schieben') {
+      if (z.bewegt) { zoomSetzen(); return; }
+      // Antippen ohne Bewegung: Teil unter dem Finger auswählen, sonst Auswahl aufheben
+      if (!entwurf) {
+        const getroffen = [...d.teile].reverse().find((t) => ZU.includes(t.typ) && innen(z.p, t.punkte));
+        auswahl = getroffen || null;
+        aktiv = null;
+        fk.hidden = true;
+      }
+      neuZeichnen();
+      return;
+    }
+    neuZeichnen();
+    fensterAuf();
   };
   canvas.addEventListener('pointerup', hoch);
   canvas.addEventListener('pointercancel', hoch);
 
   view.querySelectorAll('.mk-wz').forEach((b) => {
     b.onclick = () => {
-      if (entwurf && entwurf.typ !== b.dataset.wz) {
-        if (entwurf.punkte.length >= mindest(entwurf.typ) && entwurf.typ !== 'rahmen') abschliessen();
-        else entwurf = null;
+      const typ = b.dataset.wz;
+      // Vorhandene Referenz nicht doppelt anlegen, sondern zum Anpassen auswählen
+      if (REF_WZ.includes(typ) && d.ref[typ] && !entwurf) {
+        auswahl = null;
+        aktiv = typ === 'rahmen' ? { art: 'ref', key: 'rahmen', i: 0 } : { art: 'ref', key: typ, ende: 'a' };
+        neuZeichnen();
+        fensterAuf();
+        return;
       }
-      werkzeug = b.dataset.wz;
-      auswahl = null;
-      neuZeichnen();
+      abstecken(typ);
     };
   });
   $('.fa-raster').onclick = () => {
@@ -1034,13 +1131,17 @@ export async function openFotoAufmass(blob, vorlage) {
   $('.fa-rueck').onclick = () => {
     aktiv = null;
     fk.hidden = true;
-    if (entwurf) { entwurf.punkte.pop(); if (!entwurf.punkte.length) entwurf = null; } else if (d.teile.length) d.teile.pop();
+    if (entwurf) entwurf = null;
+    else if (d.teile.length) d.teile.pop();
     else if (d.ref.rahmen) delete d.ref.rahmen;
     else if (d.ref.hoehe) delete d.ref.hoehe;
     else delete d.ref.laenge;
     geaendert = true;
     neuZeichnen();
   };
+  neuZeichnen();
+  // Ohne Referenz gleich mit dem Rahmen anfangen
+  if (!d.ref.rahmen && !d.ref.laenge && !d.ref.hoehe) abstecken('rahmen');
 
   // Liste aller Teile mit Werten, Abzugsregel und Laibungen
   $('.fa-liste').onclick = () => {
