@@ -118,12 +118,26 @@ export function stundenMarkdown(name, ym, entries) {
   return `${md}\n`;
 }
 
-export function stundenJson(name, ym, entries) {
+// geloescht: IDs gelöschter Einträge, damit andere Geräte sie nicht wieder hochladen.
+export function stundenJson(name, ym, entries, geloescht = []) {
   const list = sortStunden(entries);
   return JSON.stringify({
     mitarbeiter: name,
     monat: ym,
     summe: summe(list),
-    eintraege: list.map(({ dirty, ...e }) => ({ ...e, stunden: stundenOf(e) })),
+    eintraege: list.map(({ dirty, fremd, ...e }) => ({ ...e, stunden: stundenOf(e) })),
+    ...(geloescht.length ? { geloescht } : {}),
   }, null, 2) + '\n';
+}
+
+// Einträge desselben Mitarbeiters von mehreren Geräten zusammenführen:
+// gleiche ID → der zuletzt geänderte gilt, gelöschte IDs fallen weg.
+export function stundenZusammenfuehren(lokal, remote, geloescht) {
+  const map = new Map();
+  for (const e of [...remote, ...lokal]) {
+    if (geloescht.has(e.id)) continue;
+    const alt = map.get(e.id);
+    if (!alt || (e.updatedAt || 0) >= (alt.updatedAt || 0)) map.set(e.id, e);
+  }
+  return [...map.values()];
 }
