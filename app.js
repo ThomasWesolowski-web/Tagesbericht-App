@@ -17,7 +17,7 @@ import { startI18n, SPRACHEN } from './i18n.js';
 import { openMarkup } from './markup.js';
 import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from './fotoaufmass.js';
 
-const APP_VERSION = '1.34.0';
+const APP_VERSION = '1.35.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];

@@ -30,7 +30,7 @@ const neueId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-$
 export function neuesFotoAufmass(nr) {
   let regel = '18363';
   try { regel = localStorage.getItem('fa-regel') || regel; } catch { /* ohne Speicher */ }
-  return { id: neueId(), titel: `Foto-Aufmaß ${nr}`, ref: {}, teile: [], regel, laibungAls: 'm2' };
+  return { id: neueId(), titel: `Foto-Aufmaß ${nr}`, ref: {}, teile: [], regel, laibungAls: 'm' };
 }
 
 // Zahl wie auf dem Papier: Komma, höchstens zwei Nachkommastellen
@@ -203,38 +203,42 @@ export function alsPositionen(d) {
       : { ...newZeile(), wert: fmt(x.flaeche), abzug }),
     ...(text ? { text } : {}),
   });
+  // Öffnungen immer mit Breite × Höhe: abgezogene als Abzugszeile (bei schiefer Form mit den
+  // Maßen im Text), übermessene als Hinweiszeile in der Fläche
+  const masse = (x) => `${fmt2(x.breite)} × ${fmt2(x.hoehe)} m`;
+  const oeZeile = (x, abzug) => flZeile(x, abzug, x.rechteck ? x.t.name : `${x.t.name} (${masse(x)})`);
   for (const f of teile.filter((x) => x.t.typ === 'flaeche')) {
     const oe = teile.filter((x) => x.in === f);
-    const ueber = oe.filter((x) => !x.abzug).map((x) => x.t.name);
     out.push({
-      bezeichnung: f.t.name + (ueber.length ? ` (übermessen: ${ueber.join(', ')})` : ''),
+      bezeichnung: f.t.name,
       einheit: 'm2',
-      zeilen: [flZeile(f, false, oe.some((x) => x.abzug) ? f.t.name : ''), ...oe.filter((x) => x.abzug).map((x) => flZeile(x, true, x.t.name))],
+      zeilen: [
+        flZeile(f, false, oe.length ? f.t.name : ''),
+        ...oe.filter((x) => x.abzug).map((x) => oeZeile(x, true)),
+        ...oe.filter((x) => !x.abzug).map((x) => ({ ...newZeile(), text: `${x.t.name}: ${masse(x)} = ${fmt2(x.flaeche)} m², übermessen`, info: true })),
+      ],
     });
   }
   const frei = teile.filter((x) => x.t.typ === 'oeffnung' && !x.in);
-  if (frei.length) out.push({ bezeichnung: frei.map((x) => x.t.name).join(', '), einheit: 'm2', zeilen: frei.map((x) => flZeile(x)) });
-  // Laibungen je Tiefe eine Position; je Öffnung 2 × Laibung (Höhe), 1 × Sturz (Breite),
-  // bei „unten“ 1 × Brüstung. Der Umlauf je Öffnung steht in der Bezeichnung.
+  if (frei.length) out.push({ bezeichnung: frei.map((x) => x.t.name).join(', '), einheit: 'm2', zeilen: frei.map((x) => oeZeile(x, false)) });
+  // Laibungen je Tiefe eine Position, immer in lfm; je Öffnung 2 × Laibung (Höhe), 1 × Sturz
+  // (Breite), bei „unten“ 1 × Brüstung, davor eine Hinweiszeile mit Maßen und Umlauf.
   const tiefen = new Map();
   for (const x of teile.filter((y) => y.t.typ === 'oeffnung')) {
     const k = x.laibungTiefe ? fmt(x.laibungTiefe * 100) : '';
     tiefen.set(k, [...(tiefen.get(k) || []), x]);
   }
-  const alsM2 = d.laibungAls !== 'm';
   for (const [cm, list] of tiefen) {
-    const m2 = alsM2 && cm !== '';
-    const tiefe = (x) => (m2 ? fmt(x.laibungTiefe) : '');
     // aus den gerundeten Zeilenwerten, damit Umlauf und Summe der Zeilen übereinstimmen
     const umlauf = (x) => fmt2(2 * zahl(fmt(x.hoehe)) + zahl(fmt(x.breite)) * (x.t.laibung?.unten ? 2 : 1));
     out.push({
       bezeichnung: cm ? `Laibungen Tiefe ${cm} cm` : 'Laibungen (ohne Tiefe)',
-      einheit: m2 ? 'm2' : 'm',
+      einheit: 'm',
       zeilen: list.flatMap((x) => [
-        { ...newZeile(), text: `${x.t.name}: Umlauf ${umlauf(x)} m`, info: true },
-        { ...newZeile(), stueck: '2', laenge: fmt(x.hoehe), breite: tiefe(x), text: `${x.t.name} Laibung` },
-        { ...newZeile(), stueck: '1', laenge: fmt(x.breite), breite: tiefe(x), text: `${x.t.name} Sturz` },
-        ...(x.t.laibung?.unten ? [{ ...newZeile(), stueck: '1', laenge: fmt(x.breite), breite: tiefe(x), text: `${x.t.name} Brüstung` }] : []),
+        { ...newZeile(), text: `${x.t.name} ${masse(x)}: Umlauf ${umlauf(x)} m`, info: true },
+        { ...newZeile(), stueck: '2', laenge: fmt(x.hoehe), text: `${x.t.name} Laibung` },
+        { ...newZeile(), stueck: '1', laenge: fmt(x.breite), text: `${x.t.name} Sturz` },
+        ...(x.t.laibung?.unten ? [{ ...newZeile(), stueck: '1', laenge: fmt(x.breite), text: `${x.t.name} Brüstung` }] : []),
       ]),
     });
   }
@@ -1299,9 +1303,6 @@ export async function openFotoAufmass(blob, vorlage) {
       panel.innerHTML = `
         <div class="fa-panel-kopf"><b>${escH(d.titel)}</b><button type="button" class="btn primary fa-p-ok">Fertig</button></div>
         <label class="fa-feld"><span>Abzug von Öffnungen (VOB/C)</span><select class="fa-regel-wahl">${REGELN.map((r) => `<option value="${r.id}" ${r.id === regelVon(d).id ? 'selected' : ''}>${r.label}${r.schwelle ? ` – bis ${fmt(r.schwelle)} m² übermessen` : ''}</option>`).join('')}</select></label>
-        <div class="fa-feld"><span>Laibungen abrechnen nach</span><div class="seg fa-laibung" role="radiogroup">
-          <button type="button" role="radio" data-l="m2" aria-checked="${d.laibungAls !== 'm'}">Fläche (m²)</button>
-          <button type="button" role="radio" data-l="m" aria-checked="${d.laibungAls === 'm'}">Länge (lfm)</button></div></div>
         <p class="fa-klein">Grenzen nach VOB/C 2019. Was im Vertrag vereinbart ist, geht vor. Maße aus dem Foto sind nur ungefähr; wichtige Maße am Bau nachmessen.</p>
         ${refZeile('rahmen')}${refZeile('laenge')}${refZeile('hoehe')}
         ${ms?.fehler ? `<p class="fa-klein fa-warn">${escH(ms.fehler)}</p>` : ''}
@@ -1319,9 +1320,6 @@ export async function openFotoAufmass(blob, vorlage) {
         neuZeichnen();
         zeichneListe();
       };
-      panel.querySelectorAll('.fa-laibung button').forEach((b) => {
-        b.onclick = () => { d.laibungAls = b.dataset.l; geaendert = true; zeichneListe(); };
-      });
       panel.querySelectorAll('[data-ref]').forEach((b) => { b.onclick = () => (b.dataset.ref === 'rahmen' ? fragRahmen(false) : fragMass(b.dataset.ref, false)); });
       panel.querySelectorAll('[data-edit]').forEach((b) => { b.onclick = () => teilFragen(d.teile[Number(b.dataset.edit)], false); });
       panel.querySelectorAll('[data-del]').forEach((b) => {

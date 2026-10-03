@@ -327,15 +327,26 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
       const sum = positionSumme(q);
       const zeilen = q.zeilen.filter((z) => !zeileLeer(z) || z.info);
       const bez = doc.splitTextToSize(q.bezeichnung || '', cols[1].w - 3);
-      // Zeilen mit eigenem Text (z. B. „Fenster 1 Laibung“): Bezeichnung als Kopf, Zeilen darunter
+      // Zeilen mit eigenem Text (z. B. „Fenster 1 Laibung“): Bezeichnung als Kopf, Zeilen darunter;
+      // lange Texte laufen in die nächste Tabellenzeile weiter
       const mitText = zeilen.some((z) => z.text);
-      const vor = mitText ? bez.length : 0;
-      const n = mitText ? vor + zeilen.length : Math.max(zeilen.length, bez.length, 1);
+      const reihen = [];
+      if (mitText) {
+        font('normal', 9.2);
+        bez.forEach((b) => reihen.push({ bez: b, z: null }));
+        for (const z of zeilen) {
+          const ein = z.info ? ' ' : '    ';
+          const teile = doc.splitTextToSize(z.text || '', cols[1].w - 3 - doc.getTextWidth(ein));
+          (teile.length ? teile : ['']).forEach((t, k) => reihen.push({ bez: ein + t, z: k || z.info ? null : z }));
+        }
+      } else {
+        for (let i = 0; i < Math.max(zeilen.length, bez.length, 1); i++) reihen.push({ bez: bez[i], z: zeilen[i] });
+      }
+      const n = reihen.length;
       if (y + Math.min(n, 4) * rowH > BOTTOM) { newPage(); head(); }
       for (let i = 0; i < n; i++) {
         if (mitText && i > 0 && y + rowH > BOTTOM) { newPage(); head(); }
-        const z = zeilen[i - vor];
-        const bezText = mitText ? (i < vor ? bez[i] : `${z.info ? ' ' : '    '}${z.text || ''}`) : bez[i];
+        const { bez: bezText, z } = reihen[i];
         const m = z ? zeileMenge(z, q.einheit) : 0;
         const last = i === n - 1;
         zeile([
