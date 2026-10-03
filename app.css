@@ -639,7 +639,9 @@ html.mk-offen, html.mk-offen body { overflow: hidden; }
 .fa-fk.nur-lupe { pointer-events: none; }
 .fa-fk.nur-lupe .fa-fk-leiste { display: none; }
 .fa-raster[aria-pressed="true"] { color: #fff; background: rgba(255,255,255,.18); }
-.fa-view .mk-werkzeuge .mk-wz span { font-size: .66rem; white-space: nowrap; }
+.fa-view .mk-werkzeuge { grid-template-columns: repeat(6, 1fr); gap: 4px; }
+.fa-view .mk-werkzeuge .mk-wz span { font-size: .64rem; white-space: nowrap; }
+.fa-zwei { grid-template-columns: 1fr 1fr; }
 .fa-regel { flex: 1; min-width: 0; font-size: .74rem; color: #aeb5bd; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fa-panel { position: absolute; left: 0; right: 0; bottom: 0; max-height: 72%; overflow-y: auto; z-index: 2; padding: 14px 14px calc(var(--safe-b, 0px) + 14px); background: #1f2327; border-radius: 16px 16px 0 0; box-shadow: 0 -8px 24px rgba(0,0,0,.45); display: grid; gap: 10px; touch-action: pan-y; }
 .fa-panel[hidden] { display: none; }
@@ -662,3 +664,4 @@ html.mk-offen, html.mk-offen body { overflow: hidden; }
 .fa-li small { color: #aeb5bd; }
 .fa-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--c); }
 .fa-view .fa-raster span { display: inline; }
+.fa-flaeche { overflow: hidden; }
