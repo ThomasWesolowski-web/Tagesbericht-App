@@ -24,7 +24,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="hell"]) {
     --bg: #14171b;
     --surface: #1d2127;
     --surface-2: #232830;
@@ -44,6 +44,28 @@
     --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 16px rgba(0, 0, 0, .25);
   }
 }
+/* Ansicht in den Einstellungen fest gewählt */
+:root[data-theme="dunkel"] {
+  --bg: #14171b;
+  --surface: #1d2127;
+  --surface-2: #232830;
+  --ink: #eef0f2;
+  --ink-2: #aab1ba;
+  --ink-3: #7c848e;
+  --line: #2e343c;
+  --accent: #f07a35;
+  --accent-ink: #1a0d05;
+  --accent-soft: #3a2518;
+  --ok: #5cc48a;
+  --ok-soft: #1b3326;
+  --warn: #e0a84a;
+  --warn-soft: #3a2f1a;
+  --danger: #ef6b61;
+  --danger-soft: #3d1f1d;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 16px rgba(0, 0, 0, .25);
+  color-scheme: dark;
+}
+:root[data-theme="hell"] { color-scheme: light; }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
@@ -672,3 +694,4 @@ html.mk-offen, html.mk-offen body { overflow: hidden; }
 .fa-view .mk-wz.fa-unnoetig { opacity: .35; }
 .am-ztext { grid-column: 1 / -1; font-size: .8rem; font-weight: 600; color: var(--ink-2); }
 .am-zeile.am-info { display: block; padding: 8px 0 2px; border-bottom: 0; }
+.seg.seg3 { grid-template-columns: repeat(3, 1fr); margin-bottom: 0; }

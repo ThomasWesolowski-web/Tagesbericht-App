@@ -17,7 +17,7 @@ import { startI18n, SPRACHEN } from './i18n.js';
 import { openMarkup } from './markup.js';
 import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from './fotoaufmass.js';
 
-const APP_VERSION = '1.33.0';
+const APP_VERSION = '1.34.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -25,6 +25,20 @@ const view = $('#view');
 const appbar = $('#appbar');
 
 let settings = db.loadSettings();
+
+// Ansicht: automatisch wie das Handy, oder fest hell bzw. dunkel
+const ANSICHTEN = [{ id: 'auto', label: 'Automatisch' }, { id: 'hell', label: 'Hell' }, { id: 'dunkel', label: 'Dunkel' }];
+function ansichtAnwenden() {
+  const t = settings.ansicht === 'hell' || settings.ansicht === 'dunkel' ? settings.ansicht : null;
+  if (t) document.documentElement.dataset.theme = t;
+  else delete document.documentElement.dataset.theme;
+  // Farbe der Statusleiste passend setzen
+  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => {
+    const dunkel = m.media.includes('dark');
+    m.content = t ? (t === 'dunkel' ? '#14171b' : '#f5f2ed') : (dunkel ? '#14171b' : '#f5f2ed');
+  });
+}
+ansichtAnwenden();
 startI18n(settings.lang || 'de');
 let objectUrls = [];
 let drafts = new Map(); // neue Berichte, die erst beim ersten Tippen gespeichert werden
@@ -2222,6 +2236,10 @@ async function renderSettings() {
       <label class="field"><span>Sprache</span><select id="lang-select" data-roh>
         ${SPRACHEN.map((l) => `<option value="${l.id}" ${(s.lang || 'de') === l.id ? 'selected' : ''}>${l.flagge} ${l.name}</option>`).join('')}
       </select></label>
+      <div class="field"><span>Ansicht</span>
+        <div class="seg seg3" id="ansicht-seg" role="radiogroup" aria-label="Ansicht">${ANSICHTEN.map((x) =>
+          `<button type="button" role="radio" data-ansicht="${x.id}" aria-checked="${(s.ansicht || 'auto') === x.id}">${x.label}</button>`).join('')}</div>
+      </div>
     </section>
 
     <section class="section">
@@ -2286,6 +2304,14 @@ async function renderSettings() {
     db.saveSettings(settings);
     location.reload();
   };
+  $$('#ansicht-seg button').forEach((b) => {
+    b.onclick = () => {
+      settings = { ...settings, ansicht: b.dataset.ansicht };
+      db.saveSettings(settings);
+      $$('#ansicht-seg button').forEach((x) => x.setAttribute('aria-checked', x === b));
+      ansichtAnwenden();
+    };
+  });
   $$('[data-set]').forEach((el) => {
     el.addEventListener('change', () => {
       const key = el.dataset.set;
