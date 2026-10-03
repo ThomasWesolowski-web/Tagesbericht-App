@@ -9,6 +9,7 @@ import { stundenMarkdown, stundenJson, personKey, stundenZusammenfuehren } from 
 import { toJson, toMarkdown, formatDate, artLabel } from './report.js';
 import { berichtInsDeutsche, insDeutsche, FREITEXTE } from './translate.js';
 import { SPRACHEN } from './i18n.js';
+import { planReportId } from './plaene.js';
 
 const FELDNAMEN = { taetigkeiten: 'Ausgeführte Arbeiten', material: 'Material und Geräte', bemerkungen: 'Bemerkungen' };
 
@@ -365,6 +366,65 @@ export async function syncStammdaten(settings) {
   return changed;
 }
 
+// ---------- Pläne der Baustellen ----------
+// Liegen im Repo unter stammdaten/plaene/<baustelle>_<id>/, die Liste dazu in
+// baustellen.json (site.plaene mit pfad). Fehlende Pläne holt sich jedes Handy beim Abgleich.
+
+const PLAN_LOESCHEN_KEY = 'tagesberichte.planLoeschen';
+
+async function plaeneHochladen(gh, settings) {
+  let weg = [];
+  try { weg = JSON.parse(localStorage.getItem(PLAN_LOESCHEN_KEY) || '[]'); } catch { weg = []; }
+  if (weg.length) {
+    await commit(gh, settings, weg.map((path) => ({ path, delete: true })), 'Plan entfernt');
+    localStorage.removeItem(PLAN_LOESCHEN_KEY);
+  }
+  for (const site of await db.allSites()) {
+    let geaendert = false;
+    for (const p of site.plaene || []) {
+      if (p.pfad) continue;
+      const f = await db.getFile(p.id);
+      if (!f) continue;
+      const path = `stammdaten/plaene/${slug(site.name) || 'baustelle'}_${site.id.slice(0, 8)}/${p.id.slice(0, 8)}_${safeFileName(p.name, new Set())}`;
+      await commit(gh, settings, [{ path, blob: f.blob }], `Plan „${p.name}“ für ${site.name}`);
+      p.pfad = path;
+      await db.putFile({ ...f, hochgeladen: path });
+      geaendert = true;
+    }
+    if (geaendert) await db.putSite(site);
+  }
+}
+
+async function plaeneLaden(gh, settings) {
+  let neu = 0;
+  for (const site of await db.allSites()) {
+    const plaene = site.plaene || [];
+    const lokal = await db.filesFor(planReportId(site.id));
+    // Lokale Pläne, die nicht mehr in der Liste stehen: hochgeladene sind woanders gelöscht
+    // worden, nie hochgeladene gingen beim Zusammenführen verloren und kommen wieder dazu.
+    let zurueck = false;
+    for (const f of lokal) {
+      if (plaene.some((p) => p.id === f.id)) continue;
+      if (f.hochgeladen) await db.deleteFile(f.id);
+      else {
+        plaene.push({ id: f.id, name: f.name, typ: f.type, groesse: f.size, pfad: null, addedAt: f.addedAt });
+        zurueck = true;
+      }
+    }
+    if (zurueck) { site.plaene = plaene; await db.putSite(site); }
+    for (const p of plaene) {
+      if (!p.pfad || lokal.some((f) => f.id === p.id)) continue;
+      const dir = p.pfad.slice(0, p.pfad.lastIndexOf('/'));
+      const sha = (await remoteShas(gh, settings, dir)).get(p.pfad);
+      if (!sha) continue;
+      const blob = await blobAt(gh, sha, p.typ);
+      await db.putFile({ id: p.id, reportId: planReportId(site.id), name: p.name, type: p.typ || blob.type, size: blob.size, blob, addedAt: p.addedAt || Date.now(), hochgeladen: p.pfad });
+      neu++;
+    }
+  }
+  return neu;
+}
+
 // ---------- Administrator und Stunden anderer Mitarbeiter ----------
 
 async function getJson(gh, settings, path) {
@@ -619,7 +679,7 @@ export async function pullReports(settings, { alle = false } = {}) {
       const text = (vonMir && !alle && a.textOriginal) || a.text || '';
       const da = files.find((f) => f.remoteName === a.datei);
       if (da) {
-        if ((da.text || '') !== text) await db.putFile({ ...da, text });
+        if ((da.text || '') !== text || (a.fotoNr && da.fotoNr !== a.fotoNr)) await db.putFile({ ...da, text, ...(a.fotoNr ? { fotoNr: a.fotoNr } : {}) });
         continue;
       }
       if (!blobs.has(p)) continue;
@@ -628,6 +688,7 @@ export async function pullReports(settings, { alle = false } = {}) {
         id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
         reportId: data.id, name: a.name || a.datei, type: a.typ || blob.type, size: blob.size, blob,
         remoteName: a.datei, uploadedPath: p, addedAt: Date.now(), text, ...(a.fotoAufmass ? { fotoAufmass: a.fotoAufmass } : {}),
+        ...(a.fotoNr ? { fotoNr: a.fotoNr } : {}), ...(a.planMarkierung ? { planMarkierung: a.planMarkierung } : {}),
       });
     }
     for (const f of files) if (!wanted.has(f.remoteName)) await db.deleteFile(f.id);
@@ -663,9 +724,19 @@ export function syncAll(settings, onProgress, { alle = false } = {}) {
     let stammdatenChanged = false;
     let stammdatenError = null;
     try {
+      await plaeneHochladen(client(settings), settings);
+    } catch (err) {
+      stammdatenError = `Pläne: ${err.message}`;
+    }
+    try {
       stammdatenChanged = await syncStammdaten(settings);
     } catch (err) {
       stammdatenError = err.message;
+    }
+    try {
+      if ((await plaeneLaden(client(settings), settings)) > 0) stammdatenChanged = true;
+    } catch (err) {
+      stammdatenError ||= `Pläne: ${err.message}`;
     }
     let stundenError = null;
     try {

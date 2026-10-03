@@ -1,5 +1,5 @@
 import * as db from './db.js';
-import { prepareFile, formatBytes, MAX_FILE_BYTES } from './media.js';
+import { prepareFile, formatBytes, MAX_FILE_BYTES, slug } from './media.js';
 import {
   WETTER, newReport, newSite, newPerson, crewOf, entryHours, KATEGORIEN, kategorieOf, sortCrew, hoursByKategorie, workedHours, formatHours, formatDate, weekday, monthLabel, parseDate, toMarkdown, ARTEN, artLabel, EINHEITEN, einheitLabel, newPosition, newZeile, normPosition, zeileMenge, zeileLeer, positionSumme, positionLeer, positionMenge, aufmassSummen, formatMenge,
   ABRECHNUNG, MASCHINEN_VORSCHLAEGE, maschinenStunden, today, newId, GEWERKE, gewerkeText,
@@ -15,9 +15,10 @@ import {
 } from './sync.js';
 import { startI18n, SPRACHEN } from './i18n.js';
 import { openMarkup } from './markup.js';
+import { planReportId, planTauglich, istPdf, pdfSeiten, planAlsBild, formenSkalieren, pinNummern } from './plaene.js';
 import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from './fotoaufmass.js';
 
-const APP_VERSION = '1.35.0';
+const APP_VERSION = '1.36.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -98,6 +99,7 @@ const ICON = {
   copy: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
   trash: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 16l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  plan: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 4v14M15 6v14" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>',
   pin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-6.2-6.5-11.2a6.5 6.5 0 0 1 13 0C18.5 14.8 12 21 12 21z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="9.8" r="2.3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
   chevron: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   clock: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7.5V12l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
@@ -437,6 +439,13 @@ async function renderEditor(id) {
         <div id="sign-box"></div>
       </section>
 
+      <section class="section" id="plan-section" hidden>
+        <h2>Pläne <span class="h-right" id="plan-sum"></span></h2>
+        <p class="hint" style="margin-top:0">Bearbeitete Flächen im Plan einzeichnen und Fotos als Pin an die Stelle setzen, an der sie entstanden sind.</p>
+        <div id="plan-markierungen" class="pm-liste"></div>
+        <button type="button" class="btn soft block" id="plan-neu">${ICON.plan} Im Plan markieren</button>
+      </section>
+
       <section class="section">
         <h2>Fotos und Dokumente <span class="h-right" id="file-sum"></span></h2>
         <div class="attach-actions">
@@ -460,6 +469,7 @@ async function renderEditor(id) {
   const pendingAdds = new Set(); // neu angehängte Dateien, die bei „Abbrechen“ wieder weg müssen
   const pendingRemovals = new Set(); // entfernte Dateien, die erst beim Speichern gelöscht werden
   const pendingTexte = new Map(); // geänderte Bildtexte, die erst beim Speichern übernommen werden
+  let sitePlaene = []; // Pläne der gewählten Baustelle
 
   const drawSum = () => {
     const groups = hoursByKategorie(report);
@@ -572,6 +582,7 @@ async function renderEditor(id) {
     }
     drawSite();
     changed();
+    planSiteLaden();
     if (!report.art) chooseArt();
   }, report.baustelleId ? '' : report.baustelle);
   $('#site-pick').onclick = chooseSite;
@@ -840,7 +851,7 @@ async function renderEditor(id) {
   });
 
   const drawThumbs = async () => {
-    const files = (await db.filesFor(report.id)).filter((f) => !pendingRemovals.has(f.id) && !f.fotoAufmass);
+    const files = (await db.filesFor(report.id)).filter((f) => !pendingRemovals.has(f.id) && !f.fotoAufmass && !f.planMarkierung);
     $('#file-sum').textContent = files.length ? `${files.length} · ${formatBytes(files.reduce((s, f) => s + f.size, 0))}` : '';
     const bildtext = (f) => (pendingTexte.has(f.id) ? pendingTexte.get(f.id) : f.text || '');
     $('#thumbs').innerHTML = files.map((f) => {
@@ -852,6 +863,8 @@ async function renderEditor(id) {
         <button type="button" class="open" aria-label="${esc(f.name)} öffnen">${inner}</button>
         <span class="size">${formatBytes(f.size)}</span>
         ${bild ? `<button type="button" class="markieren" aria-label="Foto markieren">${ICON.pencil}</button>` : ''}
+        ${bild && f.fotoNr ? `<span class="foto-nr">Foto ${f.fotoNr}</span>` : ''}
+        ${bild && sitePlaene.length ? `<button type="button" class="auf-plan" aria-label="Auf dem Plan zeigen">${ICON.pin}</button>` : ''}
         <button type="button" class="remove" aria-label="${esc(f.name)} entfernen">${ICON.x}</button></div>
         ${bild ? `<button type="button" class="bildtext${bildtext(f) ? ' voll' : ''}">${bildtext(f) ? esc(bildtext(f)) : '+ Text zum Bild'}</button>` : ''}</div>`;
     }).join('');
@@ -883,6 +896,8 @@ async function renderEditor(id) {
         changed();
         drawThumbs();
       };
+      const ap = $('.auf-plan', t);
+      if (ap) ap.onclick = () => fotoAufPlan(file);
       const bt = $('.bildtext', t);
       if (bt) bt.onclick = () => {
         const { sheet, close } = openSheet(`<h2>Text zum Bild</h2>
@@ -1070,8 +1085,130 @@ async function renderEditor(id) {
     ]);
   };
 
+  // ---------- Pläne der Baustelle markieren, Fotos auf dem Plan zuordnen ----------
+  const planDateien = async () => (await db.filesFor(report.id)).filter((f) => f.planMarkierung && !pendingRemovals.has(f.id));
+  // Fotos bekommen eine feste Nummer, sobald sie einem Plan zugeordnet werden können
+  const fotosNummerieren = async () => {
+    const fotos = (await db.filesFor(report.id)).filter((f) => f.type.startsWith('image/') && !f.fotoAufmass && !f.planMarkierung && !pendingRemovals.has(f.id));
+    let max = Math.max(0, ...fotos.map((f) => f.fotoNr || 0));
+    let neu = false;
+    for (const f of fotos) {
+      if (f.fotoNr) continue;
+      f.fotoNr = ++max;
+      await db.putFile(f);
+      neu = true;
+    }
+    if (neu) { changed(); drawThumbs(); }
+    return fotos.sort((a, b) => a.fotoNr - b.fotoNr);
+  };
+  const drawPlaene = async () => {
+    const pm = await planDateien();
+    $('#plan-section').hidden = !sitePlaene.length && !pm.length;
+    $('#plan-neu').hidden = !sitePlaene.length;
+    $('#plan-sum').textContent = pm.length ? String(pm.length) : '';
+    $('#plan-markierungen').innerHTML = pm.map((f) => {
+      const m = f.planMarkierung;
+      const nr = pinNummern(m);
+      return `<div class="pm-item" data-id="${f.id}">
+        <button type="button" class="pm-bild"><img src="${objectUrl(f.blob)}" alt="" loading="lazy"></button>
+        <div class="pm-text"><b>${esc(m.planName)}${m.seite > 1 ? ` · Seite ${m.seite}` : ''}</b>
+          <small>${nr.length ? `Fotos: ${nr.join(', ')}` : 'Keine Fotos zugeordnet'}</small>
+          <div class="pm-knoepfe"><button type="button" class="btn soft pm-edit">${ICON.pencil} Bearbeiten</button>
+          <button type="button" class="icon-btn pm-weg" aria-label="Plan aus dem Bericht entfernen">${ICON.trash}</button></div></div>
+      </div>`;
+    }).join('');
+    $$('#plan-markierungen .pm-item').forEach((el) => {
+      const f = pm.find((x) => x.id === el.dataset.id);
+      $('.pm-bild', el).onclick = () => openFile(f);
+      $('.pm-edit', el).onclick = () => planBearbeiten({ datei: f });
+      $('.pm-weg', el).onclick = async () => {
+        if (!confirm(`Markierten Plan „${f.planMarkierung.planName}“ aus dem Bericht entfernen?`)) return;
+        if (pendingAdds.delete(f.id)) await db.deleteFile(f.id);
+        else pendingRemovals.add(f.id);
+        changed();
+        drawPlaene();
+      };
+    });
+  };
+  const planSiteLaden = async () => {
+    const site = report.baustelleId ? await db.getSite(report.baustelleId) : null;
+    const dateien = site ? await db.filesFor(planReportId(site.id)) : [];
+    sitePlaene = (site?.plaene || []).filter((p) => planTauglich(p)).map((p) => ({ ...p, datei: dateien.find((d) => d.id === p.id) }));
+    drawPlaene();
+    drawThumbs();
+  };
+  // Plan (und bei PDFs die Seite) auswählen
+  const planWaehlen = () => new Promise((resolve) => {
+    if (sitePlaene.length === 1 && !istPdf(sitePlaene[0])) { resolve({ plan: sitePlaene[0], seite: 1 }); return; }
+    const { sheet, close } = openSheet(`<h2>Welcher Plan?</h2>
+      <div class="pick-list">${sitePlaene.map((p) => `<button type="button" class="pick" data-id="${p.id}">${ICON.plan}<span><b>${esc(p.name)}</b>${p.datei ? '' : '<small>Noch nicht auf diesem Handy, bitte abgleichen</small>'}</span></button>`).join('')}</div>`);
+    $$('.pick', sheet).forEach((b) => {
+      b.onclick = async () => {
+        const plan = sitePlaene.find((p) => p.id === b.dataset.id);
+        if (!plan.datei) { toast('Der Plan ist auf diesem Handy noch nicht da. Bitte abgleichen.'); return; }
+        let seite = 1;
+        if (istPdf(plan)) {
+          const n = await pdfSeiten(plan.datei.blob).catch(() => 1);
+          if (n > 1) {
+            const s = prompt(`„${plan.name}“ hat ${n} Seiten. Welche Seite?`, '1');
+            if (s === null) return;
+            seite = Math.min(n, Math.max(1, parseInt(s, 10) || 1));
+          }
+        }
+        close();
+        resolve({ plan, seite });
+      };
+    });
+  });
+  // Markierten Plan neu anlegen oder weiter bearbeiten; pinNr setzt gleich ein Foto
+  const planBearbeiten = async ({ datei = null, plan = null, seite = 1, pinNr = null } = {}) => {
+    const m = datei?.planMarkierung;
+    const quelle = m ? sitePlaene.find((p) => p.id === m.planId)?.datei || (await db.getFile(m.planId)) : plan?.datei;
+    let basis;
+    $('#sync-state').textContent = 'Plan wird geladen …';
+    try {
+      basis = quelle ? await planAlsBild(quelle, m ? m.seite : seite) : { blob: datei.blob, w: m.w, h: m.h };
+    } catch (err) {
+      toast(`Der Plan lässt sich nicht öffnen (${err.message}).`, 4000);
+      updateState();
+      return;
+    }
+    updateState();
+    // Ohne Original-Plan auf dem Handy wird auf dem markierten Bild weitergezeichnet
+    const formen = m ? (quelle ? formenSkalieren(m.formen || [], m, basis) : []) : [];
+    const fotos = (await fotosNummerieren()).map((f) => ({ nr: f.fotoNr, url: objectUrl(f.blob) }));
+    const name = m ? m.planName : plan.name.replace(/\.(pdf|png|jpe?g|webp|heic|gif)$/i, '');
+    const res = await openMarkup(basis.blob, { mitFormen: true, formen, fotos, pinNr, titel: name });
+    if (!res) return;
+    const planMarkierung = { planId: m ? m.planId : plan.id, planName: name, seite: m ? m.seite : seite, w: res.w, h: res.h, formen: quelle ? res.formen : [...(m.formen || []), ...res.formen] };
+    const dateiName = `plan-${slug(name)}${planMarkierung.seite > 1 ? `-s${planMarkierung.seite}` : ''}.jpg`;
+    const fid = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+    if (datei && pendingAdds.has(datei.id)) {
+      await db.putFile({ ...datei, blob: res.blob, size: res.blob.size, planMarkierung });
+    } else {
+      await db.putFile({ id: fid, reportId: report.id, name: dateiName, type: 'image/jpeg', size: res.blob.size, blob: res.blob, addedAt: Date.now(), planMarkierung });
+      pendingAdds.add(fid);
+      if (datei) pendingRemovals.add(datei.id); // Original bleibt bis zum Speichern
+    }
+    changed();
+    drawPlaene();
+  };
+  $('#plan-neu').onclick = async () => {
+    const w = await planWaehlen();
+    if (w) planBearbeiten(w);
+  };
+  // Vom Foto aus: Plan wählen (vorhandene Markierung desselben Plans wird weiterverwendet)
+  const fotoAufPlan = async (file) => {
+    await fotosNummerieren();
+    const nr = (await db.getFile(file.id))?.fotoNr;
+    const w = await planWaehlen();
+    if (!w) return;
+    const vorhanden = (await planDateien()).find((f) => f.planMarkierung.planId === w.plan.id && f.planMarkierung.seite === w.seite);
+    planBearbeiten(vorhanden ? { datei: vorhanden, pinNr: nr } : { ...w, pinNr: nr });
+  };
+
   updateState();
-  drawThumbs();
+  planSiteLaden();
 }
 
 let editorHooks = null;
@@ -1331,6 +1468,14 @@ async function renderSiteEditor(id) {
       ${isNew ? '' : `<div class="toggle"><span><b>Abgeschlossen</b><small>Wird bei neuen Berichten nicht mehr angeboten</small></span>
         <label class="switch"><input type="checkbox" id="archived" ${site.archived ? 'checked' : ''}><i></i></label></div>`}
     </form>
+    <section class="section" id="plaene-box">
+      <h2>Pläne und Dokumente <span class="h-right" id="plaene-sum"></span></h2>
+      ${isNew ? '<p class="hint" style="margin:0">Pläne kannst du anhängen, sobald die Baustelle gespeichert ist.</p>' : `
+      <div id="plaene-liste" class="plan-liste"></div>
+      <label class="btn soft block">${ICON.clip} Plan oder Dokument anhängen
+        <input class="file-input" type="file" multiple accept="application/pdf,image/*,.pdf,.doc,.docx,.xls,.xlsx" id="plan-pick"></label>
+      <p class="hint">PDF-Pläne und Bilder lassen sich später im Tagesbericht markieren. Dateien bis 25 MB.</p>`}
+    </section>
     <button class="btn primary block" id="save-site">${isNew ? 'Baustelle speichern' : 'Änderungen speichern'}</button>
     ${reports.length ? `<button class="btn soft block" id="site-sum" style="margin-top:10px">${ICON.doc} Zusammenfassung als PDF</button>` : ''}
     ${reports.length ? `<div class="month"><span>Berichte</span><span>${formatHours(reports.reduce((s, r) => s + (workedHours(r) || 0), 0))}</span></div>
@@ -1344,6 +1489,7 @@ async function renderSiteEditor(id) {
 
   const siteSum = $('#site-sum');
   if (siteSum) siteSum.onclick = () => openZusammenfassung({ baustelleId: site.id });
+  if (!isNew) planListeBinden(site);
   $('#save-site').onclick = async () => {
     readSiteFields($('#site-form'), site);
     if (!site.name) {
@@ -1364,6 +1510,74 @@ async function renderSiteEditor(id) {
     await db.deleteSite(site.id);
     location.hash = '#/baustellen';
   };
+}
+
+// Pläne und Dokumente einer Baustelle: werden sofort gespeichert und beim Abgleich
+// unter stammdaten/plaene/ ins Repo geladen. Entfernen darf nur der Administrator
+// (oder wer den Plan gerade erst angehängt hat und noch nicht abgeglichen ist).
+async function planListeBinden(site) {
+  const zeichnen = async () => {
+    const dateien = await db.filesFor(planReportId(site.id));
+    const plaene = (site.plaene || []).map((p) => ({ p, f: dateien.find((d) => d.id === p.id) }));
+    $('#plaene-sum').textContent = plaene.length ? String(plaene.length) : '';
+    $('#plaene-liste').innerHTML = plaene.map(({ p, f }) => `
+      <div class="plan-item" data-id="${p.id}">
+        <button type="button" class="plan-oeffnen">${planTauglich(p) ? ICON.plan : ICON.doc}
+          <span><b>${esc(p.name)}</b><small>${formatBytes(p.groesse || f?.size || 0)}${f ? '' : ' · wird beim Abgleich geladen'}${p.pfad ? '' : ' · noch nicht hochgeladen'}</small></span></button>
+        ${isAdmin() || !p.pfad ? `<button type="button" class="icon-btn plan-weg" aria-label="Plan entfernen">${ICON.trash}</button>` : ''}
+      </div>`).join('') || '<p class="hint" style="margin:0 0 12px">Noch keine Pläne angehängt.</p>';
+    $$('#plaene-liste .plan-item').forEach((el) => {
+      const p = site.plaene.find((x) => x.id === el.dataset.id);
+      const f = dateien.find((d) => d.id === p.id);
+      $('.plan-oeffnen', el).onclick = () => {
+        if (!f) { toast('Der Plan ist auf diesem Handy noch nicht da. Bitte abgleichen.'); return; }
+        if (istPdf(f)) sharePdfFile(new File([f.blob], f.name, { type: 'application/pdf' }), f.name, []);
+        else openFile(f);
+      };
+      const weg = $('.plan-weg', el);
+      if (weg) weg.onclick = async () => {
+        if (!confirm(`„${p.name}“ von der Baustelle entfernen?`)) return;
+        site.plaene = site.plaene.filter((x) => x.id !== p.id);
+        if (p.pfad) planLoeschenMerken(p.pfad);
+        if (f) await db.deleteFile(f.id);
+        await db.putSite(site);
+        scheduleAutoSync();
+        zeichnen();
+      };
+    });
+  };
+  $('#plan-pick').onchange = async (e) => {
+    const list = [...e.target.files];
+    e.target.value = '';
+    for (const file of list) {
+      if (file.size > MAX_FILE_BYTES) {
+        toast(`„${file.name}“ ist größer als 25 MB und wurde nicht angehängt.`, 4000);
+        continue;
+      }
+      const id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+      const type = file.type || (/\.pdf$/i.test(file.name) ? 'application/pdf' : 'application/octet-stream');
+      await db.putFile({ id, reportId: planReportId(site.id), name: file.name, type, size: file.size, blob: file, addedAt: Date.now() });
+      site.plaene = [...(site.plaene || []), { id, name: file.name, typ: type, groesse: file.size, pfad: null, addedAt: Date.now() }];
+    }
+    if (list.length) {
+      await db.putSite(site);
+      scheduleAutoSync();
+      toast(list.length === 1 ? 'Plan angehängt.' : `${list.length} Dateien angehängt.`);
+    }
+    zeichnen();
+  };
+  zeichnen();
+}
+
+const PLAN_LOESCHEN_KEY = 'tagesberichte.planLoeschen';
+function planLoeschenMerken(pfad) {
+  try {
+    const l = JSON.parse(localStorage.getItem(PLAN_LOESCHEN_KEY) || '[]');
+    if (!l.includes(pfad)) l.push(pfad);
+    localStorage.setItem(PLAN_LOESCHEN_KEY, JSON.stringify(l));
+  } catch {
+    // ohne Merkliste bleibt die Datei im Repo liegen
+  }
 }
 
 // Auswahl im Bericht: gespeicherte Baustelle antippen oder neue anlegen.

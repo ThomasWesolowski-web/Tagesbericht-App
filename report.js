@@ -323,10 +323,21 @@ export function toMarkdown(r, files, author, options = {}) {
   }
 
   if (files.length) {
-    md += '\n## Fotos und Dokumente\n\n';
-    for (const f of files) {
+    const plaene = files.filter((f) => f.planMarkierung);
+    if (plaene.length) {
+      md += '\n## Pläne\n\n';
+      for (const f of plaene) {
+        const m = f.planMarkierung;
+        const nr = [...new Set((m.formen || []).filter((x) => x.typ === 'pin').map((x) => x.nr))].sort((a, b) => a - b);
+        md += `![${m.planName}](${encodeURI(f.remoteName)})\n\n_${m.planName}${m.seite > 1 ? `, Seite ${m.seite}` : ''}${nr.length ? ` · Fotos: ${nr.join(', ')}` : ''}_\n\n`;
+      }
+    }
+    const rest = files.filter((f) => !f.planMarkierung);
+    if (rest.length) md += '\n## Fotos und Dokumente\n\n';
+    for (const f of rest) {
       const link = encodeURI(f.remoteName);
-      md += f.type.startsWith('image/') ? `![${f.name}](${link})\n${f.text ? `\n_${f.text.replace(/\s*\n\s*/g, ' ')}_\n` : ''}\n` : `- [${f.name}](${link})\n`;
+      const unter = [f.fotoNr ? `Foto ${f.fotoNr}` : '', f.text ? f.text.replace(/\s*\n\s*/g, ' ') : ''].filter(Boolean).join(': ');
+      md += f.type.startsWith('image/') ? `![${f.name}](${link})\n${unter ? `\n_${unter}_\n` : ''}\n` : `- [${f.name}](${link})\n`;
     }
   }
   return md;
@@ -384,7 +395,7 @@ export function toJson(r, files, author) {
       ...rapport,
       ...aufmass,
       erstelltVon: author || undefined,
-      anhaenge: files.map((f) => ({ name: f.name, datei: f.remoteName, typ: f.type, groesse: f.size, ...(f.text ? { text: f.text } : {}), ...(f.textOriginal ? { textOriginal: f.textOriginal } : {}), ...(f.fotoAufmass ? { fotoAufmass: f.fotoAufmass } : {}) })),
+      anhaenge: files.map((f) => ({ name: f.name, datei: f.remoteName, typ: f.type, groesse: f.size, ...(f.text ? { text: f.text } : {}), ...(f.textOriginal ? { textOriginal: f.textOriginal } : {}), ...(f.fotoAufmass ? { fotoAufmass: f.fotoAufmass } : {}), ...(f.fotoNr ? { fotoNr: f.fotoNr } : {}), ...(f.planMarkierung ? { planMarkierung: f.planMarkierung } : {}) })),
     },
     null,
     2,

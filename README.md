@@ -20,6 +20,11 @@ In diesem Repo liegt nur der App-Code. Es enthält keine Berichte und keine Zuga
 - Fotos mit der Kamera aufnehmen oder Dateien (PDF, Lieferscheine …) anhängen;
   Fotos werden auf etwa 1600 Pixel verkleinert
 - Alles wird sofort offline auf dem Handy gespeichert (IndexedDB) und kann jederzeit geändert werden
+- Pläne und Dokumente an der Baustelle (PDF, Bilder), abgeglichen unter `stammdaten/plaene/`;
+  im Bericht einen Plan (bei PDFs eine Seite) markieren: bearbeitete Flächen ausmalen, Stift,
+  Pfeil, Text, Zoom mit zwei Fingern, und Fotos als nummerierte Pins an die Stelle setzen, an der
+  sie entstanden sind (`plaene.js`, `markup.js`). Im PDF steht der Plan über die ganze Breite,
+  die Fotos tragen dieselbe Nummer
 - Upload als ein Commit pro Bericht, sobald Netz da ist
 - Foto-Aufmaß im Reiter Aufmaß: Perspektiv-Rahmen (4 Ecken eines bekannten Rechtecks, Entzerrung per Homografie); Formen werden fertig abgesteckt und über die Eckpunkte angepasst, Zoom per Knöpfen oder zwei Fingern; Teil antippen wählt es aus, blauer Punkt verschiebt, Kopie dupliziert
   oder bekannte Länge und Höhe im Foto markieren, daraus den Maßstab

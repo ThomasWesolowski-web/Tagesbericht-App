@@ -465,8 +465,34 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
     y += 8;
   }
 
+  // Pläne mit Markierungen und Foto-Pins: jeweils über die ganze Breite
+  const plaene = files.filter((f) => f.planMarkierung);
+  for (const [i, f] of plaene.entries()) {
+    const img = await toJpeg(f.blob, 2400);
+    if (!img) continue;
+    const m = f.planMarkierung;
+    const maxH = BOTTOM - M - 30;
+    const s = Math.min(CW / img.w, maxH / img.h);
+    const w = img.w * s;
+    const h = img.h * s;
+    if (i === 0) heading(plaene.length > 1 ? `Pläne (${plaene.length})` : 'Plan', h + 12);
+    else ensure(h + 12);
+    doc.addImage(img.data, 'JPEG', M + (CW - w) / 2, y, w, h);
+    doc.setDrawColor(...LINE);
+    doc.rect(M + (CW - w) / 2, y, w, h);
+    y += h + 4.5;
+    const nr = [...new Set((m.formen || []).filter((x) => x.typ === 'pin').map((x) => x.nr))].sort((a, b) => a - b);
+    font('bold', 9.5); color(INK);
+    doc.text(`${m.planName}${m.seite > 1 ? `, Seite ${m.seite}` : ''}`, M, y);
+    if (nr.length) {
+      font('normal', 9); color(MUTED);
+      doc.text(`Fotos auf dem Plan: ${nr.join(', ')}`, M + CW, y, { align: 'right' });
+    }
+    y += 8;
+  }
+
   // Fotos: zwei pro Zeile
-  const images = files.filter((f) => f.type?.startsWith('image/') && f.fotoAufmass?.rolle !== 'original');
+  const images = files.filter((f) => f.type?.startsWith('image/') && f.fotoAufmass?.rolle !== 'original' && !f.planMarkierung);
   const others = files.filter((f) => !f.type?.startsWith('image/'));
   if (images.length) {
     const gap = 6;
@@ -482,7 +508,10 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
       });
       // Bildtexte unter dem Foto (höchstens 4 Zeilen)
       font('normal', 8.5);
-      const texte = pair.map(({ f }) => (f.text ? doc.splitTextToSize(f.text, cellW - 2).slice(0, 4) : []));
+      const texte = pair.map(({ f }) => {
+        const t = [f.fotoNr ? `Foto ${f.fotoNr}` : '', f.text || ''].filter(Boolean).join(': ');
+        return t ? doc.splitTextToSize(t, cellW - 2).slice(0, 4) : [];
+      });
       const textH = Math.max(0, ...texte.map((t) => t.length)) * 3.6;
       const rowH = Math.max(...sizes.map((s) => s.h)) + 7 + textH;
       ensure(rowH);
