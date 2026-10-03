@@ -842,7 +842,7 @@ export async function openFotoAufmass(blob, vorlage) {
     } else if (ms.fehler) {
       t = ms.fehler;
     } else {
-      t = 'Fläche, Öffnung oder Strecke tippen: die Form erscheint auf dem Foto und wird über die Ecken angepasst. Lange antippen wählt ein Teil zum Verschieben oder Löschen.';
+      t = 'Fläche, Öffnung oder Strecke tippen: die Form erscheint auf dem Foto und wird über die Ecken angepasst. Ein Teil antippen wählt es aus: Ecken ziehen, am blauen Punkt verschieben, kopieren oder löschen.';
       if (!ms.beide) t += ' Nur eine Referenz gesetzt: Maßstab gilt dann für beide Richtungen.';
     }
     txt.textContent = t;
@@ -1138,25 +1138,6 @@ export async function openFotoAufmass(blob, vorlage) {
 
   const finger = new Map();
   let pinch = null;
-  let langTimer = null;
-  const langAus = () => { clearTimeout(langTimer); langTimer = null; };
-  // Lange antippen: Teil auswählen; weiterziehen verschiebt das ganze Teil
-  const langStart = (p) => {
-    langAus();
-    langTimer = setTimeout(() => {
-      langTimer = null;
-      if (!ziehen || ziehen.bewegt || finger.size !== 1 || entwurf) return;
-      const t = ziehen.art === 'griff' && ziehen.ziel.art === 'teil' ? ziehen.ziel.t : teilUnter(p);
-      if (!t) return;
-      if (ziehen.art === 'griff') setze(ziehen.ziel, ziehen.startP);
-      auswahl = t;
-      aktiv = null;
-      fk.hidden = true;
-      ziehen = { art: 'teilzug', t, x0: ziehen.x0, y0: ziehen.y0, p0: p, start: t.punkte.map((q) => [...q]), bewegt: false };
-      try { navigator.vibrate?.(30); } catch { /* egal */ }
-      neuZeichnen();
-    }, 500);
-  };
   const fingerMitte = () => {
     const [a, b] = [...finger.values()];
     return { d: Math.hypot(b.x - a.x, b.y - a.y) || 1, m: [(a.x + b.x) / 2, (a.y + b.y) / 2] };
@@ -1175,12 +1156,10 @@ export async function openFotoAufmass(blob, vorlage) {
     finger.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (finger.size >= 2) {
       abbrechen();
-      langAus();
       if (finger.size === 2) pinch = { ...fingerMitte(), von: { ...zoom } };
       return;
     }
     const p = punkt(e);
-    langStart(p);
     let t = treffer(p);
     if (t?.art === 'kante') {
       // Neue Ecke in der Kantenmitte einfügen und gleich ziehen
@@ -1193,7 +1172,6 @@ export async function openFotoAufmass(blob, vorlage) {
       geaendert = true;
     }
     if (t?.art === 'schieber') {
-      langAus();
       aktiv = null;
       fk.hidden = true;
       ziehen = { art: 'teilzug', t: t.t, x0: e.clientX, y0: e.clientY, p0: p, start: t.t.punkte.map((q) => [...q]), bewegt: false };
@@ -1220,7 +1198,7 @@ export async function openFotoAufmass(blob, vorlage) {
     if (!ziehen) return;
     const dx = e.clientX - ziehen.x0;
     const dy = e.clientY - ziehen.y0;
-    if (Math.hypot(dx, dy) > 4) { ziehen.bewegt = true; langAus(); }
+    if (Math.hypot(dx, dy) > 4) ziehen.bewegt = true;
     if (!ziehen.bewegt) return;
     if (ziehen.art === 'teilzug') {
       const f = proPx();
@@ -1244,7 +1222,6 @@ export async function openFotoAufmass(blob, vorlage) {
   });
   const hoch = (e) => {
     finger.delete(e.pointerId);
-    langAus();
     if (pinch) { if (finger.size < 2) pinch = null; ziehen = null; return; }
     const z = ziehen;
     ziehen = null;
