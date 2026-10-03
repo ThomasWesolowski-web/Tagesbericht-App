@@ -790,8 +790,8 @@ export async function openFotoAufmass(blob, vorlage) {
       k = knopf('fa-verwerfen', 'Verwerfen') + knopf('fa-schliessen', 'Fertig', true);
     } else if (auswahl) {
       const eckeWeg = aktiv?.art === 'teil' && aktiv.t === auswahl && auswahl.punkte.length > mindest(auswahl.typ);
-      t = eckeWeg ? auswahl.name : `${auswahl.name}: Ecken ziehen, ⊕ = neue Ecke. Lange drücken und ziehen verschiebt alles.`;
-      k = knopf('fa-t-aendern', 'Name') + (eckeWeg ? knopf('fa-ecke-weg', 'Ecke weg') : '') + knopf('fa-t-weg', 'Löschen') + knopf('fa-t-fertig', 'Fertig', true);
+      t = `${auswahl.name}: lange drücken = verschieben`;
+      k = knopf('fa-t-aendern', 'Name') + (eckeWeg ? knopf('fa-ecke-weg', 'Ecke weg') : knopf('fa-t-kopie', 'Kopie')) + knopf('fa-t-weg', 'Löschen') + knopf('fa-t-fertig', 'Fertig', true);
     } else if (aktiv?.art === 'ref') {
       t = aktiv.key === 'rahmen' ? 'Rahmen: Ecken ziehen, bis sie genau auf dem Rechteck sitzen.' : rahmenFertig(d.ref.rahmen) ? `${NAMEN[aktiv.key]}: wird nicht gebraucht, der Rahmen gibt den Maßstab vor.` : `${NAMEN[aktiv.key]}: Endpunkte ziehen.`;
       k = knopf('fa-ref-mass', 'Maße ändern') + knopf('fa-t-fertig', 'Fertig', true);
@@ -810,6 +810,7 @@ export async function openFotoAufmass(blob, vorlage) {
     an('fa-schliessen', () => abschliessen());
     an('fa-t-aendern', () => teilFragen(auswahl, false));
     an('fa-ecke-weg', () => { auswahl.punkte.splice(aktiv.i, 1); aktiv = null; fk.hidden = true; geaendert = true; neuZeichnen(); });
+    an('fa-t-kopie', () => kopieren(auswahl));
     an('fa-t-weg', () => {
       if (!confirm(`„${auswahl.name}“ löschen?`)) return;
       d.teile.splice(d.teile.indexOf(auswahl), 1);
@@ -1032,6 +1033,48 @@ export async function openFotoAufmass(blob, vorlage) {
     return best;
   };
 
+  // Punkte so verschieben, dass ein Teil auf der Wand gleich groß bleibt: mit Maßstab in Metern
+  // (bei schrägem Foto wird das Teil dabei passend verzerrt), sonst einfach in Bildpunkten
+  const verschoben = (punkte, von, nach) => {
+    const ms = massstab(d);
+    if (!ms || ms.fehler) return punkte.map(([x, y]) => [x + nach[0] - von[0], y + nach[1] - von[1]]);
+    const a = ms.inM(von);
+    const b = ms.inM(nach);
+    return punkte.map((q) => {
+      const m = ms.inM(q);
+      return ms.inPx([m[0] + b[0] - a[0], m[1] + b[1] - a[1]]);
+    });
+  };
+  // Name der Kopie: „Fenster 1“ → nächste freie Nummer („Fenster 2“)
+  const kopieName = (name) => {
+    const stamm = name.replace(/\s*\d+$/, '') || name;
+    let n = 1;
+    while (d.teile.some((t) => t.name === `${stamm} ${n}`)) n++;
+    return `${stamm} ${n}`;
+  };
+  // Kopie gleich groß daneben setzen (rechts, sonst links, sonst darunter), dann ausgewählt lassen
+  const kopieren = (t) => {
+    const ms = massstab(d);
+    const b = ms && !ms.fehler ? ms.inPx : null;
+    const m = b ? t.punkte.map(ms.inM) : t.punkte;
+    const xs = m.map((q) => q[0]);
+    const ys = m.map((q) => q[1]);
+    const breite = Math.max(...xs) - Math.min(...xs);
+    const hoehe = Math.max(...ys) - Math.min(...ys);
+    const luft = b ? 0.25 : breite * 0.2;
+    const imBild = (pts) => pts.every(([x, y]) => x >= 0 && x <= W && y >= 0 && y <= H);
+    const versuche = [[breite + luft, 0], [-(breite + luft), 0], [0, b ? -(hoehe + luft) : hoehe + luft]];
+    const zuPx = (dx, dy) => m.map(([x, y]) => (b ? b([x + dx, y + dy]) : [x + dx, y + dy]));
+    const punkte = versuche.map(([dx, dy]) => zuPx(dx, dy)).find(imBild) || zuPx(...versuche[0]);
+    const neu = { ...JSON.parse(JSON.stringify(t)), id: neueId(), name: kopieName(t.name), punkte };
+    d.teile.push(neu);
+    auswahl = neu;
+    aktiv = null;
+    fk.hidden = true;
+    geaendert = true;
+    neuZeichnen();
+  };
+
   // Teil unter dem Finger: Strecken (nah an einer Linie) vor Öffnungen vor Flächen
   const abstandStrecke = (p, a, b) => {
     const vx = b[0] - a[0];
@@ -1065,7 +1108,7 @@ export async function openFotoAufmass(blob, vorlage) {
       auswahl = t;
       aktiv = null;
       fk.hidden = true;
-      ziehen = { art: 'teilzug', t, x0: ziehen.x0, y0: ziehen.y0, start: t.punkte.map((q) => [...q]), bewegt: false };
+      ziehen = { art: 'teilzug', t, x0: ziehen.x0, y0: ziehen.y0, p0: p, start: t.punkte.map((q) => [...q]), bewegt: false };
       try { navigator.vibrate?.(30); } catch { /* egal */ }
       neuZeichnen();
     }, 500);
@@ -1131,7 +1174,7 @@ export async function openFotoAufmass(blob, vorlage) {
     if (!ziehen.bewegt) return;
     if (ziehen.art === 'teilzug') {
       const f = proPx();
-      ziehen.t.punkte = ziehen.start.map(([x, y]) => [x + dx * f, y + dy * f]);
+      ziehen.t.punkte = verschoben(ziehen.start, ziehen.p0, [ziehen.p0[0] + dx * f, ziehen.p0[1] + dy * f]);
       geaendert = true;
       neuZeichnen();
     } else if (ziehen.art === 'griff') {
