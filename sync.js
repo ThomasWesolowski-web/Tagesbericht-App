@@ -5,7 +5,7 @@
 import * as db from './db.js';
 import { blobToBase64, safeFileName, slug } from './media.js';
 import { buildPdf, buildStundenPdf } from './pdf.js';
-import { stundenMarkdown, stundenJson, personKey } from './stunden.js';
+import { stundenMarkdown, stundenJson, personKey, stundenZusammenfuehren } from './stunden.js';
 import { toJson, toMarkdown, formatDate, artLabel } from './report.js';
 import { berichtInsDeutsche, insDeutsche, FREITEXTE } from './translate.js';
 import { SPRACHEN } from './i18n.js';
@@ -412,10 +412,11 @@ export async function setzeAdminFreigabe(settings, geraetId, an) {
   }
 }
 
-// Hochgeladener Stundennachweis eines Mitarbeiters für einen Monat (für den Administrator).
+// Hochgeladener Stundennachweis eines Mitarbeiters für einen Monat
+// (für den Administrator und für dieselbe Person auf einem anderen Gerät).
 export async function loadStundenRemote(settings, ym, name) {
   const res = await getJson(client(settings), settings, `stunden/${ym}_${slug(name) || 'mitarbeiter'}.json`);
-  return res?.data?.eintraege || [];
+  return { eintraege: res?.data?.eintraege || [], geloescht: res?.data?.geloescht || [] };
 }
 
 // ---------- Geräte: wer hat die App eingerichtet? ----------
@@ -478,16 +479,24 @@ export async function syncStunden(settings) {
     const local = all.filter((e) => personKey(e) === key.split('|')[0] && e.datum.startsWith(monat));
     const who = local[0]?.name || name || 'Mitarbeiter';
     const base = `stunden/${monat}_${slug(who) || 'mitarbeiter'}`;
-    // Was schon im Repo steht (z. B. von einem anderen Handy), bleibt erhalten.
-    const geloescht = db.stundenGeloescht();
-    const ids = new Set(local.map((e) => e.id));
-    const remote = ((await getJson(gh, settings, `${base}.json`))?.data?.eintraege || [])
-      .filter((e) => !ids.has(e.id) && !geloescht.has(e.id))
-      .map(({ stunden, ...e }) => e);
-    const entries = [...local, ...remote];
+    // Was schon im Repo steht (z. B. von einem anderen Gerät), bleibt erhalten.
+    // Bei gleichem Eintrag gilt die neuere Änderung, gelöschte Einträge bleiben weg.
+    const remoteData = (await getJson(gh, settings, `${base}.json`))?.data || {};
+    const remoteEintraege = (remoteData.eintraege || []).map(({ stunden, ...e }) => e);
+    const lokalGeloescht = db.stundenGeloescht();
+    const bekannt = new Set([...remoteEintraege, ...local].map((e) => e.id));
+    const geloescht = new Set([...(remoteData.geloescht || []), ...[...lokalGeloescht].filter((id) => bekannt.has(id))]);
+    const entries = stundenZusammenfuehren(local, remoteEintraege, geloescht);
+    // Neuere Stände von anderen Geräten auch auf diesem Gerät übernehmen.
+    const lokalById = new Map(local.map((e) => [e.id, e]));
+    for (const e of entries) {
+      const l = lokalById.get(e.id);
+      if (l && l !== e) await db.stundeVomRepo(e);
+    }
+    for (const l of local) if (geloescht.has(l.id)) await db.stundeVomRepoEntfernen(l.id);
     const files = [
       { path: `${base}.md`, text: stundenMarkdown(who, monat, entries) },
-      { path: `${base}.json`, text: stundenJson(who, monat, entries) },
+      { path: `${base}.json`, text: stundenJson(who, monat, entries, [...geloescht]) },
     ];
     try {
       files.push({ path: `${base}.pdf`, blob: await buildStundenPdf(who, monat, entries) });

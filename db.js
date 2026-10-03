@@ -178,6 +178,17 @@ export async function putStunde(e) {
   markStundenDirty(e);
 }
 
+// Stand aus dem Repo übernehmen (von einem anderen Gerät geändert oder gelöscht),
+// ohne ihn erneut als geändert zu merken.
+export async function stundeVomRepo(e) {
+  const { fremd, stunden, ...rest } = e;
+  await done((await store('stunden', 'readwrite')).put(rest));
+}
+
+export async function stundeVomRepoEntfernen(id) {
+  await done((await store('stunden', 'readwrite')).delete(id));
+}
+
 const STUNDEN_GELOESCHT = 'tagesberichte.stundenGeloescht';
 
 export async function deleteStunde(e) {

@@ -17,7 +17,7 @@ import { startI18n, SPRACHEN } from './i18n.js';
 import { openMarkup } from './markup.js';
 import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from './fotoaufmass.js';
 
-const APP_VERSION = '1.28.0';
+const APP_VERSION = '1.29.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -1976,21 +1976,37 @@ async function renderStunden() {
   }
   const key = personKey(person);
   let all = (await db.allStunden()).filter((e) => personKey(e) === key);
-  // Der Administrator sieht zusätzlich, was der Mitarbeiter von seinem Handy hochgeladen hat.
+  // Was diese Person (oder der Administrator) auf einem anderen Gerät eingetragen hat,
+  // kommt aus dem Repo dazu und lässt sich hier genauso bearbeiten.
   const remoteKey = `${stundenMonat}|${person.name}`;
-  const remote = isAdmin() ? stundenRemoteCache.get(remoteKey) : null;
+  const remote = stundenRemoteCache.get(remoteKey);
   if (remote) {
-    const local = new Set(all.map((e) => e.id));
-    all = [...all, ...remote.filter((e) => !local.has(e.id)).map((e) => ({ ...e, fremd: true }))];
+    const geloescht = new Set(remote.geloescht);
+    const lokal = new Map(all.map((e) => [e.id, e]));
+    const dirty = db.stundenDirty()[`${key}|${stundenMonat}`];
+    for (const r of remote.eintraege) {
+      const l = lokal.get(r.id);
+      // auf einem anderen Gerät geändert: neueren Stand hier übernehmen
+      if (l && (r.updatedAt || 0) > (l.updatedAt || 0)) {
+        const { stunden, ...neu } = r;
+        await db.stundeVomRepo(neu);
+        lokal.set(r.id, neu);
+      }
+    }
+    // auf einem anderen Gerät gelöscht (und hier seitdem nicht geändert)
+    if (!dirty) {
+      for (const id of geloescht) if (lokal.has(id)) { await db.stundeVomRepoEntfernen(id); lokal.delete(id); }
+    }
+    all = [...lokal.values(), ...remote.eintraege.filter((e) => !lokal.has(e.id) && !geloescht.has(e.id) && !db.stundenGeloescht().has(e.id))
+      .map(({ stunden, ...e }) => ({ ...e, fremd: true }))];
   }
-  if (isAdmin() && !remote && isConfigured(settings) && navigator.onLine && !stundenRemoteLaden.has(remoteKey)) {
+  if (!remote && isConfigured(settings) && navigator.onLine && !stundenRemoteLaden.has(remoteKey)) {
     stundenRemoteLaden.add(remoteKey);
     loadStundenRemote(settings, stundenMonat, person.name)
-      .then((list) => { stundenRemoteCache.set(remoteKey, list); if (location.hash === '#/stunden') renderStunden(); })
+      .then((data) => { stundenRemoteCache.set(remoteKey, data); if (location.hash === '#/stunden') renderStunden(); })
       .catch(() => {})
       .finally(() => stundenRemoteLaden.delete(remoteKey));
   }
-  const fremd = all.filter((e) => e.fremd && e.datum.startsWith(stundenMonat)).length;
   const list = sortStunden(all.filter((e) => e.datum.startsWith(stundenMonat))).reverse();
   const s = summe(list);
 
@@ -2025,7 +2041,6 @@ async function renderStunden() {
       <b>${monatLabel(stundenMonat)}</b>
       <button class="icon-btn" id="m-next" aria-label="Nächster Monat"><span class="flip">${ICON.back}</span></button>
     </div>
-    ${fremd ? `<p class="hint" style="text-align:center;margin:0 0 10px">${fremd} Einträge vom Handy von ${esc(person.name)} (nur ansehen)</p>` : ''}
     <div class="stats">
       <div class="stat"><b>${formatHours(s.stunden).replace(' h', '')}</b><span>Stunden</span></div>
       <div class="stat"><b>${s.arbeitstage}</b><span>Arbeitstage</span></div>
@@ -2061,8 +2076,9 @@ async function renderStunden() {
   $$('.rcard.stunde').forEach((b) => {
     b.onclick = () => {
       const e = list.find((x) => x.id === b.dataset.id);
-      if (e.fremd) toast('Diesen Eintrag kann nur der Mitarbeiter auf seinem Handy ändern.', 3500);
-      else openStundeEditor(structuredClone(e), false);
+      // Einträge von einem anderen Gerät werden beim Speichern auf dieses Gerät übernommen.
+      const { fremd, ...eintrag } = structuredClone(e);
+      openStundeEditor(eintrag, false);
     };
   });
   const pdfBtn = $('#stunden-pdf');
@@ -2530,6 +2546,7 @@ async function runSync(manual) {
   } finally {
     syncing = false;
   }
+  stundenRemoteCache.clear(); // Stunden von anderen Geräten beim nächsten Anzeigen neu laden
   meldeGeraet(settings, geraetInfo()).catch(() => {});
   if (manual || result.failed) {
     if (result.failed) toast(`${result.failed} Bericht(e) konnten nicht hochgeladen werden.`, 4000);
