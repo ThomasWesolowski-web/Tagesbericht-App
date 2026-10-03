@@ -21,6 +21,38 @@ function loadJsPdf() {
   return loading;
 }
 
+// Die eingebaute PDF-Schrift kennt nur westeuropäische Zeichen (Windows-1252). Ein einziges
+// anderes Zeichen (z. B. Ū, ł, ș) macht sonst die ganze Zeile zu gesperrtem Zeichensalat.
+const CP1252_EXTRA = '€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ';
+const ERSATZ = { ł: 'l', Ł: 'L', đ: 'd', Đ: 'D', ı: 'i', ħ: 'h', Ħ: 'H', ŧ: 't', Ŧ: 'T', '−': '-', '⊕': '+', '≈': '~' };
+
+function zeichenOk(c) {
+  const n = c.codePointAt(0);
+  return n < 0x80 || (n >= 0xa0 && n <= 0xff) || CP1252_EXTRA.includes(c) || c === '\n';
+}
+
+export function pdfText(t) {
+  if (typeof t !== 'string') return Array.isArray(t) ? t.map(pdfText) : t;
+  if ([...t].every(zeichenOk)) return t;
+  return [...t.normalize('NFC')].map((c) => {
+    if (zeichenOk(c)) return c;
+    if (ERSATZ[c] && zeichenOk(ERSATZ[c])) return ERSATZ[c];
+    const ohne = c.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (ohne && [...ohne].every(zeichenOk)) return ohne;
+    return /\p{M}/u.test(c) ? '' : '?';
+  }).join('');
+}
+
+// jsPDF-Dokument, dessen Text-Funktionen nur noch darstellbare Zeichen bekommen.
+function neuesPdf(jsPDF) {
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  for (const f of ['text', 'splitTextToSize', 'getTextWidth']) {
+    const orig = doc[f].bind(doc);
+    doc[f] = (t, ...rest) => orig(pdfText(t), ...rest);
+  }
+  return doc;
+}
+
 export function stundenPdfName(name, ym) {
   return `Stundennachweis_${ym}_${slug(name) || 'mitarbeiter'}.pdf`;
 }
@@ -113,7 +145,7 @@ async function briefkopf(doc, { W, M, font, color }) {
 
 export async function buildPdf(r, files, author) {
   const { jsPDF } = await loadJsPdf();
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const doc = neuesPdf(jsPDF);
   await drawReport(doc, r, files, author);
   fusszeilen(doc, [{ von: 1, bis: doc.getNumberOfPages(), text: reportLabel(r) }]);
   doc.setProperties({ title: reportLabel(r).replace(' · ', ' '), author: author || '' });
@@ -480,7 +512,7 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
 // (Zeilenhöhe und Schrift werden an die Anzahl der Zeilen angepasst).
 export async function buildStundenPdf(name, ym, entries) {
   const { jsPDF } = await loadJsPdf();
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const doc = neuesPdf(jsPDF);
   const W = 210;
   const H = 297;
   const M = 16;
@@ -600,7 +632,7 @@ export function sammelPdfName(titel, von, bis) {
 // Materialliste und danach alle Einzelberichte. items: [{ r, files }]
 export async function buildSammelPdf({ titel, von, bis, items, author }) {
   const { jsPDF } = await loadJsPdf();
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const doc = neuesPdf(jsPDF);
   const W = 210;
   const H = 297;
   const M = 16;
