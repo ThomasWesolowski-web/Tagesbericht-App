@@ -15,10 +15,10 @@ import {
 } from './sync.js';
 import { startI18n, SPRACHEN } from './i18n.js';
 import { openMarkup } from './markup.js';
-import { planReportId, planTauglich, istPdf, pdfSeiten, planAlsBild, formenSkalieren, pinNummern } from './plaene.js';
+import { planReportId, planTauglich, istPdf, pdfSeiten, planQuelle, formenSkalieren, pinNummern } from './plaene.js';
 import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from './fotoaufmass.js';
 
-const APP_VERSION = '1.36.0';
+const APP_VERSION = '1.37.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -1167,7 +1167,7 @@ async function renderEditor(id) {
     let basis;
     $('#sync-state').textContent = 'Plan wird geladen …';
     try {
-      basis = quelle ? await planAlsBild(quelle, m ? m.seite : seite) : { blob: datei.blob, w: m.w, h: m.h };
+      basis = quelle ? await planQuelle(quelle, m ? m.seite : seite) : { blob: datei.blob, w: m.w, h: m.h, kachel: null, schliessen: () => {} };
     } catch (err) {
       toast(`Der Plan lässt sich nicht öffnen (${err.message}).`, 4000);
       updateState();
@@ -1178,7 +1178,12 @@ async function renderEditor(id) {
     const formen = m ? (quelle ? formenSkalieren(m.formen || [], m, basis) : []) : [];
     const fotos = (await fotosNummerieren()).map((f) => ({ nr: f.fotoNr, url: objectUrl(f.blob) }));
     const name = m ? m.planName : plan.name.replace(/\.(pdf|png|jpe?g|webp|heic|gif)$/i, '');
-    const res = await openMarkup(basis.blob, { mitFormen: true, formen, fotos, pinNr, titel: name });
+    let res;
+    try {
+      res = await openMarkup(basis.blob, { mitFormen: true, formen, fotos, pinNr, titel: name, kachel: basis.kachel });
+    } finally {
+      basis.schliessen();
+    }
     if (!res) return;
     const planMarkierung = { planId: m ? m.planId : plan.id, planName: name, seite: m ? m.seite : seite, w: res.w, h: res.h, formen: quelle ? res.formen : [...(m.formen || []), ...res.formen] };
     const dateiName = `plan-${slug(name)}${planMarkierung.seite > 1 ? `-s${planMarkierung.seite}` : ''}.jpg`;
@@ -1531,7 +1536,7 @@ async function planListeBinden(site) {
       const f = dateien.find((d) => d.id === p.id);
       $('.plan-oeffnen', el).onclick = () => {
         if (!f) { toast('Der Plan ist auf diesem Handy noch nicht da. Bitte abgleichen.'); return; }
-        if (istPdf(f)) sharePdfFile(new File([f.blob], f.name, { type: 'application/pdf' }), f.name, []);
+        if (planTauglich(f)) planAnsehen(f);
         else openFile(f);
       };
       const weg = $('.plan-weg', el);
@@ -1567,6 +1572,31 @@ async function planListeBinden(site) {
     zeichnen();
   };
   zeichnen();
+}
+
+// Plan in voller Schärfe ansehen: verschieben und zoomen, bei PDFs mit Seitenwahl
+async function planAnsehen(f) {
+  let seite = 1;
+  if (istPdf(f)) {
+    const n = await pdfSeiten(f.blob).catch(() => 1);
+    if (n > 1) {
+      const s = prompt(`„${f.name}“ hat ${n} Seiten. Welche Seite?`, '1');
+      if (s === null) return;
+      seite = Math.min(n, Math.max(1, parseInt(s, 10) || 1));
+    }
+  }
+  let q;
+  try {
+    q = await planQuelle(f, seite);
+  } catch (err) {
+    toast(`Der Plan lässt sich nicht öffnen (${err.message}).`, 4000);
+    return;
+  }
+  try {
+    await openMarkup(q.blob, { mitFormen: true, nurAnsehen: true, kachel: q.kachel, titel: f.name.replace(/\.[^.]+$/, '') });
+  } finally {
+    q.schliessen();
+  }
 }
 
 const PLAN_LOESCHEN_KEY = 'tagesberichte.planLoeschen';

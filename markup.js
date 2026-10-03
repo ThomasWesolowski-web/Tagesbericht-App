@@ -2,8 +2,8 @@
 // openMarkup(blob) liefert das bearbeitete Bild als JPEG oder null bei „Abbrechen“.
 // Für Pläne: openMarkup(blob, { formen, fotos, pinNr, titel, mitFormen: true }) liefert
 // { blob, formen }, damit der Plan später weiter bearbeitet werden kann. Dort gibt es zusätzlich
-// „Fläche“ (bearbeitete Flächen halb durchsichtig ausmalen), „Foto“ (nummerierter Foto-Pin)
-// und Zoomen mit zwei Fingern.
+// „Fläche“ (bearbeitete Flächen halb durchsichtig ausmalen) und „Foto“ (nummerierter Foto-Pin).
+// Überall: Hand zum Verschieben, Zoomen mit zwei Fingern, Strichstärke Dünn/Mittel/Dick oder Regler.
 
 const FARBEN = ['#e53935', '#fdd835', '#43a047', '#1e88e5', '#111111', '#ffffff'];
 const WERKZEUGE = [
@@ -114,33 +114,37 @@ function zeichne(ctx, s) {
   ctx.restore();
 }
 
+// Strichstärke: Faktor zur Grundbreite (Mittel = 1)
+const STAERKEN = [{ id: 'duenn', label: 'Dünn', f: 0.5 }, { id: 'mittel', label: 'Mittel', f: 1 }, { id: 'dick', label: 'Dick', f: 2.2 }];
+const HAND = { id: 'hand', label: 'Hand', svg: '<path d="M8 12V5.5a1.5 1.5 0 0 1 3 0V11m0-1V4.5a1.5 1.5 0 0 1 3 0V11m0-5.5a1.5 1.5 0 0 1 3 0V12m0-3.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.5a6 6 0 0 1-4.6-2.2L4.3 15.6a1.6 1.6 0 0 1 2.4-2.1L8 15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>' };
+
 export async function openMarkup(blob, opts = {}) {
-  const { titel = 'Foto markieren', fotos = null, mitFormen = false } = opts;
+  const { titel = 'Foto markieren', fotos = null, mitFormen = false, kachel = null, nurAnsehen = false } = opts;
   let pinNr = opts.pinNr ?? null;
   const plan = mitFormen;
   const img = await ladeBild(blob);
   const W = img.naturalWidth;
   const H = img.naturalHeight;
   const basis = Math.max(3, Math.round(Math.max(W, H) / (plan ? 220 : 140)));
-  const werkzeuge = plan ? [...WERKZEUGE, ...PLAN_WERKZEUGE] : WERKZEUGE;
-  let werkzeug = pinNr != null ? 'foto' : plan ? 'flaeche' : 'stift';
+  const werkzeuge = plan ? [HAND, ...WERKZEUGE, ...PLAN_WERKZEUGE] : [HAND, ...WERKZEUGE];
+  let werkzeug = nurAnsehen ? 'hand' : pinNr != null ? 'foto' : plan ? 'flaeche' : 'stift';
   let farbe = plan && pinNr == null ? FARBEN[2] : FARBEN[0];
-  let dick = false;
+  let staerke = 1;
   const formen = (opts.formen || []).map((f) => JSON.parse(JSON.stringify(f)));
   const anfang = JSON.stringify(formen);
   let aktuell = null;
   let textPunkt = null;
 
   const view = document.createElement('div');
-  view.className = `mk-view${plan ? ' mk-plan' : ''}`;
+  view.className = `mk-view mk-markup${plan ? ' mk-plan' : ''}${nurAnsehen ? ' mk-ansehen' : ''}`;
   view.innerHTML = `
     <div class="mk-top">
-      <button type="button" class="btn ghost mk-abbrechen">Abbrechen</button>
+      <button type="button" class="btn ghost mk-abbrechen">${nurAnsehen ? 'Schließen' : 'Abbrechen'}</button>
       <b>${titel.replace(/[<&]/g, (c) => (c === '<' ? '&lt;' : '&amp;'))}</b>
       <button type="button" class="btn primary mk-fertig">Fertig</button>
     </div>
     <div class="mk-flaeche"><canvas></canvas>
-      ${plan ? '<div class="fa-zoomknoepfe"><button type="button" data-zoom="+" aria-label="Vergrößern">+</button><button type="button" data-zoom="-" aria-label="Verkleinern">−</button><button type="button" data-zoom="0" aria-label="Ganzer Plan">⤢</button></div>' : ''}
+      <div class="fa-zoomknoepfe"><button type="button" data-zoom="+" aria-label="Vergrößern">+</button><button type="button" data-zoom="-" aria-label="Verkleinern">−</button><button type="button" data-zoom="0" aria-label="Ganz zeigen">⤢</button></div>
       <div class="mk-hinweis" hidden></div>
     </div>
     <div class="mk-text" hidden>
@@ -149,19 +153,20 @@ export async function openMarkup(blob, opts = {}) {
     </div>
     <div class="mk-fotowahl" hidden><div class="mk-fw-kopf"><b>Welches Foto ist hier entstanden?</b><button type="button" class="btn ghost mk-fw-zu">Abbrechen</button></div><div class="mk-fw-liste"></div></div>
     <div class="mk-leiste">
-      <div class="mk-werkzeuge">${werkzeuge.map((w) => `<button type="button" class="mk-wz" data-wz="${w.id}" aria-pressed="${w.id === werkzeug}"><svg viewBox="0 0 24 24" aria-hidden="true">${w.svg}</svg><span>${w.label}</span></button>`).join('')}</div>
+      <div class="mk-werkzeuge" style="--n:${werkzeuge.length}">${werkzeuge.map((w) => `<button type="button" class="mk-wz" data-wz="${w.id}" aria-pressed="${w.id === werkzeug}"><svg viewBox="0 0 24 24" aria-hidden="true">${w.svg}</svg><span>${w.label}</span></button>`).join('')}</div>
       <div class="mk-farben">
         ${FARBEN.map((f) => `<button type="button" class="mk-farbe" data-farbe="${f}" style="--f:${f}" aria-label="Farbe" aria-pressed="${f === farbe}"></button>`).join('')}
-        <button type="button" class="mk-dicke" aria-pressed="false"><span>Dick</span></button>
         <button type="button" class="mk-rueck" aria-label="Rückgängig">${RUECK}<span>Rückgängig</span></button>
+      </div>
+      <div class="mk-staerke">
+        ${STAERKEN.map((x) => `<button type="button" class="mk-st" data-f="${x.f}" aria-pressed="${x.f === staerke}"><i style="--h:${Math.round(2 + x.f * 3)}px"></i>${x.label}</button>`).join('')}
+        <input type="range" class="mk-regler" min="0.25" max="4" step="0.05" value="${staerke}" aria-label="Strichstärke">
       </div>
     </div>`;
   document.body.appendChild(view);
   document.documentElement.classList.add('mk-offen');
 
   const canvas = view.querySelector('canvas');
-  canvas.width = W;
-  canvas.height = H;
   const ctx = canvas.getContext('2d');
   const flaeche = view.querySelector('.mk-flaeche');
   const textBox = view.querySelector('.mk-text');
@@ -176,64 +181,108 @@ export async function openMarkup(blob, opts = {}) {
     clearTimeout(hinweisUhr);
     if (t) hinweisUhr = setTimeout(() => { hinweisBox.hidden = true; }, 6000);
   };
-  const einpassen = () => {
+
+  // Ansicht: Bildschirmpunkt = Bildpunkt × s + (x, y). Gezeichnet wird nur, was zu sehen ist,
+  // beim Hineinzoomen in Plänen mit einem scharf nachgezeichneten Ausschnitt (kachel).
+  let ansicht = { s: 1, x: 0, y: 0 };
+  let fitS = 1;
+  let dpr = 1;
+  let scharf = null; // { x, y, w, h, c }
+  const groesseSetzen = () => {
     const r = flaeche.getBoundingClientRect();
-    const s = Math.min((r.width - 8) / W, (r.height - 8) / H);
-    canvas.style.width = `${Math.floor(W * s)}px`;
-    canvas.style.height = `${Math.floor(H * s)}px`;
+    dpr = Math.min(window.devicePixelRatio || 1, 3);
+    canvas.width = Math.max(1, Math.round(r.width * dpr));
+    canvas.height = Math.max(1, Math.round(r.height * dpr));
+    const alt = fitS;
+    fitS = Math.min((r.width - 8) / W, (r.height - 8) / H);
+    if (ansicht.s <= alt * 1.001) ansicht = { s: fitS, x: (r.width - W * fitS) / 2, y: (r.height - H * fitS) / 2 };
+    else begrenzen();
+  };
+  const begrenzen = () => {
+    const r = flaeche.getBoundingClientRect();
+    ansicht.s = Math.min(fitS * 16, Math.max(fitS, ansicht.s));
+    if (ansicht.s <= fitS * 1.001) { ansicht = { s: fitS, x: (r.width - W * fitS) / 2, y: (r.height - H * fitS) / 2 }; return; }
+    const rand = 60;
+    ansicht.x = Math.min(r.width - rand, Math.max(rand - W * ansicht.s, ansicht.x));
+    ansicht.y = Math.min(r.height - rand, Math.max(rand - H * ansicht.s, ansicht.y));
   };
   const neuZeichnen = () => {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = '#16191d';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const { s, x, y } = ansicht;
+    ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * x, dpr * y);
+    ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(img, 0, 0, W, H);
+    if (scharf) ctx.drawImage(scharf.c, scharf.x, scharf.y, scharf.w, scharf.h);
     formen.forEach((f) => zeichne(ctx, f));
     if (aktuell) zeichne(ctx, aktuell);
     view.querySelector('.mk-rueck').disabled = !formen.length;
   };
-  einpassen();
+  let scharfUhr = null;
+  let scharfNr = 0;
+  const scharfNachladen = () => {
+    clearTimeout(scharfUhr);
+    if (!kachel) return;
+    const k = ansicht.s * dpr;
+    if (k <= 1.15) { if (scharf) { scharf = null; neuZeichnen(); } return; }
+    scharfUhr = setTimeout(async () => {
+      const r = flaeche.getBoundingClientRect();
+      const x0 = Math.max(0, -ansicht.x / ansicht.s);
+      const y0 = Math.max(0, -ansicht.y / ansicht.s);
+      const x1 = Math.min(W, (r.width - ansicht.x) / ansicht.s);
+      const y1 = Math.min(H, (r.height - ansicht.y) / ansicht.s);
+      if (x1 <= x0 || y1 <= y0) return;
+      const nr = ++scharfNr;
+      const c = await kachel(x0, y0, x1 - x0, y1 - y0, k).catch(() => null);
+      if (!c || nr !== scharfNr) return;
+      scharf = { x: x0, y: y0, w: x1 - x0, h: y1 - y0, c };
+      neuZeichnen();
+    }, 220);
+  };
+  const ansichtGeaendert = () => { begrenzen(); neuZeichnen(); scharfNachladen(); };
+  groesseSetzen();
   neuZeichnen();
-  window.addEventListener('resize', einpassen);
+  const beiGroesse = () => { groesseSetzen(); neuZeichnen(); scharfNachladen(); };
+  window.addEventListener('resize', beiGroesse);
   const wzHinweis = () => hinweis(werkzeug === 'foto'
     ? (pinNr != null ? `Tippe auf die Stelle im Plan, an der Foto ${pinNr} entstanden ist.` : 'Tippe auf die Stelle, an der ein Foto entstanden ist.')
+    : werkzeug === 'hand' ? 'Mit einem Finger verschieben, mit zwei Fingern zoomen.'
     : plan && werkzeug === 'flaeche' ? 'Bearbeitete Fläche mit dem Finger umfahren. Zwei Finger zoomen.' : '');
   wzHinweis();
 
-  // Zoomen (nur bei Plänen): zwei Finger, Mausrad oder die Knöpfe
-  let zoom = { z: 1, x: 0, y: 0 };
-  const zoomSetzen = () => {
-    if (zoom.z <= 1.01) zoom = { z: 1, x: 0, y: 0 };
-    canvas.style.transformOrigin = '0 0';
-    canvas.style.transform = zoom.z === 1 ? '' : `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.z})`;
+  // Zoomen um einen Bildschirmpunkt (relativ zur Fläche), der Punkt bleibt stehen
+  const lokal = (cx, cy) => {
+    const r = flaeche.getBoundingClientRect();
+    return [cx - r.left, cy - r.top];
   };
-  const zoomUm = (z, [mx, my], von = zoom, [ax, ay] = [mx, my]) => {
-    const fr = flaeche.getBoundingClientRect();
-    const lx = fr.left + canvas.offsetLeft;
-    const ly = fr.top + canvas.offsetTop;
-    const lokal = [(ax - lx - von.x) / von.z, (ay - ly - von.y) / von.z];
-    const neu = Math.min(10, Math.max(1, z));
-    zoom = { z: neu, x: mx - lx - neu * lokal[0], y: my - ly - neu * lokal[1] };
-    zoomSetzen();
+  const zoomUm = (neuS, [mx, my], von = ansicht, [ax, ay] = [mx, my]) => {
+    const bx = (ax - von.x) / von.s;
+    const by = (ay - von.y) / von.s;
+    ansicht = { s: neuS, x: mx - neuS * bx, y: my - neuS * by };
+    ansichtGeaendert();
   };
   const mitte = () => {
-    const fr = flaeche.getBoundingClientRect();
-    return [fr.left + fr.width / 2, fr.top + fr.height / 2];
+    const r = flaeche.getBoundingClientRect();
+    return [r.width / 2, r.height / 2];
   };
   view.querySelectorAll('[data-zoom]').forEach((b) => {
     b.onclick = () => {
-      if (b.dataset.zoom === '0') { zoom = { z: 1, x: 0, y: 0 }; zoomSetzen(); return; }
-      zoomUm(zoom.z * (b.dataset.zoom === '+' ? 1.6 : 1 / 1.6), mitte());
+      if (b.dataset.zoom === '0') { ansicht.s = fitS; ansichtGeaendert(); return; }
+      zoomUm(ansicht.s * (b.dataset.zoom === '+' ? 1.6 : 1 / 1.6), mitte());
     };
   });
-  if (plan) {
-    flaeche.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      zoomUm(zoom.z * Math.exp(-e.deltaY / 300), [e.clientX, e.clientY]);
-    }, { passive: false });
-  }
+  flaeche.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    zoomUm(ansicht.s * Math.exp(-e.deltaY / 300), lokal(e.clientX, e.clientY));
+  }, { passive: false });
 
   const punkt = (e) => {
-    const r = canvas.getBoundingClientRect();
-    return [((e.clientX - r.left) / r.width) * W, ((e.clientY - r.top) / r.height) * H];
+    const [lx, ly] = lokal(e.clientX, e.clientY);
+    return [(lx - ansicht.x) / ansicht.s, (ly - ansicht.y) / ansicht.s];
   };
-  const breite = () => basis * (dick ? 2.2 : 1);
+  // Strichbreite in Bildpunkten: gleich dick auf dem Bildschirm, egal wie weit hineingezoomt ist
+  const breite = () => staerke * basis * (fitS / ansicht.s);
 
   const pinSetzen = (p, nr) => {
     formen.push({ typ: 'pin', farbe: PIN_FARBE, breite: basis, von: p, nr });
@@ -250,20 +299,23 @@ export async function openMarkup(blob, opts = {}) {
   };
   fotoWahl.querySelector('.mk-fw-zu').onclick = () => { fotoWahl.hidden = true; };
 
-  // Zwei Finger gleichzeitig: zoomen statt zeichnen
+  // Finger: mit der Hand (oder zwei Fingern) verschieben und zoomen, sonst zeichnen
   const finger = new Map();
-  let pinch = null;
+  let geste = null;
+  const gesteStarten = () => {
+    const f = [...finger.values()];
+    const m = f.length > 1 ? [(f[0][0] + f[1][0]) / 2, (f[0][1] + f[1][1]) / 2] : f[0];
+    geste = { d: f.length > 1 ? Math.hypot(f[0][0] - f[1][0], f[0][1] - f[1][1]) : 0, m, von: { ...ansicht } };
+  };
   canvas.addEventListener('pointerdown', (e) => {
     e.preventDefault();
-    finger.set(e.pointerId, [e.clientX, e.clientY]);
-    if (plan && finger.size === 2) {
-      aktuell = null;
-      neuZeichnen();
-      const [a, b] = [...finger.values()];
-      pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), m: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], von: { ...zoom } };
+    finger.set(e.pointerId, lokal(e.clientX, e.clientY));
+    canvas.setPointerCapture(e.pointerId);
+    if (finger.size >= 2 || werkzeug === 'hand') {
+      if (aktuell) { aktuell = null; neuZeichnen(); }
+      gesteStarten();
       return;
     }
-    if (finger.size > 1) return;
     const p = punkt(e);
     if (werkzeug === 'text') {
       textPunkt = p;
@@ -276,18 +328,23 @@ export async function openMarkup(blob, opts = {}) {
       aktuell = { typ: 'tipp', von: p };
       return;
     }
-    canvas.setPointerCapture(e.pointerId);
     aktuell = werkzeug === 'stift' || werkzeug === 'flaeche'
       ? { typ: werkzeug, farbe, breite: breite(), punkte: [p] }
       : { typ: werkzeug, farbe, breite: breite(), von: p, bis: p };
     neuZeichnen();
   });
   canvas.addEventListener('pointermove', (e) => {
-    if (finger.has(e.pointerId)) finger.set(e.pointerId, [e.clientX, e.clientY]);
-    if (pinch && finger.size === 2) {
-      const [a, b] = [...finger.values()];
-      const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
-      zoomUm(pinch.von.z * (d / pinch.d), [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], pinch.von, pinch.m);
+    if (!finger.has(e.pointerId)) return;
+    finger.set(e.pointerId, lokal(e.clientX, e.clientY));
+    if (geste) {
+      const f = [...finger.values()];
+      if (f.length > 1) {
+        const d = Math.hypot(f[0][0] - f[1][0], f[0][1] - f[1][1]);
+        zoomUm(geste.von.s * (d / geste.d), [(f[0][0] + f[1][0]) / 2, (f[0][1] + f[1][1]) / 2], geste.von, geste.m);
+      } else {
+        ansicht = { s: geste.von.s, x: geste.von.x + f[0][0] - geste.m[0], y: geste.von.y + f[0][1] - geste.m[1] };
+        ansichtGeaendert();
+      }
       return;
     }
     if (!aktuell || aktuell.typ === 'tipp') return;
@@ -298,8 +355,9 @@ export async function openMarkup(blob, opts = {}) {
   });
   const loslassen = (e) => {
     finger.delete(e.pointerId);
-    if (pinch) {
-      if (!finger.size) pinch = null;
+    if (geste) {
+      // Mit dem verbleibenden Finger nahtlos weiter verschieben
+      if (finger.size) gesteStarten(); else geste = null;
       return;
     }
     if (!aktuell) return;
@@ -311,7 +369,7 @@ export async function openMarkup(blob, opts = {}) {
       return;
     }
     const klein = aktuell.von
-      ? Math.hypot(aktuell.bis[0] - aktuell.von[0], aktuell.bis[1] - aktuell.von[1]) < basis * 2
+      ? Math.hypot(aktuell.bis[0] - aktuell.von[0], aktuell.bis[1] - aktuell.von[1]) < aktuell.breite * 2
       : aktuell.typ === 'flaeche' && aktuell.punkte.length < 3;
     if (!klein) formen.push(aktuell);
     aktuell = null;
@@ -345,13 +403,21 @@ export async function openMarkup(blob, opts = {}) {
       view.querySelectorAll('.mk-farbe').forEach((x) => x.setAttribute('aria-pressed', x === b));
     };
   });
-  const dickBtn = view.querySelector('.mk-dicke');
-  dickBtn.onclick = () => { dick = !dick; dickBtn.setAttribute('aria-pressed', dick); };
+  const regler = view.querySelector('.mk-regler');
+  const staerkeSetzen = (f) => {
+    staerke = f;
+    regler.value = f;
+    view.querySelectorAll('.mk-st').forEach((x) => x.setAttribute('aria-pressed', Math.abs(Number(x.dataset.f) - f) < 0.01));
+  };
+  view.querySelectorAll('.mk-st').forEach((b) => { b.onclick = () => staerkeSetzen(Number(b.dataset.f)); });
+  regler.oninput = () => staerkeSetzen(Number(regler.value));
   view.querySelector('.mk-rueck').onclick = () => { formen.pop(); neuZeichnen(); };
 
   return new Promise((resolve) => {
     const schliessen = (ergebnis) => {
-      window.removeEventListener('resize', einpassen);
+      window.removeEventListener('resize', beiGroesse);
+      clearTimeout(scharfUhr);
+      scharfNr++;
       document.documentElement.classList.remove('mk-offen');
       view.remove();
       resolve(ergebnis);
@@ -362,9 +428,18 @@ export async function openMarkup(blob, opts = {}) {
     };
     view.querySelector('.mk-fertig').onclick = () => {
       if (JSON.stringify(formen) === anfang && !(plan && !opts.formen)) { schliessen(null); return; }
-      aktuell = null;
-      neuZeichnen();
-      canvas.toBlob((b) => schliessen(mitFormen ? { blob: b, formen, w: W, h: H } : b), 'image/jpeg', 0.88);
+      // Ergebnis in voller Größe zeichnen
+      const aus = document.createElement('canvas');
+      aus.width = W;
+      aus.height = H;
+      const a = aus.getContext('2d');
+      a.drawImage(img, 0, 0, W, H);
+      formen.forEach((f) => zeichne(a, f));
+      aus.toBlob((b) => {
+        aus.width = 1;
+        aus.height = 1;
+        schliessen(mitFormen ? { blob: b, formen, w: W, h: H } : b);
+      }, 'image/jpeg', plan ? 0.9 : 0.88);
     };
   });
 }

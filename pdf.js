@@ -468,7 +468,7 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
   // Pläne mit Markierungen und Foto-Pins: jeweils über die ganze Breite
   const plaene = files.filter((f) => f.planMarkierung);
   for (const [i, f] of plaene.entries()) {
-    const img = await toJpeg(f.blob, 2400);
+    const img = await toJpeg(f.blob, 3200);
     if (!img) continue;
     const m = f.planMarkierung;
     const maxH = BOTTOM - M - 30;

@@ -564,12 +564,15 @@ html.mk-offen, html.mk-offen body { overflow: hidden; }
 .mk-top .btn { min-height: 40px; padding: 0 16px; }
 .mk-top .btn.ghost { background: rgba(255,255,255,.1); color: #fff; border-color: transparent; }
 .mk-flaeche { flex: 1; min-height: 0; display: grid; place-items: center; padding: 4px; }
+.mk-markup .mk-flaeche { display: block; padding: 0; }
 .mk-flaeche canvas { touch-action: none; border-radius: 4px; background: #000; }
+.mk-markup .mk-flaeche canvas { display: block; width: 100%; height: 100%; border-radius: 0; background: none; }
 .mk-text { display: flex; gap: 8px; padding: 8px 12px; background: #23272c; }
 .mk-text[hidden] { display: none; }
 .mk-text input { flex: 1; min-width: 0; font-size: 16px; padding: 10px 12px; border-radius: 10px; border: 0; }
 .mk-leiste { padding: 8px 10px calc(var(--safe-b, 0px) + 10px); background: #1f2327; display: grid; gap: 10px; }
 .mk-werkzeuge { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.mk-markup .mk-werkzeuge { grid-template-columns: repeat(var(--n, 6), minmax(0, 1fr)); gap: 2px; }
 .mk-wz { all: unset; display: grid; justify-items: center; gap: 2px; padding: 6px 0; border-radius: 10px; color: #cfd4da; cursor: pointer; font-size: .7rem; }
 .mk-wz svg { width: 24px; height: 24px; }
 .mk-wz[aria-pressed="true"] { background: rgba(255,255,255,.14); color: #fff; }
@@ -697,11 +700,11 @@ html.mk-offen, html.mk-offen body { overflow: hidden; }
 .seg.seg3 { grid-template-columns: repeat(3, 1fr); margin-bottom: 0; }
 
 /* Pläne markieren */
-.mk-flaeche { position: relative; overflow: hidden; }
+.mk-markup .mk-flaeche { position: relative; overflow: hidden; }
 .mk-hinweis { position: absolute; left: 10px; right: 64px; top: 8px; z-index: 3; padding: 8px 12px; border-radius: 10px; background: rgba(20,22,25,.82); color: #fff; font-size: .85rem; pointer-events: none; }
 .mk-hinweis[hidden] { display: none; }
-.mk-plan .mk-werkzeuge { grid-template-columns: repeat(7, 1fr); gap: 2px; }
-.mk-plan .mk-wz span { font-size: .62rem; }
+.mk-markup .mk-wz span { font-size: .62rem; white-space: nowrap; }
+.mk-markup .mk-wz svg { width: 22px; height: 22px; }
 .mk-fotowahl { position: absolute; inset: auto 0 0 0; z-index: 5; max-height: 60%; display: flex; flex-direction: column; background: #23272c; border-radius: 16px 16px 0 0; padding: 12px 12px calc(var(--safe-b, 0px) + 12px); box-shadow: 0 -6px 20px rgba(0,0,0,.4); }
 .mk-fotowahl[hidden] { display: none; }
 .mk-fw-kopf { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
@@ -736,3 +739,14 @@ html.mk-offen, html.mk-offen body { overflow: hidden; }
   border: 0; background: rgba(0, 0, 0, .6); color: #fff; display: grid; place-items: center; cursor: pointer;
 }
 .thumb .auf-plan svg { width: 17px; height: 17px; }
+
+/* Strichstärke im Markier-Editor */
+.mk-markup .mk-farben .mk-rueck { margin-left: auto; }
+.mk-staerke { display: flex; align-items: center; gap: 6px; }
+.mk-st { all: unset; display: flex; align-items: center; gap: 5px; padding: 6px 9px; border-radius: 10px; color: #cfd4da; font-size: .74rem; cursor: pointer; background: rgba(255,255,255,.08); flex: none; }
+.mk-st i { display: block; width: 14px; height: var(--h); border-radius: 4px; background: currentColor; }
+.mk-st[aria-pressed="true"] { background: #fff; color: #16191d; font-weight: 700; }
+.mk-regler { flex: 1; min-width: 60px; accent-color: #e2611b; }
+.mk-markup .fa-zoomknoepfe { bottom: 10px; }
+.mk-ansehen .mk-leiste, .mk-ansehen .mk-fertig { visibility: hidden; }
+.mk-ansehen .mk-leiste { display: none; }
