@@ -272,6 +272,8 @@ body.editing .view { padding-bottom: calc(110px + var(--safe-b)); }
 .thumb .doc { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 8px; text-align: center; }
 .thumb .doc svg { width: 30px; height: 30px; color: var(--accent); }
 .thumb .doc span { font-size: .7rem; font-weight: 600; color: var(--ink-2); word-break: break-all; line-height: 1.2; max-height: 2.4em; overflow: hidden; }
+.thumb .doc.defekt svg, .thumb .doc.defekt span { color: var(--danger); }
+.thumb .doc.defekt span { word-break: normal; max-height: none; }
 .thumb .remove {
   position: absolute; top: 4px; right: 4px; width: 28px; height: 28px; border-radius: 50%;
   border: 0; background: rgba(0, 0, 0, .55); color: #fff; display: grid; place-items: center; cursor: pointer;

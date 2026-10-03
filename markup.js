@@ -20,16 +20,20 @@ const PLAN_WERKZEUGE = [
 export const PIN_FARBE = '#e2611b';
 const RUECK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7L4 12l5 5M4 12h10a6 6 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -3)"/></svg>';
 
+// Die Adresse des Bildes bleibt gültig, bis der Editor schließt: Safari wirft große Bilder bei
+// Speichermangel weg und lädt sie über die Adresse neu (sonst wird der Plan leer gezeichnet).
 async function ladeBild(blob) {
+  if (!blob?.size) throw new Error('Das Bild ist leer');
   const url = URL.createObjectURL(blob);
+  const img = new Image();
+  img.src = url;
   try {
-    const img = new Image();
-    img.src = url;
     await img.decode();
-    return img;
-  } finally {
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (err) {
+    URL.revokeObjectURL(url);
+    throw err;
   }
+  return img;
 }
 
 function zeichne(ctx, s) {
@@ -192,6 +196,7 @@ export async function openMarkup(blob, opts = {}) {
   let fitS = 1;
   let dpr = 1;
   let scharf = null; // { x, y, w, h, c }
+  const frei = (c) => { if (c) { c.width = 0; c.height = 0; } };
   const groesseSetzen = () => {
     const r = flaeche.getBoundingClientRect();
     dpr = Math.min(window.devicePixelRatio || 1, 3);
@@ -229,7 +234,7 @@ export async function openMarkup(blob, opts = {}) {
     clearTimeout(scharfUhr);
     if (!kachel) return;
     const k = ansicht.s * dpr;
-    if (k <= 1.15) { if (scharf) { scharf = null; neuZeichnen(); } return; }
+    if (k <= 1.15) { if (scharf) { frei(scharf.c); scharf = null; neuZeichnen(); } return; }
     scharfUhr = setTimeout(async () => {
       const r = flaeche.getBoundingClientRect();
       const x0 = Math.max(0, -ansicht.x / ansicht.s);
@@ -240,6 +245,7 @@ export async function openMarkup(blob, opts = {}) {
       const nr = ++scharfNr;
       const c = await kachel(x0, y0, x1 - x0, y1 - y0, k).catch(() => null);
       if (!c || nr !== scharfNr) return;
+      frei(scharf?.c);
       scharf = { x: x0, y: y0, w: x1 - x0, h: y1 - y0, c };
       neuZeichnen();
     }, 220);
@@ -307,18 +313,19 @@ export async function openMarkup(blob, opts = {}) {
   fotoWahl.querySelectorAll('.mk-fw-neu input').forEach((inp) => {
     inp.onchange = async () => {
       const datei = inp.files[0];
-      inp.value = '';
-      if (!datei || !wahlPunkt) return;
+      if (!datei || !wahlPunkt) { inp.value = ''; return; }
       const p = wahlPunkt;
       fotoWahl.hidden = true;
       hinweis('Foto wird angehängt …');
       try {
         const neu = await fotoNeu(datei);
-        if (!neu) { hinweis(''); return; }
+        inp.value = '';
+        if (!neu) { hinweis('Das Foto konnte nicht gelesen werden. Bitte noch einmal versuchen.'); return; }
         fotos.push(neu);
         pinSetzen(p, neu.nr);
         hinweis(`Foto ${neu.nr} ist im Bericht und auf dem Plan.`);
       } catch (err) {
+        inp.value = '';
         hinweis(`Das Foto ließ sich nicht anhängen (${err.message}).`);
       }
     };
@@ -445,7 +452,10 @@ export async function openMarkup(blob, opts = {}) {
       clearTimeout(scharfUhr);
       scharfNr++;
       document.documentElement.classList.remove('mk-offen');
+      frei(scharf?.c);
+      frei(canvas);
       view.remove();
+      URL.revokeObjectURL(img.src);
       resolve(ergebnis);
     };
     view.querySelector('.mk-abbrechen').onclick = () => {
@@ -462,8 +472,13 @@ export async function openMarkup(blob, opts = {}) {
       a.drawImage(img, 0, 0, W, H);
       formen.forEach((f) => zeichne(a, f));
       aus.toBlob((b) => {
-        aus.width = 1;
-        aus.height = 1;
+        frei(aus);
+        if (!b?.size) {
+          // iPhone: Speicher für Bilder voll. Editor bleibt offen, nichts geht verloren.
+          hinweis('Speichern hat nicht geklappt (zu wenig Speicher). Bitte ganz herauszoomen und noch einmal „Fertig“ tippen.');
+          if (scharf) { frei(scharf.c); scharf = null; neuZeichnen(); }
+          return;
+        }
         schliessen(mitFormen ? { blob: b, formen, w: W, h: H } : b);
       }, 'image/jpeg', plan ? 0.9 : 0.88);
     };

@@ -322,6 +322,7 @@ const ROWS = [
   ['Keine Fotos zugeordnet', 'Brak przypisanych zdjęć', 'Nicio fotografie atribuită', 'Нема доделени фотографии', 'Asnjë foto e caktuar'],
   ['Fläche', 'Powierzchnia', 'Suprafață', 'Површина', 'Sipërfaqe'],
   ['Tippe auf die Stelle im Plan, dann Foto aufnehmen oder auswählen.', 'Dotknij miejsca na planie, potem zrób lub wybierz zdjęcie.', 'Atingeți locul pe plan, apoi faceți sau alegeți o fotografie.', 'Допри го местото на планот, па фотографирај или избери фотографија.', 'Prek vendin në plan, pastaj bëj ose zgjidh një foto.'],
+  ['Leer, bitte löschen und neu aufnehmen', 'Puste, usuń i zrób ponownie', 'Gol, ștergeți și refaceți', 'Празно, избриши и сними повторно', 'Bosh, fshije dhe bëje përsëri'],
   ['Foto aufnehmen', 'Zrób zdjęcie', 'Faceți o fotografie', 'Фотографирај', 'Bëj foto'],
   ['Vorhandenes Foto', 'Istniejące zdjęcie', 'Fotografie existentă', 'Постоечка фотографија', 'Foto ekzistuese'],
   ['Foto wird angehängt …', 'Zdjęcie jest dołączane …', 'Fotografia se atașează …', 'Фотографијата се прикачува …', 'Fotoja po bashkëngjitet …'],

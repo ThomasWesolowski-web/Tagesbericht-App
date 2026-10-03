@@ -15,8 +15,11 @@ async function loadPdfJs() {
 // Größe des Plan-Bildes: so groß wie möglich, aber unter der Grenze, die Handys (iPhone)
 // für ein Bild im Speicher erlauben. Beim Hineinzoomen wird ein PDF zusätzlich scharf
 // nachgezeichnet (siehe planQuelle).
-export const PLAN_MAX_FLAECHE = 14e6; // Bildpunkte
-export const PLAN_MAX_KANTE = 6000;
+// iPhone-Safari hat für alle Bilder zusammen wenig Speicher; ist er voll, entstehen leere Bilder.
+// Deshalb ein mittelgroßes Grundbild; die Schärfe beim Zoomen kommt bei PDFs aus kachel().
+export const PLAN_MAX_FLAECHE = 8e6; // Bildpunkte
+export const PLAN_MAX_KANTE = 4096;
+const KACHEL_MAX = 5e6;
 const groesse = (w, h) => Math.min(PLAN_MAX_KANTE / Math.max(w, h), Math.sqrt(PLAN_MAX_FLAECHE / (w * h)));
 
 export const planReportId = (siteId) => `plan:${siteId}`;
@@ -53,8 +56,9 @@ export async function planQuelle(file, seite = 1) {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     await page.render({ canvasContext: ctx, viewport: vp }).promise;
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
-    canvas.width = 1;
-    canvas.height = 1;
+    canvas.width = 0;
+    canvas.height = 0;
+    if (!blob?.size) throw new Error('zu wenig Speicher auf dem Handy');
     let laeuft = null;
     const kachel = async (x, y, w, h, k) => {
       // höchstens ein Ausschnitt gleichzeitig; ein neuer bricht den alten ab
@@ -62,7 +66,7 @@ export async function planQuelle(file, seite = 1) {
       const c = document.createElement('canvas');
       c.width = Math.max(1, Math.round(w * k));
       c.height = Math.max(1, Math.round(h * k));
-      if (c.width * c.height > PLAN_MAX_FLAECHE) return null;
+      if (c.width * c.height > KACHEL_MAX) return null;
       const v = page.getViewport({ scale: scale * k, offsetX: -x * k, offsetY: -y * k });
       const cx = c.getContext('2d');
       cx.fillStyle = '#ffffff';
@@ -71,6 +75,8 @@ export async function planQuelle(file, seite = 1) {
       try {
         await laeuft.promise;
       } catch {
+        c.width = 0;
+        c.height = 0;
         return null;
       }
       return c;
@@ -92,8 +98,13 @@ export async function planQuelle(file, seite = 1) {
   } finally {
     URL.revokeObjectURL(url);
   }
+  const w = canvas.width;
+  const h = canvas.height;
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
-  return { blob, w: canvas.width, h: canvas.height, kachel: null, schliessen: () => {} };
+  canvas.width = 0;
+  canvas.height = 0;
+  if (!blob?.size) throw new Error('zu wenig Speicher auf dem Handy');
+  return { blob, w, h, kachel: null, schliessen: () => {} };
 }
 
 // Formen an eine andere Bildgröße anpassen (falls der Plan anders gerendert wurde)

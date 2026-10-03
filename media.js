@@ -26,11 +26,16 @@ async function decode(file) {
 // Gibt ein verkleinertes JPEG zurück. Wenn das nicht geht (z. B. HEIC in
 // einem Browser, der es nicht lesen kann), bleibt die Originaldatei erhalten.
 export async function prepareFile(file) {
+  // Gleich in den Speicher kopieren: Safari auf dem iPhone verliert sonst manchmal den Inhalt
+  // einer Datei aus Kamera oder Galerie, und im Bericht steht dann ein leeres Bild (0 B).
+  const typ = file.type || 'application/octet-stream';
+  const original = new Blob([await file.arrayBuffer()], { type: typ });
+  if (!original.size) throw new Error('Die Datei ist leer');
   const isPhoto = /^image\/(jpeg|png|webp|heic|heif)$/i.test(file.type);
-  if (!isPhoto) return { blob: file, name: file.name, type: file.type || 'application/octet-stream' };
+  if (!isPhoto) return { blob: original, name: file.name, type: typ };
 
   try {
-    const img = await decode(file);
+    const img = await decode(original);
     const w = img.width;
     const h = img.height;
     const scale = Math.min(1, MAX_EDGE / Math.max(w, h));
@@ -43,12 +48,14 @@ export async function prepareFile(file) {
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     if (img.close) img.close();
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', JPEG_QUALITY));
-    if (!blob || (blob.size >= file.size && file.type === 'image/jpeg')) {
-      return { blob: file, name: file.name, type: file.type };
+    canvas.width = 0; // Speicher gleich freigeben (iPhone hat wenig Platz für Bilder)
+    canvas.height = 0;
+    if (!blob?.size || (blob.size >= original.size && file.type === 'image/jpeg')) {
+      return { blob: original, name: file.name, type: typ };
     }
     return { blob, name: file.name.replace(/\.[^.]+$/, '') + '.jpg', type: 'image/jpeg' };
   } catch {
-    return { blob: file, name: file.name, type: file.type };
+    return { blob: original, name: file.name, type: typ };
   }
 }
 

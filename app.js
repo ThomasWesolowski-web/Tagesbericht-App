@@ -18,7 +18,7 @@ import { openMarkup } from './markup.js';
 import { planReportId, planTauglich, istPdf, pdfSeiten, planQuelle, formenSkalieren, pinNummern } from './plaene.js';
 import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from './fotoaufmass.js';
 
-const APP_VERSION = '1.38.0';
+const APP_VERSION = '1.38.1';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -856,7 +856,9 @@ async function renderEditor(id) {
     const bildtext = (f) => (pendingTexte.has(f.id) ? pendingTexte.get(f.id) : f.text || '');
     $('#thumbs').innerHTML = files.map((f) => {
       const bild = f.type.startsWith('image/');
-      const inner = bild
+      const inner = !f.blob?.size
+        ? `<div class="doc defekt">${ICON.doc}<span>Leer, bitte löschen und neu aufnehmen</span></div>`
+        : bild
         ? `<img src="${objectUrl(f.blob)}" alt="${esc(f.name)}" loading="lazy">`
         : `<div class="doc">${ICON.doc}<span>${esc(f.name)}</span></div>`;
       return `<div class="thumb-item" data-id="${f.id}"><div class="thumb">
@@ -934,7 +936,13 @@ async function renderEditor(id) {
         toast(`„${file.name}“ ist größer als 25 MB und wurde nicht hinzugefügt.`, 4000);
         continue;
       }
-      const prepared = await prepareFile(file);
+      let prepared;
+      try {
+        prepared = await prepareFile(file);
+      } catch (err) {
+        toast(`„${file.name}“ konnte nicht gelesen werden (${err.message}). Bitte noch einmal versuchen.`, 5000);
+        continue;
+      }
       const fid = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
       pendingAdds.add(fid);
       ids.push(fid);
@@ -1046,7 +1054,13 @@ async function renderEditor(id) {
       const file = e.target.files[0];
       e.target.value = '';
       if (!file) return;
-      const prepared = await prepareFile(file);
+      let prepared;
+      try {
+        prepared = await prepareFile(file);
+      } catch (err) {
+        toast(`Das Foto konnte nicht gelesen werden (${err.message}).`, 4000);
+        return;
+      }
       const nr = Math.max(0, ...report.fotoAufmasse.map((x) => parseInt(x.titel.replace(/\D+/g, ''), 10) || 0)) + 1;
       faOeffnen(prepared.blob, neuesFotoAufmass(nr), true);
     };
@@ -1195,6 +1209,7 @@ async function renderEditor(id) {
       basis.schliessen();
     }
     if (!res) return;
+    if (!res.blob?.size) { toast('Der markierte Plan konnte nicht gespeichert werden. Bitte noch einmal versuchen.', 5000); return; }
     const planMarkierung = { planId: m ? m.planId : plan.id, planName: name, seite: m ? m.seite : seite, w: res.w, h: res.h, formen: quelle ? res.formen : [...(m.formen || []), ...res.formen] };
     const dateiName = `plan-${slug(name)}${planMarkierung.seite > 1 ? `-s${planMarkierung.seite}` : ''}.jpg`;
     const fid = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
