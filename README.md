@@ -24,10 +24,10 @@ In diesem Repo liegt nur der App-Code. Es enthält keine Berichte und keine Zuga
   im Bericht einen Plan (bei PDFs eine Seite) markieren: bearbeitete Flächen ausmalen, Stift,
   Pfeil, Text, Zoom mit zwei Fingern, und Fotos als nummerierte Pins an die Stelle setzen, an der
   sie entstanden sind (`plaene.js`, `markup.js`). Im PDF steht der Plan über die ganze Breite,
-  die Fotos tragen dieselbe Nummer. Pläne werden mit bis zu 14 Megapixeln geladen, PDFs beim
+  die Fotos tragen dieselbe Nummer. Pläne werden mit bis zu 8 Megapixeln geladen, PDFs beim
   Hineinzoomen scharf nachgezeichnet; Hand zum Verschieben, Strichstärke Dünn/Mittel/Dick oder Regler;
-- Handbuch in der App unter *Einstellungen › Handbuch zur App* (`handbuch.md`, Kopie des Handbuchs, offline verfügbar)
   beim Pin direkt ein Foto aufnehmen oder vom Handy wählen (wird an den Bericht gehängt)
+- Handbuch in der App unter *Einstellungen › Handbuch zur App* (`handbuch.md`, Kopie des Handbuchs, offline verfügbar)
 - Upload als ein Commit pro Bericht, sobald Netz da ist
 - Foto-Aufmaß im Reiter Aufmaß: Perspektiv-Rahmen (4 Ecken eines bekannten Rechtecks, Entzerrung per Homografie); Formen werden fertig abgesteckt und über die Eckpunkte angepasst, Zoom per Knöpfen oder zwei Fingern; Teil antippen wählt es aus, blauer Punkt verschiebt, Kopie dupliziert
   oder bekannte Länge und Höhe im Foto markieren, daraus den Maßstab
