@@ -293,16 +293,21 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
     for (const q of positionen) {
       const eh = einheitLabel(q.einheit);
       const sum = positionSumme(q);
-      const zeilen = q.zeilen.filter((z) => !zeileLeer(z));
+      const zeilen = q.zeilen.filter((z) => !zeileLeer(z) || z.info);
       const bez = doc.splitTextToSize(q.bezeichnung || '', cols[1].w - 3);
-      const n = Math.max(zeilen.length, bez.length, 1);
+      // Zeilen mit eigenem Text (z. B. „Fenster 1 Laibung“): Bezeichnung als Kopf, Zeilen darunter
+      const mitText = zeilen.some((z) => z.text);
+      const vor = mitText ? bez.length : 0;
+      const n = mitText ? vor + zeilen.length : Math.max(zeilen.length, bez.length, 1);
       if (y + Math.min(n, 4) * rowH > BOTTOM) { newPage(); head(); }
       for (let i = 0; i < n; i++) {
-        const z = zeilen[i];
+        if (mitText && i > 0 && y + rowH > BOTTOM) { newPage(); head(); }
+        const z = zeilen[i - vor];
+        const bezText = mitText ? (i < vor ? bez[i] : `${z.info ? ' ' : '    '}${z.text || ''}`) : bez[i];
         const m = z ? zeileMenge(z, q.einheit) : 0;
         const last = i === n - 1;
         zeile([
-          i ? '' : q.pos, bez[i] || '',
+          i ? '' : q.pos, bezText || '',
           z ? formatMass(z.stueck) : '', z ? formatMass(z.laenge) : '', z ? formatMass(z.breite) : '', z ? formatMass(z.hoehe) : '',
           z && !z.abzug && m ? formatMenge(m) : '', z && z.abzug && m ? formatMenge(m) : '',
           last ? `${formatMenge(sum.netto)} ${eh}` : '',

@@ -17,7 +17,7 @@ import { startI18n, SPRACHEN } from './i18n.js';
 import { openMarkup } from './markup.js';
 import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from './fotoaufmass.js';
 
-const APP_VERSION = '1.26.0';
+const APP_VERSION = '1.27.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -482,7 +482,7 @@ async function renderEditor(id) {
     if (!report.art) report.art = 'tagesbericht';
     if (report.art === 'aufmass') {
       report.positionen = (report.positionen || []).filter((p) => !positionLeer(p))
-        .map((p) => { const q = normPosition(p); const z = q.zeilen.filter((x) => !zeileLeer(x)); return { ...q, zeilen: z.length ? z : [newZeile()] }; });
+        .map((p) => { const q = normPosition(p); const z = q.zeilen.filter((x) => !zeileLeer(x) || x.info); return { ...q, zeilen: z.length ? z : [newZeile()] }; });
     }
     const fehlt = rapportFehlt(report);
     if (fehlt) {
@@ -599,9 +599,11 @@ async function renderEditor(id) {
     };
     const hatMasse = (z) => [z.laenge, z.breite, z.hoehe].some((v) => String(v ?? '').trim() !== '');
     const zeileHtml = (p, z, j) => {
+      if (z.info) return `<div class="am-zeile am-info" data-j="${j}"><div class="am-ztext">${esc(z.text)}</div></div>`;
       const m = zeileMenge(z, p.einheit);
       return `
-        <div class="am-zeile${z.abzug ? ' abzug' : ''}" data-j="${j}">
+        <div class="am-zeile${z.abzug ? ' abzug' : ''}" data-j="${j}">${z.text ? `
+          <div class="am-ztext">${esc(z.text)}</div>` : ''}
           <input type="text" inputmode="decimal" data-z="stueck" value="${esc(z.stueck)}" placeholder="1" aria-label="Stück">
           <input type="text" inputmode="decimal" data-z="laenge" value="${esc(z.laenge)}" aria-label="Länge">
           <input type="text" inputmode="decimal" data-z="breite" value="${esc(z.breite)}" aria-label="Breite">
@@ -644,7 +646,7 @@ async function renderEditor(id) {
         $$('.am-einheit button', el).forEach((b) => {
           b.onclick = () => { p.einheit = b.dataset.e; drawPositionen(); drawSummen(); changed(); };
         });
-        $$('.am-zeile', el).forEach((zel) => {
+        $$('.am-zeile:not(.am-info)', el).forEach((zel) => {
           const z = p.zeilen[Number(zel.dataset.j)];
           const wert = $('.am-wert', zel);
           $$('input', zel).forEach((inp) => {

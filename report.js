@@ -341,13 +341,13 @@ function aufmassMarkdown(r) {
   if (r.arbeitsart) md += `**Art der Arbeit:** ${esc(r.arbeitsart)}  \n`;
   md += '\n| Lfd. Nr. | Bezeichnung | Stück | Länge | Breite | Höhe | Meßgehalt | Abzug | Netto |\n|---|---|---|---|---|---|---|---|---|\n';
   for (const p of pos) {
-    const zeilen = p.zeilen.filter((z) => !zeileLeer(z));
+    const zeilen = p.zeilen.filter((z) => !zeileLeer(z) || z.info);
     const sum = positionSumme(p);
     const eh = einheitLabel(p.einheit);
     (zeilen.length ? zeilen : [newZeile()]).forEach((z, i) => {
       const m = zeileMenge(z, p.einheit);
       const last = i === Math.max(zeilen.length, 1) - 1;
-      md += `| ${i ? '' : esc(p.pos)} | ${i ? '' : esc(p.bezeichnung)} | ${formatMass(z.stueck)} | ${formatMass(z.laenge)} | ${formatMass(z.breite)} | ${formatMass(z.hoehe)} | ${!z.abzug && m ? formatMenge(m) : ''} | ${z.abzug && m ? formatMenge(m) : ''} | ${last ? `**${formatMenge(sum.netto)} ${eh}**` : ''} |\n`;
+      md += `| ${i ? '' : esc(p.pos)} | ${[i ? '' : esc(p.bezeichnung), esc(z.text)].filter(Boolean).join(': ')} | ${formatMass(z.stueck)} | ${formatMass(z.laenge)} | ${formatMass(z.breite)} | ${formatMass(z.hoehe)} | ${!z.abzug && m ? formatMenge(m) : ''} | ${z.abzug && m ? formatMenge(m) : ''} | ${last ? `**${formatMenge(sum.netto)} ${eh}**` : ''} |\n`;
     });
   }
   for (const s of aufmassSummen(r)) md += `| | **Summe ${s.label}** | | | | | | | **${formatMenge(s.menge)} ${s.label}** |\n`;

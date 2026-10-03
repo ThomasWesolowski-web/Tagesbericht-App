@@ -670,3 +670,5 @@ html.mk-offen, html.mk-offen body { overflow: hidden; }
 .fa-zoomknoepfe button:active { background: var(--accent); color: var(--accent-ink); }
 .fa-view .fa-bild { touch-action: none; }
 .fa-view .mk-wz.fa-unnoetig { opacity: .35; }
+.am-ztext { grid-column: 1 / -1; font-size: .8rem; font-weight: 600; color: var(--ink-2); }
+.am-zeile.am-info { display: block; padding: 8px 0 2px; border-bottom: 0; }

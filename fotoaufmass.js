@@ -197,32 +197,45 @@ export function auswerten(d) {
 export function alsPositionen(d) {
   const { teile } = auswerten(d);
   const out = [];
-  const flZeile = (x, abzug = false) => (x.rechteck
-    ? { ...newZeile(), laenge: fmt(x.breite), hoehe: fmt(x.hoehe), abzug }
-    : { ...newZeile(), wert: fmt(x.flaeche), abzug });
+  const flZeile = (x, abzug = false, text = '') => ({
+    ...(x.rechteck
+      ? { ...newZeile(), laenge: fmt(x.breite), hoehe: fmt(x.hoehe), abzug }
+      : { ...newZeile(), wert: fmt(x.flaeche), abzug }),
+    ...(text ? { text } : {}),
+  });
   for (const f of teile.filter((x) => x.t.typ === 'flaeche')) {
     const oe = teile.filter((x) => x.in === f);
     const ueber = oe.filter((x) => !x.abzug).map((x) => x.t.name);
     out.push({
       bezeichnung: f.t.name + (ueber.length ? ` (übermessen: ${ueber.join(', ')})` : ''),
       einheit: 'm2',
-      zeilen: [flZeile(f), ...oe.filter((x) => x.abzug).map((x) => flZeile(x, true))],
+      zeilen: [flZeile(f, false, oe.some((x) => x.abzug) ? f.t.name : ''), ...oe.filter((x) => x.abzug).map((x) => flZeile(x, true, x.t.name))],
     });
   }
   const frei = teile.filter((x) => x.t.typ === 'oeffnung' && !x.in);
   if (frei.length) out.push({ bezeichnung: frei.map((x) => x.t.name).join(', '), einheit: 'm2', zeilen: frei.map((x) => flZeile(x)) });
-  // Laibungen je Tiefe eine Position
+  // Laibungen je Tiefe eine Position; je Öffnung 2 × Laibung (Höhe), 1 × Sturz (Breite),
+  // bei „unten“ 1 × Brüstung. Der Umlauf je Öffnung steht in der Bezeichnung.
   const tiefen = new Map();
-  for (const x of teile.filter((y) => y.laibungTiefe)) {
-    const k = fmt(x.laibungTiefe * 100);
+  for (const x of teile.filter((y) => y.t.typ === 'oeffnung')) {
+    const k = x.laibungTiefe ? fmt(x.laibungTiefe * 100) : '';
     tiefen.set(k, [...(tiefen.get(k) || []), x]);
   }
   const alsM2 = d.laibungAls !== 'm';
   for (const [cm, list] of tiefen) {
+    const m2 = alsM2 && cm !== '';
+    const tiefe = (x) => (m2 ? fmt(x.laibungTiefe) : '');
+    // aus den gerundeten Zeilenwerten, damit Umlauf und Summe der Zeilen übereinstimmen
+    const umlauf = (x) => fmt2(2 * zahl(fmt(x.hoehe)) + zahl(fmt(x.breite)) * (x.t.laibung?.unten ? 2 : 1));
     out.push({
-      bezeichnung: `Laibungen Tiefe ${cm} cm (${list.map((x) => x.t.name).join(', ')})`,
-      einheit: alsM2 ? 'm2' : 'm',
-      zeilen: list.map((x) => ({ ...newZeile(), laenge: fmt(x.laibungLaenge), breite: alsM2 ? fmt(x.laibungTiefe) : '' })),
+      bezeichnung: cm ? `Laibungen Tiefe ${cm} cm` : 'Laibungen (ohne Tiefe)',
+      einheit: m2 ? 'm2' : 'm',
+      zeilen: list.flatMap((x) => [
+        { ...newZeile(), text: `${x.t.name}: Umlauf ${umlauf(x)} m`, info: true },
+        { ...newZeile(), stueck: '2', laenge: fmt(x.hoehe), breite: tiefe(x), text: `${x.t.name} Laibung` },
+        { ...newZeile(), stueck: '1', laenge: fmt(x.breite), breite: tiefe(x), text: `${x.t.name} Sturz` },
+        ...(x.t.laibung?.unten ? [{ ...newZeile(), stueck: '1', laenge: fmt(x.breite), breite: tiefe(x), text: `${x.t.name} Brüstung` }] : []),
+      ]),
     });
   }
   for (const l of teile.filter((x) => x.t.typ === 'linie')) {
