@@ -26,6 +26,7 @@ In diesem Repo liegt nur der App-Code. Es enthält keine Berichte und keine Zuga
   sie entstanden sind (`plaene.js`, `markup.js`). Im PDF steht der Plan über die ganze Breite,
   die Fotos tragen dieselbe Nummer. Pläne werden mit bis zu 14 Megapixeln geladen, PDFs beim
   Hineinzoomen scharf nachgezeichnet; Hand zum Verschieben, Strichstärke Dünn/Mittel/Dick oder Regler;
+- Handbuch in der App unter *Einstellungen › Handbuch zur App* (`handbuch.md`, Kopie des Handbuchs, offline verfügbar)
   beim Pin direkt ein Foto aufnehmen oder vom Handy wählen (wird an den Bericht gehängt)
 - Upload als ein Commit pro Bericht, sobald Netz da ist
 - Foto-Aufmaß im Reiter Aufmaß: Perspektiv-Rahmen (4 Ecken eines bekannten Rechtecks, Entzerrung per Homografie); Formen werden fertig abgesteckt und über die Eckpunkte angepasst, Zoom per Knöpfen oder zwei Fingern; Teil antippen wählt es aus, blauer Punkt verschiebt, Kopie dupliziert

@@ -1,4 +1,5 @@
 import * as db from './db.js';
+import { handbuchLaden } from './handbuch.js';
 import { prepareFile, formatBytes, MAX_FILE_BYTES, slug } from './media.js';
 import {
   WETTER, newReport, newSite, newPerson, crewOf, entryHours, KATEGORIEN, kategorieOf, sortCrew, hoursByKategorie, workedHours, formatHours, formatDate, weekday, monthLabel, parseDate, toMarkdown, ARTEN, artLabel, EINHEITEN, einheitLabel, newPosition, newZeile, normPosition, zeileMenge, zeileLeer, positionSumme, positionLeer, positionMenge, aufmassSummen, formatMenge,
@@ -18,7 +19,7 @@ import { openMarkup } from './markup.js';
 import { planReportId, planTauglich, istPdf, pdfSeiten, planQuelle, formenSkalieren, pinNummern } from './plaene.js';
 import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from './fotoaufmass.js';
 
-const APP_VERSION = '1.38.1';
+const APP_VERSION = '1.39.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -135,7 +136,7 @@ async function route() {
     || (a.dataset.tab === 'sites' && hash.startsWith('#/baustelle'))
     || (a.dataset.tab === 'hours' && hash === '#/stunden')
     || (a.dataset.tab === 'aufmass' && hash === '#/aufmass')
-    || (a.dataset.tab === 'settings' && (hash === '#/einstellungen' || hash === '#/personal'))));
+    || (a.dataset.tab === 'settings' && (hash === '#/einstellungen' || hash === '#/personal' || hash === '#/handbuch'))));
 
   if (hash === '#/aufmass/neu') {
     const r = { ...newReport(), art: 'aufmass' };
@@ -163,6 +164,7 @@ function seiteZeigen(hash) {
   if (hash === '#/stunden') return renderStunden();
   if (hash === '#/personal') return renderPeople();
   if (hash === '#/einstellungen') return renderSettings();
+  if (hash === '#/handbuch') return renderHandbuch();
   if (hash === '#/aufmass') return renderList({ aufmass: true });
   return renderList();
 }
@@ -1917,6 +1919,22 @@ async function openPeoplePicker(takenIds, onDone) {
   draw();
 }
 
+// Handbuch (handbuch.md, auf Deutsch); funktioniert auch offline aus dem Cache
+async function renderHandbuch() {
+  appbar.innerHTML = `
+    <button class="icon-btn" id="back" aria-label="Zurück">${ICON.back}</button>
+    <h1 class="small">Handbuch</h1>`;
+  $('#back').onclick = () => (location.hash = '#/einstellungen');
+  view.innerHTML = '<p class="hint">Wird geladen …</p>';
+  try {
+    const html = (await handbuchLaden()).replace(/^<h2>.*?<\/h2>\n?/, '');
+    if (location.hash !== '#/handbuch') return;
+    view.innerHTML = `<article class="handbuch section" data-roh>${html}</article>`;
+  } catch (err) {
+    view.innerHTML = `<p class="hint">Das Handbuch lässt sich gerade nicht laden (${esc(err.message)}). Bitte mit Netz noch einmal öffnen.</p>`;
+  }
+}
+
 async function renderPeople() {
   appbar.innerHTML = `
     <button class="icon-btn" id="back" aria-label="Zurück">${ICON.back}</button>
@@ -2547,15 +2565,10 @@ async function renderSettings() {
       ${isAdmin() && isConfigured(s) ? `<button class="btn ghost block" id="geraete-btn" style="margin-top:10px">${ICON.people} Wer hat die App eingerichtet?</button>` : ''}
     </section>
 
-    <section class="section">
-      <h2>So bekommst du den Token</h2>
-      <ol class="steps">
-        <li>Auf GitHub <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener"><b>Fine-grained token</b> anlegen</a>.</li>
-        <li>Bei <i>Repository access</i> nur <code>${esc(s.repo || 'Rapporte-')}</code> auswählen.</li>
-        <li>Bei <i>Permissions → Contents</i> „Read and write“ wählen.</li>
-        <li>Token kopieren und oben einfügen. Er bleibt nur auf diesem Handy.</li>
-      </ol>
-    </section>
+    <a class="scard" href="#/handbuch" style="margin-bottom:12px">
+      <div class="sicon">${ICON.doc}</div>
+      <div class="body"><div class="title">Handbuch zur App</div><div class="meta">Was die App kann und wie man sie bedient</div></div>
+      ${ICON.chevron}</a>
 
     <section class="section">
       <h2>Speicher auf dem Handy</h2>

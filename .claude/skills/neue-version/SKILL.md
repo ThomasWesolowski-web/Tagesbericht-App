@@ -26,16 +26,22 @@ Jede Änderung, die auf die Handys soll, ist eine neue Version. Diese Schritte d
 - Alte Berichte (ohne die neuen Felder) öffnen sich weiter ohne Fehler.
 - Keine echten Namen, Tokens oder Kundendaten im Diff (Repo ist öffentlich).
 
-## 3. Veröffentlichen
+## 3. Handbuch nachziehen (vor dem Commit)
+
+- Das Handbuch zur App (Claude Doc „Tagesberichte-App: Funktionen und Bedienung“) nachziehen:
+  betroffenen Abschnitt, Versionsnummer im Überblick, neue Zeile im Änderungsverlauf.
+- Die App zeigt eine Kopie davon (Einstellungen › Handbuch zur App): das Doc als Markdown
+  exportieren, die Zeile „Stand … · @…“ entfernen und als `handbuch.md` speichern.
+  Keine echten Mitarbeiter- oder Kundennamen hineinschreiben (Repo ist öffentlich).
+
+## 4. Veröffentlichen
 
 - `README.md` anpassen, wenn sich sichtbar etwas an den Funktionen geändert hat.
 - Commit-Nachricht auf Deutsch, beginnend mit der Version, z. B.
   `1.28.0: Aufmaß-PDF mit Summen je Raum`.
 - Nach dem Push auf `main` ist die Änderung über GitHub Pages nach kurzer Zeit online.
 
-## 4. Danach
+## 5. Danach
 
-- Das Handbuch zur App (Claude Doc „Tagesberichte-App: Funktionen und Bedienung“) nachziehen:
-  betroffenen Abschnitt, Versionsnummer im Überblick, neue Zeile im Änderungsverlauf.
 - Tomek in einem Satz sagen, was neu ist und dass die App beim nächsten Öffnen (ggf. zweimal
   öffnen) aktualisiert wird.

@@ -24,6 +24,7 @@ Veröffentlicht über GitHub Pages aus `main` (Root): https://thomaswesolowski-w
 | `fotoaufmass.js` | Foto-Aufmaß (Rahmen/Homografie, Formen, VOB/C-Abzüge, Laibungen) |
 | `i18n.js` | Oberflächen-Sprachen DE/PL/RO/MK/SQ |
 | `translate.js` | Freitexte beim Hochladen ins Deutsche übersetzen (MyMemory) |
+| `handbuch.js`, `handbuch.md` | Handbuch in der App (Kopie des Claude Docs) |
 | `sw.js` | Offline-Cache (`CACHE`, Liste `SHELL`) |
 | `vendor/` | jsPDF und pdf.js, nicht von Hand ändern |
 

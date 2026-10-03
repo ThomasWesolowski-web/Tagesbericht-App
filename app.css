@@ -756,3 +756,18 @@ html.mk-offen, html.mk-offen body { overflow: hidden; }
 .mk-markup .fa-zoomknoepfe { bottom: 10px; }
 .mk-ansehen .mk-leiste, .mk-ansehen .mk-fertig { visibility: hidden; }
 .mk-ansehen .mk-leiste { display: none; }
+
+/* Handbuch */
+.handbuch { line-height: 1.55; }
+.handbuch h2 { margin: 18px 0 8px; font-size: 1.1rem; }
+.handbuch h2:first-child, .handbuch h3:first-child { margin-top: 0; }
+.handbuch h3 { margin: 22px 0 8px; font-size: 1.05rem; color: var(--accent); }
+.handbuch p, .handbuch ul, .handbuch ol { margin: 0 0 10px; }
+.handbuch ul, .handbuch ol { padding-left: 1.3em; }
+.handbuch li { margin-bottom: 4px; }
+.handbuch a { color: var(--accent); word-break: break-word; }
+.handbuch code { font-size: .9em; }
+.hb-tabelle { overflow-x: auto; margin: 0 0 12px; }
+.hb-tabelle table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+.hb-tabelle th, .hb-tabelle td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom: 1px solid var(--line, rgba(127,127,127,.25)); }
+.hb-tabelle th { font-weight: 700; }
