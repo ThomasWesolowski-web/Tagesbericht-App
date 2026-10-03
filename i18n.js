@@ -323,7 +323,7 @@ const ROWS = [
   ['Bitte Arbeit, Urlaub, Krank, Feiertag oder Berufsschule wählen.', 'Wybierz: praca, urlop, choroba, święto lub szkoła zawodowa.', 'Alege: muncă, concediu, boală, sărbătoare sau școală profesională.', 'Избери: работа, одмор, боледување, празник или стручно училиште.', 'Zgjidh: punë, pushim, sëmundje, festë ose shkollë profesionale.'],
   ['Bitte eine Baustelle wählen.', 'Wybierz budowę.', 'Alege un șantier.', 'Избери градилиште.', 'Zgjidh një kantier.'],
   ['Bitte die Art der Arbeit eintragen.', 'Wpisz rodzaj pracy.', 'Trece tipul de lucrare.', 'Внеси вид на работа.', 'Shëno llojin e punës.'],
-  ['Bitte Beginn, Ende und Pause eintragen.', 'Wpisz początek, koniec i przerwę.', 'Trece începutul, sfârșitul și pauza.', 'Внеси почеток, крај и пауза.', 'Shëno fillimin, mbarimin dhe pushimin.'],
+  ['Mehr als 6 Stunden: Bitte die Pause eintragen.', 'Ponad 6 godzin: wpisz przerwę.', 'Peste 6 ore: trece pauza.', 'Повеќе од 6 часа: внеси пауза.', 'Më shumë se 6 orë: shëno pushimin.'],
   ['Pflicht', 'wymagane', 'obligatoriu', 'задолжително', 'e detyrueshme'],
   ['Bitte Beginn und Ende eintragen.', 'Wpisz początek i koniec.', 'Trece începutul și sfârșitul.', 'Внеси почеток и крај.', 'Shëno fillimin dhe mbarimin.'],
   ['Gespeichert.', 'Zapisano.', 'Salvat.', 'Зачувано.', 'U ruajt.'],

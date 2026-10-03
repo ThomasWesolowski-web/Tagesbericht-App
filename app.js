@@ -17,7 +17,7 @@ import { startI18n, SPRACHEN } from './i18n.js';
 import { openMarkup } from './markup.js';
 import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from './fotoaufmass.js';
 
-const APP_VERSION = '1.30.0';
+const APP_VERSION = '1.30.1';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -2168,7 +2168,13 @@ function openStundeEditor(e, isNew) {
     if (!e.typ) { toast('Bitte Arbeit, Urlaub, Krank, Feiertag oder Berufsschule wählen.', 3500); return; }
     if (e.typ === 'arbeit' && !e.baustelle) { toast('Bitte eine Baustelle wählen.'); return; }
     if (e.typ === 'arbeit' && !(e.gewerke || []).length && !(e.gewerkFrei || '').trim()) { toast('Bitte die Art der Arbeit eintragen.'); return; }
-    if (hatZeiten(e.typ) && (!e.beginn || !e.ende || e.pause === '' || e.pause == null)) { toast('Bitte Beginn, Ende und Pause eintragen.'); return; }
+    if (hatZeiten(e.typ) && (!e.beginn || !e.ende)) { toast('Bitte Beginn und Ende eintragen.'); return; }
+    // Pause ist erst Pflicht, wenn zwischen Beginn und Ende mehr als 6 Stunden liegen.
+    const ohnePause = e.pause === '' || e.pause == null;
+    if (hatZeiten(e.typ) && ohnePause) {
+      if (entryHours({ ...e, pause: 0 }) > 6) { toast('Mehr als 6 Stunden: Bitte die Pause eintragen.', 3500); return; }
+      e.pause = 0;
+    }
     if (!hatZeiten(e.typ)) Object.assign(e, { beginn: '', ende: '', pause: '', baustelleId: null, baustelle: '', gewerke: [], gewerkFrei: '' });
     await db.putStunde(e);
     if (origMonth && origMonth.datum.slice(0, 7) !== e.datum.slice(0, 7)) db.markStundenDirty(origMonth);
