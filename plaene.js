@@ -20,8 +20,10 @@ export const PLAN_MAX_KANTE = 6000;
 const groesse = (w, h) => Math.min(PLAN_MAX_KANTE / Math.max(w, h), Math.sqrt(PLAN_MAX_FLAECHE / (w * h)));
 
 export const planReportId = (siteId) => `plan:${siteId}`;
-export const istPdf = (f) => f?.type === 'application/pdf' || /\.pdf$/i.test(f?.name || '');
-export const istBild = (f) => f?.type?.startsWith('image/');
+// Datei (type) oder Eintrag in site.plaene (typ)
+const typVon = (f) => f?.type || f?.typ || '';
+export const istPdf = (f) => typVon(f) === 'application/pdf' || /\.pdf$/i.test(f?.name || '');
+export const istBild = (f) => typVon(f).startsWith('image/') || /\.(png|jpe?g|webp|gif|heic)$/i.test(f?.name || '');
 export const planTauglich = (f) => istPdf(f) || istBild(f);
 
 export async function pdfSeiten(blob) {

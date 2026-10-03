@@ -116,10 +116,12 @@ function zeichne(ctx, s) {
 
 // Strichstärke: Faktor zur Grundbreite (Mittel = 1)
 const STAERKEN = [{ id: 'duenn', label: 'Dünn', f: 0.5 }, { id: 'mittel', label: 'Mittel', f: 1 }, { id: 'dick', label: 'Dick', f: 2.2 }];
+const KAMERA = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>';
+const GALERIE = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="9" cy="10" r="1.6" fill="currentColor"/><path d="M4 17l5-5 4 4 2.5-2.5L20 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
 const HAND = { id: 'hand', label: 'Hand', svg: '<path d="M8 12V5.5a1.5 1.5 0 0 1 3 0V11m0-1V4.5a1.5 1.5 0 0 1 3 0V11m0-5.5a1.5 1.5 0 0 1 3 0V12m0-3.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.5a6 6 0 0 1-4.6-2.2L4.3 15.6a1.6 1.6 0 0 1 2.4-2.1L8 15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>' };
 
 export async function openMarkup(blob, opts = {}) {
-  const { titel = 'Foto markieren', fotos = null, mitFormen = false, kachel = null, nurAnsehen = false } = opts;
+  const { titel = 'Foto markieren', fotos = null, mitFormen = false, kachel = null, nurAnsehen = false, fotoNeu = null } = opts;
   let pinNr = opts.pinNr ?? null;
   const plan = mitFormen;
   const img = await ladeBild(blob);
@@ -151,7 +153,9 @@ export async function openMarkup(blob, opts = {}) {
       <input type="text" placeholder="Text eingeben" enterkeyhint="done">
       <button type="button" class="btn primary mk-text-ok">OK</button>
     </div>
-    <div class="mk-fotowahl" hidden><div class="mk-fw-kopf"><b>Welches Foto ist hier entstanden?</b><button type="button" class="btn ghost mk-fw-zu">Abbrechen</button></div><div class="mk-fw-liste"></div></div>
+    <div class="mk-fotowahl" hidden><div class="mk-fw-kopf"><b>Welches Foto ist hier entstanden?</b><button type="button" class="btn ghost mk-fw-zu">Abbrechen</button></div>${fotoNeu ? `<div class="mk-fw-neu">
+      <label class="btn primary">${KAMERA}<span>Foto aufnehmen</span><input type="file" accept="image/*" capture="environment" hidden></label>
+      <label class="btn soft">${GALERIE}<span>Vorhandenes Foto</span><input type="file" accept="image/*" hidden></label></div>` : ''}<div class="mk-fw-liste"></div></div>
     <div class="mk-leiste">
       <div class="mk-werkzeuge" style="--n:${werkzeuge.length}">${werkzeuge.map((w) => `<button type="button" class="mk-wz" data-wz="${w.id}" aria-pressed="${w.id === werkzeug}"><svg viewBox="0 0 24 24" aria-hidden="true">${w.svg}</svg><span>${w.label}</span></button>`).join('')}</div>
       <div class="mk-farben">
@@ -246,7 +250,7 @@ export async function openMarkup(blob, opts = {}) {
   const beiGroesse = () => { groesseSetzen(); neuZeichnen(); scharfNachladen(); };
   window.addEventListener('resize', beiGroesse);
   const wzHinweis = () => hinweis(werkzeug === 'foto'
-    ? (pinNr != null ? `Tippe auf die Stelle im Plan, an der Foto ${pinNr} entstanden ist.` : 'Tippe auf die Stelle, an der ein Foto entstanden ist.')
+    ? (pinNr != null ? `Tippe auf die Stelle im Plan, an der Foto ${pinNr} entstanden ist.` : (fotoNeu ? 'Tippe auf die Stelle im Plan, dann Foto aufnehmen oder auswählen.' : 'Tippe auf die Stelle, an der ein Foto entstanden ist.'))
     : werkzeug === 'hand' ? 'Mit einem Finger verschieben, mit zwei Fingern zoomen.'
     : plan && werkzeug === 'flaeche' ? 'Bearbeitete Fläche mit dem Finger umfahren. Zwei Finger zoomen.' : '');
   wzHinweis();
@@ -288,15 +292,37 @@ export async function openMarkup(blob, opts = {}) {
     formen.push({ typ: 'pin', farbe: PIN_FARBE, breite: basis, von: p, nr });
     neuZeichnen();
   };
+  // Foto zur Stelle p: neu aufnehmen, vom Handy wählen oder eines aus dem Bericht nehmen
+  let wahlPunkt = null;
   const fotoWaehlen = (p) => {
-    if (!fotos?.length) { hinweis('Im Bericht sind noch keine Fotos. Erst Fotos aufnehmen, dann hier zuordnen.'); return; }
+    if (!fotos?.length && !fotoNeu) { hinweis('Im Bericht sind noch keine Fotos. Erst Fotos aufnehmen, dann hier zuordnen.'); return; }
+    wahlPunkt = p;
     const liste = fotoWahl.querySelector('.mk-fw-liste');
-    liste.innerHTML = fotos.map((f) => `<button type="button" data-nr="${f.nr}"><img src="${f.url}" alt=""><span>Foto ${f.nr}</span></button>`).join('');
+    liste.innerHTML = (fotos || []).map((f) => `<button type="button" data-nr="${f.nr}"><img src="${f.url}" alt=""><span>Foto ${f.nr}</span></button>`).join('');
     fotoWahl.hidden = false;
     liste.querySelectorAll('button').forEach((b) => {
       b.onclick = () => { fotoWahl.hidden = true; pinSetzen(p, Number(b.dataset.nr)); };
     });
   };
+  fotoWahl.querySelectorAll('.mk-fw-neu input').forEach((inp) => {
+    inp.onchange = async () => {
+      const datei = inp.files[0];
+      inp.value = '';
+      if (!datei || !wahlPunkt) return;
+      const p = wahlPunkt;
+      fotoWahl.hidden = true;
+      hinweis('Foto wird angehängt …');
+      try {
+        const neu = await fotoNeu(datei);
+        if (!neu) { hinweis(''); return; }
+        fotos.push(neu);
+        pinSetzen(p, neu.nr);
+        hinweis(`Foto ${neu.nr} ist im Bericht und auf dem Plan.`);
+      } catch (err) {
+        hinweis(`Das Foto ließ sich nicht anhängen (${err.message}).`);
+      }
+    };
+  });
   fotoWahl.querySelector('.mk-fw-zu').onclick = () => { fotoWahl.hidden = true; };
 
   // Finger: mit der Hand (oder zwei Fingern) verschieben und zoomen, sonst zeichnen

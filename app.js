@@ -18,7 +18,7 @@ import { openMarkup } from './markup.js';
 import { planReportId, planTauglich, istPdf, pdfSeiten, planQuelle, formenSkalieren, pinNummern } from './plaene.js';
 import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from './fotoaufmass.js';
 
-const APP_VERSION = '1.37.0';
+const APP_VERSION = '1.38.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -926,7 +926,8 @@ async function renderEditor(id) {
   };
 
   const addFiles = async (list) => {
-    if (!list.length) return;
+    const ids = [];
+    if (!list.length) return ids;
     $('#sync-state').textContent = 'Anhänge werden vorbereitet …';
     for (const file of list) {
       if (file.size > MAX_FILE_BYTES) {
@@ -936,6 +937,7 @@ async function renderEditor(id) {
       const prepared = await prepareFile(file);
       const fid = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
       pendingAdds.add(fid);
+      ids.push(fid);
       await db.putFile({
         id: fid,
         reportId: report.id,
@@ -949,6 +951,7 @@ async function renderEditor(id) {
     changed();
     updateState();
     drawThumbs();
+    return ids;
   };
   $('#cam').onchange = (e) => { addFiles([...e.target.files]); e.target.value = ''; };
   $('#pick').onchange = (e) => { addFiles([...e.target.files]); e.target.value = ''; };
@@ -1178,9 +1181,16 @@ async function renderEditor(id) {
     const formen = m ? (quelle ? formenSkalieren(m.formen || [], m, basis) : []) : [];
     const fotos = (await fotosNummerieren()).map((f) => ({ nr: f.fotoNr, url: objectUrl(f.blob) }));
     const name = m ? m.planName : plan.name.replace(/\.(pdf|png|jpe?g|webp|heic|gif)$/i, '');
+    // Foto direkt im Plan aufnehmen oder vom Handy wählen: hängt am Bericht und bekommt eine Nummer
+    const fotoNeu = async (datei) => {
+      const [fid] = await addFiles([datei]);
+      if (!fid) return null;
+      const f = (await fotosNummerieren()).find((x) => x.id === fid);
+      return f ? { nr: f.fotoNr, url: objectUrl(f.blob) } : null;
+    };
     let res;
     try {
-      res = await openMarkup(basis.blob, { mitFormen: true, formen, fotos, pinNr, titel: name, kachel: basis.kachel });
+      res = await openMarkup(basis.blob, { mitFormen: true, formen, fotos, pinNr, titel: name, kachel: basis.kachel, fotoNeu });
     } finally {
       basis.schliessen();
     }
