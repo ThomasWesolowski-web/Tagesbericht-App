@@ -19,7 +19,7 @@ import { openMarkup } from './markup.js';
 import { planReportId, planTauglich, istPdf, pdfSeiten, planQuelle, formenSkalieren, pinNummern } from './plaene.js';
 import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from './fotoaufmass.js';
 
-const APP_VERSION = '1.39.4';
+const APP_VERSION = '1.40.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -2449,13 +2449,16 @@ async function renderStunden() {
   $('#m-prev').onclick = () => { stundenMonat = shiftMonth(stundenMonat, -1); renderStunden(); };
   $('#m-next').onclick = () => { stundenMonat = shiftMonth(stundenMonat, 1); renderStunden(); };
   $('#stunde-neu').onclick = () => {
-    // Neuer Eintrag startet leer: Art, Baustelle, Art der Arbeit und Zeiten werden aktiv gewählt.
+    // Neuer Eintrag: Art, Baustelle und Art der Arbeit werden aktiv gewählt; Zeiten stehen auf dem
+    // üblichen Arbeitstag 7:00 bis 16:00 und lassen sich ändern.
     const datum = stundenMonat === today().slice(0, 7) ? today() : `${stundenMonat}-01`;
     openStundeEditor(newStunde({
       personId: person.personId || null,
       name: person.name,
       datum,
       typ: '',
+      beginn: '07:00',
+      ende: '16:00',
     }), true);
   };
   $$('.rcard.stunde').forEach((b) => {
@@ -2497,6 +2500,34 @@ async function chooseStundenPerson() {
   };
 }
 
+// Uhrzeit als Stunde und Minute (in 5-Minuten-Schritten) zum Auswählen. Das eingebaute Uhrzeit-Feld
+// zeigt auf dem iPhone jede einzelne Minute und kennt keine Schritte.
+function zeitWahlHtml(id, wert) {
+  const [h, m] = /^\d{1,2}:\d{2}/.test(wert || '') ? wert.split(':') : ['', ''];
+  const zwei = (n) => String(n).padStart(2, '0');
+  const minuten = Array.from({ length: 12 }, (_, i) => zwei(i * 5));
+  if (m && !minuten.includes(m.slice(0, 2))) minuten.push(m.slice(0, 2)); // alte Einträge mit krummer Minute
+  minuten.sort();
+  const opt = (v, gewaehlt) => `<option value="${v}"${v === gewaehlt ? ' selected' : ''}>${v}</option>`;
+  return `<div class="zeitwahl" id="${id}">
+    <select data-t="h" aria-label="Stunde"><option value=""${h ? '' : ' selected'}>--</option>${Array.from({ length: 24 }, (_, i) => opt(zwei(i), h ? zwei(Number(h)) : null)).join('')}</select>
+    <b>:</b>
+    <select data-t="m" aria-label="Minute"><option value=""${m ? '' : ' selected'}>--</option>${minuten.map((v) => opt(v, m ? m.slice(0, 2) : null)).join('')}</select>
+  </div>`;
+}
+
+function zeitWahlBinden(box, aendern) {
+  const [h, m] = $$('select', box);
+  const lesen = () => {
+    // Stunde gewählt, Minute noch leer: volle Stunde
+    if (h.value && !m.value) m.value = '00';
+    if (!h.value && m.value) h.value = '07';
+    aendern(h.value && m.value ? `${h.value}:${m.value}` : '');
+  };
+  h.onchange = lesen;
+  m.onchange = lesen;
+}
+
 function openStundeEditor(e, isNew) {
   const origMonth = isNew ? null : { ...e };
   const { sheet, close } = openSheet(`
@@ -2508,8 +2539,8 @@ function openStundeEditor(e, isNew) {
       <div class="field"><span>Baustelle</span><button type="button" class="site-pick" id="st-site"></button></div>
       <div class="field"><span>Art der Arbeit</span>${gewerkeHtml(e, 'st-gw')}</div>
       <div class="row three">
-        <label class="field"><span>Beginn</span><input type="time" id="st-beginn" value="${esc(e.beginn)}"></label>
-        <label class="field"><span>Ende</span><input type="time" id="st-ende" value="${esc(e.ende)}"></label>
+        <div class="field"><span>Beginn</span>${zeitWahlHtml('st-beginn', e.beginn)}</div>
+        <div class="field"><span>Ende</span>${zeitWahlHtml('st-ende', e.ende)}</div>
         <label class="field"><span>Pause</span><input type="number" inputmode="numeric" min="0" step="5" id="st-pause" value="${esc(e.pause)}" placeholder="Min."></label>
       </div>
       <div class="crew-sum"><div class="kv total" style="border:0;margin:0;padding-top:4px"><span>Arbeitszeit</span><b id="st-h"></b></div></div>
@@ -2546,9 +2577,8 @@ function openStundeEditor(e, isNew) {
     drawSite();
   }, e.baustelleId ? '' : e.baustelle);
   gewerkeBinden(e, $('#st-gw', sheet), () => {});
-  for (const k of ['beginn', 'ende', 'pause']) {
-    $(`#st-${k}`, sheet).oninput = (ev) => { e[k] = k === 'pause' ? (ev.target.value === '' ? '' : Number(ev.target.value)) : ev.target.value; drawHours(); };
-  }
+  for (const k of ['beginn', 'ende']) zeitWahlBinden($(`#st-${k}`, sheet), (v) => { e[k] = v; drawHours(); });
+  $('#st-pause', sheet).oninput = (ev) => { e.pause = ev.target.value === '' ? '' : Number(ev.target.value); drawHours(); };
   $('#st-notiz', sheet).oninput = (ev) => { e.notiz = ev.target.value; };
   $('#st-cancel', sheet).onclick = close;
   $('#st-save', sheet).onclick = async () => {

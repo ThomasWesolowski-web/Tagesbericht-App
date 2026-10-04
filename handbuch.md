@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.39.4**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.40.0**.
 
 | Was | Wo |
 | --- | --- |
@@ -87,7 +87,7 @@ Gespeichert werden das verkleinerte Original-Foto und ein Foto mit allen Maßen;
 
 ## Stunden, Baustellen und Personal
 
-**Stunden:** Jeder führt seinen eigenen Stundennachweis pro Monat. Ein neuer Eintrag startet leer, nur das heutige Datum ist eingetragen. Gespeichert werden kann erst, wenn Arbeit, Urlaub, Krank, Feiertag oder Berufsschule gewählt ist; bei Arbeit zusätzlich Baustelle (auch Freitext) und Art der Arbeit, bei Arbeit und Berufsschule Beginn und Ende. Die Pause ist erst Pflicht, wenn zwischen Beginn und Ende mehr als 6 Stunden liegen; bis 6 Stunden darf sie leer bleiben und zählt als 0 Minuten. Der Monat wird als Stundennachweis-PDF geteilt und im Repo unter stunden/ gespeichert. Das PDF passt immer auf eine Seite (bei vielen Einträgen wird die Schrift kleiner) und hat keine Unterschriftszeilen und keine Fußzeile. Mitarbeiter sehen nur ihre eigenen Stunden, der Admin kann jeden Mitarbeiter auswählen. Wer auf mehreren Geräten angemeldet ist (z. B. Handy und PC), sieht und bearbeitet seine Stunden auf allen; der Admin kann die Stunden aller Mitarbeiter ändern und löschen. Ist ein Eintrag auf zwei Geräten verschieden, gilt die letzte Änderung; gelöschte Einträge kommen nicht zurück.
+**Stunden:** Jeder führt seinen eigenen Stundennachweis pro Monat. Ein neuer Eintrag startet mit dem heutigen Datum, Beginn 7:00 und Ende 16:00; Art, Baustelle und Art der Arbeit werden selbst gewählt. Beginn und Ende werden als Stunde und Minute ausgewählt, die Minuten in 5-Minuten-Schritten. Gespeichert werden kann erst, wenn Arbeit, Urlaub, Krank, Feiertag oder Berufsschule gewählt ist; bei Arbeit zusätzlich Baustelle (auch Freitext) und Art der Arbeit, bei Arbeit und Berufsschule Beginn und Ende. Die Pause ist erst Pflicht, wenn zwischen Beginn und Ende mehr als 6 Stunden liegen; bis 6 Stunden darf sie leer bleiben und zählt als 0 Minuten. Der Monat wird als Stundennachweis-PDF geteilt und im Repo unter stunden/ gespeichert. Das PDF passt immer auf eine Seite (bei vielen Einträgen wird die Schrift kleiner) und hat keine Unterschriftszeilen und keine Fußzeile. Mitarbeiter sehen nur ihre eigenen Stunden, der Admin kann jeden Mitarbeiter auswählen. Wer auf mehreren Geräten angemeldet ist (z. B. Handy und PC), sieht und bearbeitet seine Stunden auf allen; der Admin kann die Stunden aller Mitarbeiter ändern und löschen. Ist ein Eintrag auf zwei Geräten verschieden, gilt die letzte Änderung; gelöschte Einträge kommen nicht zurück.
 
 **Baustellen:** Liste aller Baustellen mit Adresse. Anlegen und ändern darf jeder; fertige Baustellen werden oben als abgeschlossen markiert und wandern nach unten. Löschen darf nur der Admin. Auf der Seite einer Baustelle stehen ihre Berichte, der Knopf für die Zusammenfassung und **Pläne und Dokumente**: PDF-Pläne, Bilder oder andere Dateien bis 25 MB anhängen (nachdem die Baustelle gespeichert ist). Sie kommen beim Abgleich auf alle Handys (im Repo unter stammdaten/plaene/). Anhängen darf jeder, entfernen nur der Admin.
 
@@ -134,6 +134,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 04.10.2026 | 1.40.0 | Stunden: Beginn und Ende als Stunde und Minute in 5-Minuten-Schritten; neuer Eintrag mit 7:00 bis 16:00 vorbelegt |
 | 04.10.2026 | 1.39.4 | Foto-Aufmaß: Rein- und Rauszoomen läuft flüssig (Foto wird erst nach dem Zoomen neu gezeichnet) |
 | 04.10.2026 | 1.39.3 | iPhone: Leiste mit Abbrechen/Speichern bleibt unten fest, auch nach dem Schließen der Tastatur; solange die Tastatur offen ist, ist sie ausgeblendet |
 | 04.10.2026 | 1.39.2 | iPhone: Seite bleibt mittig, nur noch hoch und runter scrollen; Datumsfeld nicht mehr zu breit |

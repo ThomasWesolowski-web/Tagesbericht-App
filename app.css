@@ -235,6 +235,9 @@ input::-webkit-date-and-time-value { text-align: left; }
 .row.three { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, .7fr); }
 .row .field > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .field input { min-width: 0; }
+.zeitwahl { display: flex; align-items: center; gap: 3px; min-height: 46px; }
+.zeitwahl b { font-weight: 700; color: var(--ink-2); }
+.field .zeitwahl select { flex: 1 1 0; min-width: 0; padding: 11px 2px; text-align: center; text-align-last: center; font-variant-numeric: tabular-nums; }
 .hint { font-size: .8rem; color: var(--ink-3); margin: 6px 0 0; }
 
 .hours-total {
