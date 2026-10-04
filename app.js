@@ -19,7 +19,7 @@ import { openMarkup } from './markup.js';
 import { planReportId, planTauglich, istPdf, pdfSeiten, planQuelle, formenSkalieren, pinNummern } from './plaene.js';
 import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from './fotoaufmass.js';
 
-const APP_VERSION = '1.39.2';
+const APP_VERSION = '1.39.3';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -42,6 +42,31 @@ function ansichtAnwenden() {
 }
 ansichtAnwenden();
 startI18n(settings.lang || 'de');
+
+// iPhone: Die Leisten unten (Speichern/Abbrechen, Reiter) bleiben sonst nach dem Schließen der
+// Tastatur manchmal mitten im Bild hängen. Abstand zum sichtbaren unteren Rand messen und die
+// Leisten dorthin setzen; solange die Tastatur offen ist, sind sie ausgeblendet.
+(() => {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  let uhr = null;
+  const anpassen = () => {
+    const unten = Math.round(window.innerHeight - (vv.offsetTop + vv.height));
+    const tastatur = unten > 120;
+    document.documentElement.classList.toggle('tastatur-offen', tastatur);
+    document.documentElement.style.setProperty('--vv-unten', `${tastatur ? 0 : unten}px`);
+  };
+  const spaeter = () => { clearTimeout(uhr); uhr = setTimeout(anpassen, 120); };
+  vv.addEventListener('resize', anpassen);
+  vv.addEventListener('scroll', anpassen);
+  window.addEventListener('focusout', () => {
+    spaeter();
+    // Safari zieht die Seite nach dem Schließen der Tastatur nicht immer zurück
+    setTimeout(() => { window.scrollTo(window.scrollX, window.scrollY); anpassen(); }, 350);
+  });
+  window.addEventListener('focusin', spaeter);
+  anpassen();
+})();
 let objectUrls = [];
 let drafts = new Map(); // neue Berichte, die erst beim ersten Tippen gespeichert werden
 let syncing = false;

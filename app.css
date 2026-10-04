@@ -295,6 +295,8 @@ input::-webkit-date-and-time-value { text-align: left; }
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
   border-top: 1px solid var(--line);
 }
+.savebar, .tabbar { transform: translateY(calc(-1 * var(--vv-unten, 0px))); }
+.tastatur-offen .savebar, .tastatur-offen .tabbar { visibility: hidden; }
 .savebar-inner { max-width: 688px; margin: 0 auto; display: flex; align-items: center; gap: 12px; }
 .savebar .state { flex: 1; min-width: 0; font-size: .82rem; color: var(--ink-2); line-height: 1.3; }
 .savebar .state b { display: block; color: var(--ink); font-size: .9rem; }
