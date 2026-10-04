@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.39.1**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.39.2**.
 
 | Was | Wo |
 | --- | --- |
@@ -53,7 +53,7 @@ Im Reiter **Berichte** startet das Plus unten rechts einen neuen Bericht. Er beg
 
 **Fotos auf dem Plan:** Jedes Foto bekommt eine Nummer (Foto 1, Foto 2 …). Das Stecknadel-Symbol auf dem Foto öffnet den Plan; ein Tippen setzt dort einen orangen Pin mit der Nummer des Fotos. Alternativ im Plan das Werkzeug „Foto“ wählen und auf die Stelle tippen. Dann ein Foto aus dem Bericht aussuchen, mit „Foto aufnehmen“ direkt die Kamera öffnen oder mit „Vorhandenes Foto“ eines vom Handy wählen. Neue Fotos werden automatisch an den Bericht gehängt und bekommen die nächste Nummer. Im PDF steht der Plan über die ganze Seite mit der Liste der Fotos, die Fotos tragen dieselbe Nummer.
 
-**PDF:** „Als PDF teilen“ im Bericht erstellt das PDF mit Firmenbriefkopf, Fotos und Unterschrift. Es öffnet sich erst als Vorschau, danach „Teilen oder speichern“ (WhatsApp, Mail, Dateien). In der Vorschau vergrößern und verkleinern die Knöpfe + und − oben rechts; vergrößert lässt sich das PDF auch seitlich schieben. Die App selbst lässt sich nicht zoomen oder seitlich verschieben, nur Fotos, Pläne und PDFs in ihren Ansichten.
+**PDF:** „Als PDF teilen“ im Bericht erstellt das PDF mit Firmenbriefkopf, Fotos und Unterschrift. Es öffnet sich erst als Vorschau, danach „Teilen oder speichern“ (WhatsApp, Mail, Dateien). In der Vorschau vergrößern und verkleinern die Knöpfe + und − oben rechts; vergrößert lässt sich das PDF auch seitlich schieben. Die App selbst lässt sich nicht zoomen oder seitlich verschieben, nur hoch und runter scrollen; zoomen geht nur bei Fotos, Plänen und PDFs in ihren Ansichten.
 
 Gespeicherte Berichte lassen sich jederzeit wieder öffnen, ändern oder löschen (roter Knopf unten links).
 
@@ -134,6 +134,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 04.10.2026 | 1.39.2 | iPhone: Seite bleibt mittig, nur noch hoch und runter scrollen; Datumsfeld nicht mehr zu breit |
 | 04.10.2026 | 1.39.1 | Speichern hängt nicht mehr (Meldung statt Warten, doppeltes Tippen abgefangen); App nicht mehr zoombar oder seitlich schiebbar; PDF-Vorschau mit + und − |
 | 04.10.2026 | 1.39.0 | Handbuch in der App (Einstellungen › Handbuch zur App) statt der Token-Anleitung |
 | 04.10.2026 | 1.38.1 | iPhone: leere Fotos und Pläne verhindert (Fotos sofort sichern, weniger Bildspeicher); leere Anhänge zeigen „Leer, bitte löschen und neu aufnehmen“ |

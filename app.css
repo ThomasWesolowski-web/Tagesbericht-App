@@ -69,8 +69,9 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow-x: clip; }
-/* Die App selbst lässt sich nicht zoomen (nur Fotos, Pläne und PDFs in ihren Ansichten) */
-html { touch-action: pan-x pan-y; }
+/* Die App selbst lässt sich nicht zoomen und nicht seitlich schieben, nur hoch und runter
+   (Fotos, Pläne, PDFs und breite Tabellen haben eigene Bereiche, siehe dort) */
+html { touch-action: pan-y; }
 body {
   background: var(--bg);
   color: var(--ink);
@@ -82,7 +83,7 @@ body {
 button, input, textarea, select { font: inherit; color: inherit; }
 a { color: inherit; }
 
-.app { max-width: 720px; margin: 0 auto; min-height: 100%; }
+.app { max-width: 720px; margin: 0 auto; min-height: 100%; overflow-x: clip; }
 
 /* Kopfzeile */
 .appbar {
@@ -227,6 +228,9 @@ body.editing .view { padding-bottom: calc(110px + var(--safe-b)); }
 }
 .field textarea { min-height: 96px; resize: none; line-height: 1.5; }
 .field input[type="date"], .field input[type="time"] { min-height: 46px; }
+input[type="date"], input[type="time"], input[type="month"] { display: block; min-width: 0; max-width: 100%; }
+/* iPhone: Datumsfelder sonst breiter als der Bildschirm und mittig */
+input::-webkit-date-and-time-value { text-align: left; }
 .row { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .row.three { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, .7fr); }
 .row .field > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -517,7 +521,7 @@ body.no-scroll { overflow: hidden; }
 .pdf-view header small { color: var(--ink-3); font-size: .8rem; }
 .pdf-pages { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 8px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .pdf-pages canvas { background: #fff; box-shadow: 0 2px 10px rgba(0, 0, 0, .35); max-width: 100%; height: auto; flex: none; }
-.pdf-pages.gezoomt { overflow: auto; align-items: flex-start; }
+.pdf-pages.gezoomt { overflow: auto; align-items: flex-start; touch-action: pan-x pan-y; }
 .pdf-pages.gezoomt canvas { max-width: none; }
 .pdfv-zoom { display: flex; gap: 6px; flex: none; }
 .pdfv-zoom button { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface, transparent); color: var(--ink); font-size: 1.3rem; font-weight: 700; line-height: 1; cursor: pointer; }
@@ -773,7 +777,7 @@ html.mk-offen, html.mk-offen body { overflow: hidden; }
 .handbuch li { margin-bottom: 4px; }
 .handbuch a { color: var(--accent); word-break: break-word; }
 .handbuch code { font-size: .9em; }
-.hb-tabelle { overflow-x: auto; margin: 0 0 12px; }
+.hb-tabelle { overflow-x: auto; margin: 0 0 12px; touch-action: pan-x pan-y; }
 .hb-tabelle table { border-collapse: collapse; width: 100%; font-size: .9rem; }
 .hb-tabelle th, .hb-tabelle td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom: 1px solid var(--line, rgba(127,127,127,.25)); }
 .hb-tabelle th { font-weight: 700; }
