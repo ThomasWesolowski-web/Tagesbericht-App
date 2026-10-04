@@ -19,7 +19,7 @@ import { openMarkup } from './markup.js';
 import { planReportId, planTauglich, istPdf, pdfSeiten, planQuelle, formenSkalieren, pinNummern } from './plaene.js';
 import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from './fotoaufmass.js';
 
-const APP_VERSION = '1.40.0';
+const APP_VERSION = '1.41.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -849,8 +849,8 @@ async function renderEditor(id) {
           <button type="button" class="icon-btn crew-remove" aria-label="${esc(e.name)} entfernen">${ICON.x}</button>
         </div>
         <div class="row three">
-          <label class="field"><span>Beginn</span><input type="time" data-k="beginn" value="${esc(e.beginn)}"></label>
-          <label class="field"><span>Ende</span><input type="time" data-k="ende" value="${esc(e.ende)}"></label>
+          <div class="field"><span>Beginn</span>${zeitWahlHtml('', e.beginn, 'beginn')}</div>
+          <div class="field"><span>Ende</span>${zeitWahlHtml('', e.ende, 'ende')}</div>
           <label class="field"><span>Pause</span><input type="number" inputmode="numeric" min="0" step="5" data-k="pause" value="${esc(e.pause)}" placeholder="Min."></label>
         </div>
       </div>`).join('') + (crew.length > 1
@@ -858,12 +858,11 @@ async function renderEditor(id) {
       + (crew.length ? '' : '<p class="hint" style="margin:0 0 12px">Noch kein Personal ausgewählt.</p>');
     $$('#crew .crew').forEach((el) => {
       const e = crew[Number(el.dataset.i)];
-      $$('[data-k]', el).forEach((inp) => {
-        inp.oninput = () => {
-          e[inp.dataset.k] = inp.dataset.k === 'pause' ? (inp.value === '' ? '' : Number(inp.value)) : inp.value;
-          changed();
-        };
-      });
+      $$('.zeitwahl', el).forEach((box) => zeitWahlBinden(box, (v) => { e[box.dataset.k] = v; changed(); }));
+      $('[data-k="pause"]', el).oninput = (ev) => {
+        e.pause = ev.target.value === '' ? '' : Number(ev.target.value);
+        changed();
+      };
       $('.crew-remove', el).onclick = () => {
         crew.splice(Number(el.dataset.i), 1);
         drawCrew();
@@ -880,12 +879,12 @@ async function renderEditor(id) {
     };
   };
   $('#add-crew').onclick = () => openPeoplePicker(report.mitarbeiter.map((e) => e.personId), (people) => {
-    // Neue Personen übernehmen die Zeiten der ersten Person im Bericht, falls schon erfasst
+    // Neue Personen übernehmen die Zeiten der ersten Person im Bericht, sonst 7:00 bis 16:00
     const first = report.mitarbeiter[0];
     for (const p of people) {
       report.mitarbeiter.push({
         personId: p.id, name: p.name, kategorie: kategorieOf(p),
-        beginn: first?.beginn || '', ende: first?.ende || '', pause: first?.pause ?? '',
+        beginn: first ? first.beginn : '07:00', ende: first ? first.ende : '16:00', pause: first?.pause ?? '',
       });
     }
     sortCrew(report.mitarbeiter);
@@ -2502,14 +2501,14 @@ async function chooseStundenPerson() {
 
 // Uhrzeit als Stunde und Minute (in 5-Minuten-Schritten) zum Auswählen. Das eingebaute Uhrzeit-Feld
 // zeigt auf dem iPhone jede einzelne Minute und kennt keine Schritte.
-function zeitWahlHtml(id, wert) {
+function zeitWahlHtml(id, wert, k = '') {
   const [h, m] = /^\d{1,2}:\d{2}/.test(wert || '') ? wert.split(':') : ['', ''];
   const zwei = (n) => String(n).padStart(2, '0');
   const minuten = Array.from({ length: 12 }, (_, i) => zwei(i * 5));
   if (m && !minuten.includes(m.slice(0, 2))) minuten.push(m.slice(0, 2)); // alte Einträge mit krummer Minute
   minuten.sort();
   const opt = (v, gewaehlt) => `<option value="${v}"${v === gewaehlt ? ' selected' : ''}>${v}</option>`;
-  return `<div class="zeitwahl" id="${id}">
+  return `<div class="zeitwahl"${id ? ` id="${id}"` : ''}${k ? ` data-k="${k}"` : ''}>
     <select data-t="h" aria-label="Stunde"><option value=""${h ? '' : ' selected'}>--</option>${Array.from({ length: 24 }, (_, i) => opt(zwei(i), h ? zwei(Number(h)) : null)).join('')}</select>
     <b>:</b>
     <select data-t="m" aria-label="Minute"><option value=""${m ? '' : ' selected'}>--</option>${minuten.map((v) => opt(v, m ? m.slice(0, 2) : null)).join('')}</select>

@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.40.0**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.41.0**.
 
 | Was | Wo |
 | --- | --- |
@@ -37,7 +37,7 @@ Im Reiter **Berichte** startet das Plus unten rechts einen neuen Bericht. Er beg
 1. **Baustelle wählen:** aus der Liste oder als Freitext („Nur in diesem Bericht“), z. B. für kleine Aufträge, die nicht in die Baustellen-Liste sollen.
 2. **Art wählen:** Tagesbericht oder Rapport (Regie- oder Pauschalarbeit für den Bauherrn).
 3. **Art der Arbeit:** Gerüstbau, Putz, Malerarbeiten, Trockenbau (mehrere möglich) plus Freitext.
-4. **Personal:** Personen aus der Liste hinzufügen, jeweils mit Kategorie (Meister, Facharbeiter, Helfer, Lehrling), Beginn, Ende und Pause.
+4. **Personal:** Personen aus der Liste hinzufügen, jeweils mit Kategorie (Meister, Facharbeiter, Helfer, Lehrling), Beginn, Ende und Pause. Beginn und Ende werden als Stunde und Minute in 5-Minuten-Schritten gewählt; die erste Person startet mit 7:00 bis 16:00, weitere Personen übernehmen die Zeiten der ersten.
 5. **Ausgeführte Arbeiten, Material, Bemerkungen, Wetter** eintragen.
 6. **Rapport zusätzlich:** Maschinen mit Stunden (Schnellauswahl LKW, Transporter) und Unterschrift des Bauherrn mit dem Finger. Beim Rapport sind Personal mit Zeiten und die ausgeführten Arbeiten Pflicht.
 7. **Fotos und Dokumente:** „Kamera“ oder „Datei“. Fotos werden automatisch verkleinert, Dateien bis 25 MB.
@@ -134,6 +134,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 04.10.2026 | 1.41.0 | Tagesbericht und Rapport: Personal-Zeiten in 5-Minuten-Schritten, erste Person mit 7:00 bis 16:00 vorbelegt |
 | 04.10.2026 | 1.40.0 | Stunden: Beginn und Ende als Stunde und Minute in 5-Minuten-Schritten; neuer Eintrag mit 7:00 bis 16:00 vorbelegt |
 | 04.10.2026 | 1.39.4 | Foto-Aufmaß: Rein- und Rauszoomen läuft flüssig (Foto wird erst nach dem Zoomen neu gezeichnet) |
 | 04.10.2026 | 1.39.3 | iPhone: Leiste mit Abbrechen/Speichern bleibt unten fest, auch nach dem Schließen der Tastatur; solange die Tastatur offen ist, ist sie ausgeblendet |
