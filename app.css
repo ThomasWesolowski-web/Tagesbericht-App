@@ -235,9 +235,17 @@ input::-webkit-date-and-time-value { text-align: left; }
 .row.three { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, .7fr); }
 .row .field > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .field input { min-width: 0; }
-.zeitwahl { display: flex; align-items: center; gap: 3px; min-height: 46px; }
-.zeitwahl b { font-weight: 700; color: var(--ink-2); }
-.field .zeitwahl select { flex: 1 1 0; min-width: 0; padding: 11px 2px; text-align: center; text-align-last: center; font-variant-numeric: tabular-nums; }
+/* Uhrzeit: sieht aus wie ein einzelnes Feld, Stunde und Minute werden darin getrennt gewählt */
+.zeitwahl {
+  display: flex; align-items: center; min-height: 46px; padding: 0 10px;
+  border: 1px solid var(--line); background: var(--surface-2); border-radius: 12px;
+}
+.zeitwahl:focus-within { border-color: var(--accent); background: var(--surface); }
+.zeitwahl b { font-weight: 400; }
+.field .zeitwahl select {
+  width: auto; flex: 0 0 auto; min-width: 0; border: 0; background: none; box-shadow: none;
+  padding: 11px 1px; border-radius: 0; font-variant-numeric: tabular-nums; color: inherit;
+}
 .hint { font-size: .8rem; color: var(--ink-3); margin: 6px 0 0; }
 
 .hours-total {

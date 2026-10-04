@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.41.0**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.41.1**.
 
 | Was | Wo |
 | --- | --- |
@@ -134,6 +134,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 04.10.2026 | 1.41.1 | Uhrzeit-Felder sehen wieder aus wie vorher (ein Feld), Minuten weiter in 5er-Schritten |
 | 04.10.2026 | 1.41.0 | Tagesbericht und Rapport: Personal-Zeiten in 5-Minuten-Schritten, erste Person mit 7:00 bis 16:00 vorbelegt |
 | 04.10.2026 | 1.40.0 | Stunden: Beginn und Ende als Stunde und Minute in 5-Minuten-Schritten; neuer Eintrag mit 7:00 bis 16:00 vorbelegt |
 | 04.10.2026 | 1.39.4 | Foto-Aufmaß: Rein- und Rauszoomen läuft flüssig (Foto wird erst nach dem Zoomen neu gezeichnet) |
