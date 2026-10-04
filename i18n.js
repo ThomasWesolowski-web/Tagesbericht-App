@@ -323,6 +323,7 @@ const ROWS = [
   ['Fläche', 'Powierzchnia', 'Suprafață', 'Површина', 'Sipërfaqe'],
   ['Tippe auf die Stelle im Plan, dann Foto aufnehmen oder auswählen.', 'Dotknij miejsca na planie, potem zrób lub wybierz zdjęcie.', 'Atingeți locul pe plan, apoi faceți sau alegeți o fotografie.', 'Допри го местото на планот, па фотографирај или избери фотографија.', 'Prek vendin në plan, pastaj bëj ose zgjidh një foto.'],
   ['Leer, bitte löschen und neu aufnehmen', 'Puste, usuń i zrób ponownie', 'Gol, ștergeți și refaceți', 'Празно, избриши и сними повторно', 'Bosh, fshije dhe bëje përsëri'],
+  ['Wird gespeichert …', 'Zapisywanie …', 'Se salvează …', 'Се зачувува …', 'Po ruhet …'],
   ['Handbuch zur App', 'Instrukcja aplikacji', 'Manualul aplicației', 'Упатство за апликацијата', 'Manuali i aplikacionit'],
   ['Was die App kann und wie man sie bedient', 'Co potrafi aplikacja i jak jej używać (po niemiecku)', 'Ce poate aplicația și cum se folosește (în germană)', 'Што може апликацијата и како се користи (на германски)', 'Çfarë bën aplikacioni dhe si përdoret (në gjermanisht)'],
   ['Handbuch', 'Instrukcja', 'Manual', 'Упатство', 'Manuali'],

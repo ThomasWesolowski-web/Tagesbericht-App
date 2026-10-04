@@ -19,7 +19,7 @@ import { openMarkup } from './markup.js';
 import { planReportId, planTauglich, istPdf, pdfSeiten, planQuelle, formenSkalieren, pinNummern } from './plaene.js';
 import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from './fotoaufmass.js';
 
-const APP_VERSION = '1.39.0';
+const APP_VERSION = '1.39.1';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -65,6 +65,15 @@ function releaseUrls() {
 }
 
 let toastTimer;
+// Bricht mit Fehler ab, wenn ein Schritt (z. B. Speichern auf dem Handy) zu lange hängt
+function zeitlimit(versprechen, ms) {
+  let uhr;
+  return Promise.race([
+    versprechen,
+    new Promise((_, reject) => { uhr = setTimeout(() => reject(new Error('dauert zu lange')), ms); }),
+  ]).finally(() => clearTimeout(uhr));
+}
+
 function toast(msg, ms = 2600) {
   const el = $('#toast');
   el.textContent = msg;
@@ -472,6 +481,7 @@ async function renderEditor(id) {
   const pendingRemovals = new Set(); // entfernte Dateien, die erst beim Speichern gelöscht werden
   const pendingTexte = new Map(); // geänderte Bildtexte, die erst beim Speichern übernommen werden
   let sitePlaene = []; // Pläne der gewählten Baustelle
+  let speichertGerade = false;
 
   const drawSum = () => {
     const groups = hoursByKategorie(report);
@@ -521,21 +531,39 @@ async function renderEditor(id) {
       }
       return;
     }
-    // Upload-Status aus der Datenbank übernehmen, falls inzwischen hochgeladen wurde
-    const fresh = await db.getReport(report.id);
-    if (fresh) for (const k of ['syncedAt', 'syncError', 'remoteDir', 'remoteFiles']) report[k] = fresh[k];
-    for (const k of ['personal', 'beginn', 'ende', 'pause']) delete report[k];
-    for (const fid of pendingRemovals) await db.deleteFile(fid);
-    for (const [fid, text] of pendingTexte) {
-      const f = await db.getFile(fid);
-      if (f) await db.putFile({ ...f, text });
+    // Doppeltes Tippen und hängendes Speichern abfangen: nach 20 s gibt es eine Meldung,
+    // der Bericht bleibt offen und kann noch einmal gespeichert werden.
+    if (speichertGerade) return;
+    speichertGerade = true;
+    const knopf = $('#save-btn');
+    const knopfText = knopf.textContent;
+    knopf.disabled = true;
+    knopf.textContent = 'Wird gespeichert …';
+    try {
+      await zeitlimit((async () => {
+        // Upload-Status aus der Datenbank übernehmen, falls inzwischen hochgeladen wurde
+        const fresh = await db.getReport(report.id);
+        if (fresh) for (const k of ['syncedAt', 'syncError', 'remoteDir', 'remoteFiles']) report[k] = fresh[k];
+        for (const k of ['personal', 'beginn', 'ende', 'pause']) delete report[k];
+        for (const fid of pendingRemovals) { await db.deleteFile(fid); pendingRemovals.delete(fid); }
+        for (const [fid, text] of pendingTexte) {
+          const f = await db.getFile(fid);
+          if (f) await db.putFile({ ...f, text });
+          pendingTexte.delete(fid);
+        }
+        report.updatedAt = Date.now();
+        report.dirty = true;
+        await db.putReport(report);
+      })(), 20000);
+    } catch (err) {
+      speichertGerade = false;
+      knopf.disabled = false;
+      knopf.textContent = knopfText;
+      toast(`Speichern hat nicht geklappt (${err.message}). Bitte noch einmal auf „Speichern“ tippen.`, 6000);
+      return;
     }
-    pendingRemovals.clear();
+    speichertGerade = false;
     pendingAdds.clear();
-    pendingTexte.clear();
-    report.updatedAt = Date.now();
-    report.dirty = true;
-    await db.putReport(report);
     if (drafts.delete(report.id)) requestPersistentStorage();
     unsaved = false;
     toast(report.art === 'aufmass' ? 'Aufmaß gespeichert.' : 'Bericht gespeichert.');
@@ -886,16 +914,21 @@ async function renderEditor(id) {
         }
         if (!blob) return;
         const name = file.name.replace(/\.[^.]+$/, '') + '.jpg';
-        if (pendingAdds.has(file.id)) {
-          await db.putFile({ ...file, name, type: 'image/jpeg', blob, size: blob.size });
-        } else {
-          // Original bleibt bis zum Speichern erhalten, damit „Abbrechen“ es zurückholt.
-          const fid = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
-          const { remoteName, uploadedPath, ...rest } = file;
-          await db.putFile({ ...rest, id: fid, name, type: 'image/jpeg', blob, size: blob.size, text: bildtext(file) });
-          if (pendingTexte.has(file.id)) { pendingTexte.set(fid, pendingTexte.get(file.id)); pendingTexte.delete(file.id); }
-          pendingAdds.add(fid);
-          pendingRemovals.add(file.id);
+        try {
+          if (pendingAdds.has(file.id)) {
+            await zeitlimit(db.putFile({ ...file, name, type: 'image/jpeg', blob, size: blob.size }), 20000);
+          } else {
+            // Original bleibt bis zum Speichern erhalten, damit „Abbrechen“ es zurückholt.
+            const fid = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+            const { remoteName, uploadedPath, ...rest } = file;
+            await zeitlimit(db.putFile({ ...rest, id: fid, name, type: 'image/jpeg', blob, size: blob.size, text: bildtext(file) }), 20000);
+            if (pendingTexte.has(file.id)) { pendingTexte.set(fid, pendingTexte.get(file.id)); pendingTexte.delete(file.id); }
+            pendingAdds.add(fid);
+            pendingRemovals.add(file.id);
+          }
+        } catch (err) {
+          toast(`Das markierte Foto konnte nicht gespeichert werden (${err.message}). Bitte noch einmal versuchen.`, 6000);
+          return;
         }
         changed();
         drawThumbs();
@@ -1215,12 +1248,17 @@ async function renderEditor(id) {
     const planMarkierung = { planId: m ? m.planId : plan.id, planName: name, seite: m ? m.seite : seite, w: res.w, h: res.h, formen: quelle ? res.formen : [...(m.formen || []), ...res.formen] };
     const dateiName = `plan-${slug(name)}${planMarkierung.seite > 1 ? `-s${planMarkierung.seite}` : ''}.jpg`;
     const fid = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
-    if (datei && pendingAdds.has(datei.id)) {
-      await db.putFile({ ...datei, blob: res.blob, size: res.blob.size, planMarkierung });
-    } else {
-      await db.putFile({ id: fid, reportId: report.id, name: dateiName, type: 'image/jpeg', size: res.blob.size, blob: res.blob, addedAt: Date.now(), planMarkierung });
-      pendingAdds.add(fid);
-      if (datei) pendingRemovals.add(datei.id); // Original bleibt bis zum Speichern
+    try {
+      if (datei && pendingAdds.has(datei.id)) {
+        await zeitlimit(db.putFile({ ...datei, blob: res.blob, size: res.blob.size, planMarkierung }), 20000);
+      } else {
+        await zeitlimit(db.putFile({ id: fid, reportId: report.id, name: dateiName, type: 'image/jpeg', size: res.blob.size, blob: res.blob, addedAt: Date.now(), planMarkierung }), 20000);
+        pendingAdds.add(fid);
+        if (datei) pendingRemovals.add(datei.id); // Original bleibt bis zum Speichern
+      }
+    } catch (err) {
+      toast(`Der markierte Plan konnte nicht gespeichert werden (${err.message}). Bitte noch einmal versuchen.`, 6000);
+      return;
     }
     changed();
     drawPlaene();
@@ -1324,40 +1362,65 @@ async function sharePdfFile(file, title, extras) {
   view.className = 'pdf-view';
   view.innerHTML = `
     <header><button type="button" class="icon-btn" id="pdfv-close" aria-label="Zurück">${ICON.back}</button>
-      <div><b>${esc(title)}</b><small id="pdfv-info">${esc(formatBytes(file.size))}</small></div></header>
+      <div><b>${esc(title)}</b><small id="pdfv-info">${esc(formatBytes(file.size))}</small></div>
+      <div class="pdfv-zoom"><button type="button" data-z="-1" aria-label="Verkleinern">−</button><button type="button" data-z="1" aria-label="Vergrößern">+</button></div></header>
     <div class="pdf-pages" id="pdfv-pages"><p class="hint" style="text-align:center;margin-top:40px">PDF wird geladen …</p></div>
     <footer><button type="button" class="btn primary block" id="pdfv-share">${ICON.share} Teilen oder speichern</button></footer>`;
   document.body.appendChild(view);
   document.body.classList.add('no-scroll');
   let closed = false;
-  const close = () => { closed = true; view.remove(); document.body.classList.remove('no-scroll'); };
+  let pdfDok = null;
+  const close = () => { closed = true; view.remove(); document.body.classList.remove('no-scroll'); pdfDok?.destroy(); };
   $('#pdfv-close', view).onclick = close;
   $('#pdfv-share', view).onclick = async () => {
     try { await share(); } catch (e) { if (e.name !== 'AbortError') toast('Teilen hat nicht geklappt.'); }
   };
 
   const pages = $('#pdfv-pages', view);
-  try {
-    const lib = await loadPdfJs();
-    const pdf = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
-    if (closed) return;
-    pages.innerHTML = '';
-    $('#pdfv-info', view).textContent = `${pdf.numPages} ${pdf.numPages === 1 ? 'Seite' : 'Seiten'} · ${formatBytes(file.size)}`;
+  // Die App selbst ist nicht zoombar; das PDF wird mit + und − größer gezeichnet
+  // (bei großer Stufe etwas weicher, damit das Handy nicht zu viel Bildspeicher braucht).
+  const STUFEN = [1, 1.5, 2, 3];
+  let stufe = 0;
+  let zeichnenNr = 0;
+  const zeichnen = async () => {
+    const nr = ++zeichnenNr;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    for (let i = 1; i <= pdf.numPages && !closed; i++) {
-      const page = await pdf.getPage(i);
+    const breite = Math.min(pages.clientWidth - 16, 900) * STUFEN[stufe];
+    const neu = [];
+    for (let i = 1; i <= pdfDok.numPages; i++) {
+      const page = await pdfDok.getPage(i);
       const base = page.getViewport({ scale: 1 });
-      const cssW = Math.min(pages.clientWidth - 16, 900);
-      const vp = page.getViewport({ scale: (cssW / base.width) * dpr });
+      const hoehe = (breite / base.width) * base.height;
+      const k = Math.min(dpr, Math.sqrt(4e6 / (breite * hoehe)));
+      const vp = page.getViewport({ scale: (breite / base.width) * k });
       const canvas = document.createElement('canvas');
       canvas.width = Math.floor(vp.width);
       canvas.height = Math.floor(vp.height);
-      canvas.style.width = `${cssW}px`;
-      pages.appendChild(canvas);
+      canvas.style.width = `${breite}px`;
       await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
       page.cleanup();
+      if (closed || nr !== zeichnenNr) { canvas.width = 0; return; }
+      neu.push(canvas);
     }
-    pdf.cleanup();
+    pages.querySelectorAll('canvas').forEach((c) => { c.width = 0; c.height = 0; });
+    pages.replaceChildren(...neu);
+    pages.classList.toggle('gezoomt', stufe > 0);
+  };
+  $$('.pdfv-zoom button', view).forEach((b) => {
+    b.onclick = () => {
+      const s = Math.min(STUFEN.length - 1, Math.max(0, stufe + Number(b.dataset.z)));
+      if (s === stufe || !pdfDok) return;
+      stufe = s;
+      zeichnen().catch(() => {});
+    };
+  });
+  try {
+    const lib = await loadPdfJs();
+    pdfDok = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+    if (closed) { pdfDok.destroy(); return; }
+    pages.innerHTML = '';
+    $('#pdfv-info', view).textContent = `${pdfDok.numPages} ${pdfDok.numPages === 1 ? 'Seite' : 'Seiten'} · ${formatBytes(file.size)}`;
+    await zeichnen();
   } catch (err) {
     // Vorschau geht nicht (z. B. sehr altes iOS): dann wie bisher teilen/öffnen
     if (closed) return;

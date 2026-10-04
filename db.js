@@ -43,6 +43,22 @@ function done(req) {
   });
 }
 
+// Schreiben gilt erst als fertig, wenn die ganze Transaktion abgeschlossen ist. Safari meldet
+// manche Fehler (z. B. Speicher voll, Foto nicht lesbar) nur an der Transaktion; ohne das
+// würde das Speichern dann endlos warten.
+async function schreiben(name, aktion) {
+  const db = await open();
+  const tx = db.transaction(name, 'readwrite');
+  let ergebnis;
+  const req = aktion(tx.objectStore(name));
+  req.onsuccess = () => { ergebnis = req.result; };
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve(ergebnis);
+    tx.onerror = () => reject(tx.error || req.error || new Error('Speichern fehlgeschlagen'));
+    tx.onabort = () => reject(tx.error || req.error || new Error('Speichern abgebrochen'));
+  });
+}
+
 async function store(name, mode = 'readonly') {
   const db = await open();
   return db.transaction(name, mode).objectStore(name);
@@ -58,7 +74,7 @@ export async function getReport(id) {
 }
 
 export async function putReport(report) {
-  return done((await store('reports', 'readwrite')).put(report));
+  return schreiben('reports', (s) => s.put(report));
 }
 
 export async function deleteReport(id) {
@@ -70,6 +86,7 @@ export async function deleteReport(id) {
   return new Promise((resolve, reject) => {
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || new Error('Löschen abgebrochen'));
   });
 }
 
@@ -83,11 +100,19 @@ export async function getFile(id) {
 }
 
 export async function putFile(file) {
-  return done((await store('files', 'readwrite')).put(file));
+  try {
+    return await schreiben('files', (s) => s.put(file));
+  } catch (err) {
+    // Ältere Fotos verweisen auf iPhones manchmal noch auf die Datei aus Kamera/Galerie;
+    // dann einmal als eigene Kopie speichern.
+    if (!(file.blob instanceof Blob)) throw err;
+    const kopie = new Blob([await file.blob.arrayBuffer()], { type: file.blob.type || file.type || '' });
+    return schreiben('files', (s) => s.put({ ...file, blob: kopie }));
+  }
 }
 
 export async function deleteFile(id) {
-  return done((await store('files', 'readwrite')).delete(id));
+  return schreiben('files', (s) => s.delete(id));
 }
 
 // Baustellen und Personal werden mit dem Repo abgeglichen (stammdaten/*.json).
