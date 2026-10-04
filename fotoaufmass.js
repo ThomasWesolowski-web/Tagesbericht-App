@@ -995,7 +995,18 @@ export async function openFotoAufmass(blob, vorlage) {
     }
     canvas.style.transformOrigin = '0 0';
     canvas.style.transform = zoom.z === 1 ? '' : `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.z})`;
-    neuZeichnen();
+    // Neu zeichnen (Strichstärken passend zum Zoom) erst, wenn das Zoomen kurz ruht: das ganze Foto
+    // bei jeder Fingerbewegung neu zu malen ließ das Zoomen auf dem Handy stocken
+    clearTimeout(zoomUhr);
+    zoomUhr = setTimeout(zoomFertig, pinch ? 400 : 120);
+  };
+  let zoomUhr = null;
+  let pinch = null; // zwei Finger auf dem Foto
+  let zoomStrich = zoom.z; // Zoomstufe, für die zuletzt gezeichnet wurde
+  const zoomFertig = () => {
+    clearTimeout(zoomUhr);
+    if (pinch) return; // nach dem Loslassen
+    if (zoomStrich !== zoom.z) { zoomStrich = zoom.z; neuZeichnen(); }
     if (aktiv) fensterAuf();
   };
   // Zoomen um einen Bildschirmpunkt (der Punkt bleibt, wo er ist)
@@ -1141,7 +1152,6 @@ export async function openFotoAufmass(blob, vorlage) {
   };
 
   const finger = new Map();
-  let pinch = null;
   const fingerMitte = () => {
     const [a, b] = [...finger.values()];
     return { d: Math.hypot(b.x - a.x, b.y - a.y) || 1, m: [(a.x + b.x) / 2, (a.y + b.y) / 2] };
@@ -1193,9 +1203,14 @@ export async function openFotoAufmass(blob, vorlage) {
   canvas.addEventListener('pointermove', (e) => {
     if (finger.has(e.pointerId)) finger.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pinch) {
-      if (finger.size >= 2) {
-        const { d: dd, m } = fingerMitte();
-        zoomUm((pinch.von.z * dd) / pinch.d, m, pinch.von, pinch.m);
+      // höchstens einmal pro Bildwechsel des Bildschirms zoomen
+      if (finger.size >= 2 && !pinch.bild) {
+        pinch.bild = requestAnimationFrame(() => {
+          if (!pinch) return;
+          pinch.bild = 0;
+          const { d: dd, m } = fingerMitte();
+          zoomUm((pinch.von.z * dd) / pinch.d, m, pinch.von, pinch.m);
+        });
       }
       return;
     }
@@ -1226,7 +1241,11 @@ export async function openFotoAufmass(blob, vorlage) {
   });
   const hoch = (e) => {
     finger.delete(e.pointerId);
-    if (pinch) { if (finger.size < 2) pinch = null; ziehen = null; return; }
+    if (pinch) {
+      if (finger.size < 2) { cancelAnimationFrame(pinch.bild); pinch = null; zoomFertig(); }
+      ziehen = null;
+      return;
+    }
     const z = ziehen;
     ziehen = null;
     if (!z) return;

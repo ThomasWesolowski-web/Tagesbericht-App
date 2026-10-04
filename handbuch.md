@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.39.3**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.39.4**.
 
 | Was | Wo |
 | --- | --- |
@@ -134,6 +134,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 04.10.2026 | 1.39.4 | Foto-Aufmaß: Rein- und Rauszoomen läuft flüssig (Foto wird erst nach dem Zoomen neu gezeichnet) |
 | 04.10.2026 | 1.39.3 | iPhone: Leiste mit Abbrechen/Speichern bleibt unten fest, auch nach dem Schließen der Tastatur; solange die Tastatur offen ist, ist sie ausgeblendet |
 | 04.10.2026 | 1.39.2 | iPhone: Seite bleibt mittig, nur noch hoch und runter scrollen; Datumsfeld nicht mehr zu breit |
 | 04.10.2026 | 1.39.1 | Speichern hängt nicht mehr (Meldung statt Warten, doppeltes Tippen abgefangen); App nicht mehr zoombar oder seitlich schiebbar; PDF-Vorschau mit + und − |
