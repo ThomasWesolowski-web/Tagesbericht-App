@@ -19,7 +19,7 @@ import { openMarkup } from './markup.js';
 import { planReportId, planTauglich, istPdf, pdfSeiten, planQuelle, formenSkalieren, pinNummern } from './plaene.js';
 import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from './fotoaufmass.js';
 
-const APP_VERSION = '1.41.1';
+const APP_VERSION = '1.41.2';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -2499,32 +2499,26 @@ async function chooseStundenPerson() {
   };
 }
 
-// Uhrzeit als Stunde und Minute (in 5-Minuten-Schritten) zum Auswählen. Das eingebaute Uhrzeit-Feld
-// zeigt auf dem iPhone jede einzelne Minute und kennt keine Schritte.
+// Uhrzeit-Feld (Uhr des Handys mit Stunden- und Minuten-Rad). Die Minuten werden auf 5er-Schritte
+// gerundet: step="300" zeigt sie auf Android/PC gleich so, das iPhone kennt keine Schritte im Rad.
 function zeitWahlHtml(id, wert, k = '') {
-  const [h, m] = /^\d{1,2}:\d{2}/.test(wert || '') ? wert.split(':') : ['', ''];
-  const zwei = (n) => String(n).padStart(2, '0');
-  const minuten = Array.from({ length: 12 }, (_, i) => zwei(i * 5));
-  if (m && !minuten.includes(m.slice(0, 2))) minuten.push(m.slice(0, 2)); // alte Einträge mit krummer Minute
-  minuten.sort();
-  const opt = (v, gewaehlt) => `<option value="${v}"${v === gewaehlt ? ' selected' : ''}>${v}</option>`;
-  return `<div class="zeitwahl"${id ? ` id="${id}"` : ''}${k ? ` data-k="${k}"` : ''}>
-    <select data-t="h" aria-label="Stunde"><option value=""${h ? '' : ' selected'}>--</option>${Array.from({ length: 24 }, (_, i) => opt(zwei(i), h ? zwei(Number(h)) : null)).join('')}</select>
-    <b>:</b>
-    <select data-t="m" aria-label="Minute"><option value=""${m ? '' : ' selected'}>--</option>${minuten.map((v) => opt(v, m ? m.slice(0, 2) : null)).join('')}</select>
-  </div>`;
+  return `<input type="time" step="300" class="zeitwahl"${id ? ` id="${id}"` : ''}${k ? ` data-k="${k}"` : ''} value="${esc(wert || '')}">`;
 }
 
-function zeitWahlBinden(box, aendern) {
-  const [h, m] = $$('select', box);
-  const lesen = () => {
-    // Stunde gewählt, Minute noch leer: volle Stunde
-    if (h.value && !m.value) m.value = '00';
-    if (!h.value && m.value) h.value = '07';
-    aendern(h.value && m.value ? `${h.value}:${m.value}` : '');
+const aufFuenf = (v) => {
+  const t = /^(\d{1,2}):(\d{2})/.exec(v || '');
+  if (!t) return '';
+  const min = Math.min(23 * 60 + 55, Math.round((Number(t[1]) * 60 + Number(t[2])) / 5) * 5);
+  return `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+};
+
+function zeitWahlBinden(inp, aendern) {
+  inp.oninput = () => aendern(inp.value);
+  inp.onchange = () => {
+    const v = aufFuenf(inp.value);
+    if (v !== inp.value) inp.value = v;
+    aendern(v);
   };
-  h.onchange = lesen;
-  m.onchange = lesen;
 }
 
 function openStundeEditor(e, isNew) {
