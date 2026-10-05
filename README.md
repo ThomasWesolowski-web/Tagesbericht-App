@@ -29,7 +29,7 @@ In diesem Repo liegt nur der App-Code. Es enthält keine Berichte und keine Zuga
   beim Pin direkt ein Foto aufnehmen oder vom Handy wählen (wird an den Bericht gehängt)
 - Handbuch in der App unter *Einstellungen › Handbuch zur App* (`handbuch.md`, Kopie des Handbuchs, offline verfügbar)
 - Upload als ein Commit pro Bericht, sobald Netz da ist
-- Foto-Aufmaß im Reiter Aufmaß: Perspektiv-Rahmen (4 Ecken eines bekannten Rechtecks, Entzerrung per Homografie); Formen werden fertig abgesteckt und über die Eckpunkte angepasst, Zoom per Knöpfen oder zwei Fingern; Teil antippen wählt es aus, blauer Punkt verschiebt, Kopie dupliziert
+- Foto-Aufmaß im Reiter Aufmaß: Perspektiv-Rahmen (4 Ecken eines bekannten Rechtecks, Entzerrung per Homografie); Formen werden fertig abgesteckt und über die Eckpunkte angepasst, Zoom per Knöpfen oder zwei Fingern; Teil antippen wählt es aus, blauer Punkt verschiebt, Kopie dupliziert; Ecken-Magnet (Ecken rasten an Ecken im Foto ein) und Öffnung erkennen per Antippen, beides auf dem Handy ohne Internet (`erkennen.js`)
   oder bekannte Länge und Höhe im Foto markieren, daraus den Maßstab
   berechnen, Flächen, Öffnungen und Strecken antippen; Öffnungen nach VOB/C übermessen oder abziehen,
   Laibungen gesondert. Läuft komplett im Browser, Maße sind nur ungefähr (`fotoaufmass.js`)

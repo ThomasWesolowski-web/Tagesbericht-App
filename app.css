@@ -677,7 +677,9 @@ html.mk-offen, html.mk-offen body { overflow: hidden; }
 .fa-fk-ok { background: var(--accent) !important; color: var(--accent-ink) !important; font-weight: 700; }
 .fa-fk.nur-lupe { pointer-events: none; }
 .fa-fk.nur-lupe .fa-fk-leiste { display: none; }
-.fa-raster[aria-pressed="true"] { color: #fff; background: rgba(255,255,255,.18); }
+.fa-raster[aria-pressed="true"], .fa-magnet[aria-pressed="true"] { color: #fff; background: rgba(255,255,255,.18); }
+.fa-magnet[aria-pressed="false"] { opacity: .55; }
+.fa-view .mk-leiste { grid-template-columns: minmax(0, 1fr); }
 .fa-view .mk-werkzeuge { grid-template-columns: repeat(6, 1fr); gap: 4px; }
 .fa-view .mk-werkzeuge .mk-wz span { font-size: .64rem; white-space: nowrap; }
 .fa-zwei { grid-template-columns: 1fr 1fr; }

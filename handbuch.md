@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.41.2**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.42.0**.
 
 | Was | Wo |
 | --- | --- |
@@ -81,6 +81,8 @@ Das PDF zeigt die Tabelle wie auf dem Formular (Lfd. Nr., Bezeichnung, Stück, L
 
 Zoom und Verschieben: Die Knöpfe + und − rechts unten vergrößern und verkleinern, ⤢ zeigt wieder das ganze Foto; zwei Finger zoomen ebenfalls. Ein Finger auf freier Fotofläche verschiebt das vergrößerte Foto. Eine Ecke wandert beim Ziehen um dieselbe Strecke wie der Finger, liegt also nicht unter dem Finger verdeckt. Fertige Teile (auch Strecken) antippen, um sie auszuwählen: dann sind ihre Ecken wieder ziehbar, mit „Ecke weg“ fällt die gerade gewählte Ecke weg, „Name“ benennt um, „Löschen“ entfernt das ganze Teil, „Kopie“ setzt ein gleich großes Teil daneben (z. B. weitere gleiche Fenster; Name zählt weiter, Laibung wird übernommen). Unter dem gewählten Teil sitzt ein blauer Schiebepunkt mit Pfeilkreuz: daran ziehen verschiebt das ganze Teil, ohne die Ecken zu verändern; beim Verschieben bleibt ein Teil auch auf schrägen Fotos gleich groß. Fadenkreuz-Fenster: Beim Ziehen zeigt ein Fenster die Stelle stark vergrößert mit rotem Fadenkreuz; danach bleibt es für die Ecke (roter Ring) offen: Bild im Fenster ziehen oder Pfeile tippen, 3×/6×/12× ändert den Zoom, ✓ schließt. Raster: Der Knopf unten schaltet um zwischen Raster aus, Raster (Meter-Raster entlang der Referenzen) und Raster + Fangen (Ecken rasten auf den Rasterkreuzungen ein). „Liste“ zeigt alle Teile mit Maßen zum Umbenennen oder Löschen.
 
+**Automatische Hilfe (auf dem Handy, ohne Internet):** **Magnet** (Knopf unten mit dem Hufeisen, Standard an): Wird eine Ecke losgelassen, rastet sie an der nächsten deutlichen Ecke im Foto ein (z. B. Fensterecke, Wandecke), sofern eine ganz in der Nähe ist. Liegen zwei Ecken dicht beieinander (Rahmen außen und Glas innen), nimmt der Magnet die nähere; dann vorher hineinzoomen. Ausschalten, wenn eine Ecke bewusst frei sitzen soll. **Erkennen** (bei Öffnung und Fläche, oben neben „Fertig“): danach mitten in das Fenster tippen; die App sucht die gleichfarbige Fläche drumherum und macht daraus ein Rechteck, mit Rahmen perspektivisch richtig. Bei einem Fenster ist das meist die Glasfläche, für das Maß außen die Ecken danach auf den Rahmen ziehen. Bei Schatten, Spiegelungen oder Gardinen klappt es nicht immer; dann meldet die App das und die Ecken werden von Hand gezogen.
+
 **Abzüge nach VOB/C:** Öffnungen bis zur Grenze werden übermessen (orange gestrichelt), größere abgezogen (rot). Voreingestellt ist Malerarbeiten DIN 18363 mit 2,5 m²; wählbar sind auch Putz DIN 18350, WDVS DIN 18345, Trockenbau DIN 18340 (je 2,5 m²), Fliesen DIN 18352 (0,1 m²) und „Alle Öffnungen abziehen“. In der Fläche steht jede Öffnung mit Breite × Höhe: abgezogene als rote Abzugszeile, übermessene als Hinweiszeile. Laibungen kommen als eigene Position, immer in lfm, je Laibungstiefe eine Position (Öffnungen ohne Tiefe in „Laibungen (ohne Tiefe)“). Darin steht für jedes Fenster und jede Tür zuerst Breite × Höhe und der Umlauf, darunter 2 × Laibung (Höhe), 1 × Sturz (Breite) und bei „Laibung unten“ 1 × Brüstung. Was im Vertrag vereinbart ist, geht vor.
 
 Gespeichert werden das verkleinerte Original-Foto und ein Foto mit allen Maßen; das Foto mit Maßen kommt ins PDF. Über den Stift auf der Karte lässt sich das Foto-Aufmaß später ändern, die Positionen werden dann neu übernommen. **Fotomaße sind nur ungefähr**; wichtige Maße am Bau nachmessen.
@@ -134,6 +136,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 05.10.2026 | 1.42.0 | Foto-Aufmaß: Ecken-Magnet (Ecken rasten an Ecken im Foto ein) und Öffnung erkennen per Antippen, beides auf dem Handy ohne Internet |
 | 04.10.2026 | 1.41.2 | Uhrzeit wieder mit der Uhr des Handys (Stunden- und Minuten-Rad); Minuten werden auf 5er-Schritte gerundet |
 | 04.10.2026 | 1.41.1 | Uhrzeit-Felder sehen wieder aus wie vorher (ein Feld), Minuten weiter in 5er-Schritten |
 | 04.10.2026 | 1.41.0 | Tagesbericht und Rapport: Personal-Zeiten in 5-Minuten-Schritten, erste Person mit 7:00 bis 16:00 vorbelegt |

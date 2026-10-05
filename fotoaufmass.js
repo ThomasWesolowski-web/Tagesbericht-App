@@ -4,6 +4,7 @@
 // openFotoAufmass(blob, daten) liefert { daten, plan } (plan = Foto mit Maßen als JPEG) oder null.
 
 import { zahl, newZeile } from './report.js';
+import { bildAnalyse, eckeFangen, oeffnungFinden } from './erkennen.js';
 
 // Abzugsgrenzen nach VOB/C (Ausgabe 2019): Öffnungen bis zu dieser Einzelgröße werden übermessen.
 export const REGELN = [
@@ -581,6 +582,7 @@ const WERKZEUGE = [
 ];
 const RUECK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4L4 9l5 5M4 9h10a6 6 0 0 1 0 12h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const RASTER = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zM9.3 4v16M14.7 4v16M4 9.3h16M4 14.7h16" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
+const MAGNET = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4v8a6 6 0 0 0 12 0V4h-4v8a2 2 0 0 1-4 0V4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M6 8h4M14 8h4" stroke="currentColor" stroke-width="1.8"/></svg>';
 const RASTER_MODI = { aus: 'Raster aus', an: 'Raster', fang: 'Raster + Fangen' };
 const PFEILE = { l: [-1, 0, '◀'], o: [0, -1, '▲'], u: [0, 1, '▼'], r: [1, 0, '▶'] };
 const LISTE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4 6h.5M4 12h.5M4 18h.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
@@ -606,6 +608,13 @@ export async function openFotoAufmass(blob, vorlage) {
   let aktiv = null; // Punkt im Fadenkreuz-Fenster: { art: 'ref'|'teil'|'entwurf', … }
   let fkZoom = 6;
   let rasterModus = 'an';
+  // Ecken-Magnet: losgelassene Ecken rasten an der nächsten deutlichen Ecke im Foto ein
+  let magnet = true;
+  try { magnet = localStorage.getItem('fa-magnet') !== 'aus'; } catch { /* ohne Speicher */ }
+  let erkennen = false; // nächstes Antippen sucht eine Öffnung um den Finger
+  let analyse = null;
+  const bildDaten = () => (analyse ||= bildAnalyse(img));
+
   try { rasterModus = localStorage.getItem('fa-raster') || 'an'; } catch { /* ohne Speicher */ }
 
   const view = document.createElement('div');
@@ -630,6 +639,7 @@ export async function openFotoAufmass(blob, vorlage) {
       <div class="mk-farben">
         <button type="button" class="mk-rueck fa-liste">${LISTE}<span>Liste</span></button>
         <button type="button" class="mk-rueck fa-raster">${RASTER}<span></span></button>
+        <button type="button" class="mk-rueck fa-magnet">${MAGNET}<span>Magnet</span></button>
         <span class="fa-regel"></span>
         <button type="button" class="mk-rueck fa-rueck" aria-label="Rückgängig">${RUECK}<span>Rückgängig</span></button>
       </div>
@@ -833,7 +843,9 @@ export async function openFotoAufmass(blob, vorlage) {
         : ZU.includes(entwurf.typ)
           ? `${NAMEN[entwurf.typ]}: Ecken an die richtige Stelle ziehen. ⊕ auf einer Kante ziehen = neue Ecke.`
           : `${NAMEN[entwurf.typ]}: die Endpunkte an die richtige Stelle ziehen.`;
-      k = knopf('fa-verwerfen', 'Verwerfen') + knopf('fa-schliessen', 'Fertig', true);
+      const kannErkennen = entwurf.typ === 'oeffnung' || entwurf.typ === 'flaeche';
+      if (erkennen) t = 'Erkennen: mitten in das Fenster (die Fläche) tippen. Die App sucht die gleichfarbige Fläche drumherum.';
+      k = (kannErkennen ? knopf('fa-erkennen', 'Erkennen', erkennen) : '') + knopf('fa-verwerfen', 'Verwerfen') + knopf('fa-schliessen', 'Fertig', true);
     } else if (auswahl) {
       const eckeWeg = aktiv?.art === 'teil' && aktiv.t === auswahl && auswahl.punkte.length > mindest(auswahl.typ);
       t = `${auswahl.name} (blauer Punkt: verschieben)`;
@@ -852,7 +864,8 @@ export async function openFotoAufmass(blob, vorlage) {
     txt.textContent = t;
     kn.innerHTML = k;
     const an = (cls, fn) => { const b = kn.querySelector(`.${cls}`); if (b) b.onclick = fn; };
-    an('fa-verwerfen', () => { entwurf = null; aktiv = null; fk.hidden = true; neuZeichnen(); });
+    an('fa-verwerfen', () => { entwurf = null; erkennen = false; aktiv = null; fk.hidden = true; neuZeichnen(); });
+    an('fa-erkennen', () => { erkennen = !erkennen; neuZeichnen(); });
     an('fa-schliessen', () => abschliessen());
     an('fa-t-aendern', () => teilFragen(auswahl, false));
     an('fa-ecke-weg', () => { auswahl.punkte.splice(aktiv.i, 1); aktiv = null; fk.hidden = true; geaendert = true; neuZeichnen(); });
@@ -870,6 +883,7 @@ export async function openFotoAufmass(blob, vorlage) {
     });
     $('.fa-regel').textContent = `${regelVon(d).label.replace(/ \(.*/, '')}: ${regelVon(d).schwelle ? `bis ${fmt(regelVon(d).schwelle)} m² übermessen` : 'alles abziehen'}`;
     $('.fa-rueck').disabled = !entwurf && !d.teile.length && !d.ref.laenge && !d.ref.hoehe && !d.ref.rahmen;
+    $('.fa-magnet').setAttribute('aria-pressed', magnet);
     const rb = $('.fa-raster');
     rb.querySelector('span').textContent = RASTER_MODI[rasterModus];
     rb.setAttribute('aria-pressed', rasterModus !== 'aus');
@@ -1045,6 +1059,7 @@ export async function openFotoAufmass(blob, vorlage) {
   };
   // Neue Form als Vorschlag mitten im sichtbaren Ausschnitt abstecken
   const abstecken = (typ) => {
+    erkennen = false;
     const { c, w, h } = sichtbar();
     const bx = w * 0.3;
     const by = h * 0.3;
@@ -1252,6 +1267,16 @@ export async function openFotoAufmass(blob, vorlage) {
     if (z.art === 'teilzug') { neuZeichnen(); return; }
     if (z.art === 'schieben') {
       if (z.bewegt) { zoomSetzen(); return; }
+      if (erkennen && entwurf) {
+        erkennen = false;
+        const ergebnis = oeffnungFinden(bildDaten(), z.p, massstab(d));
+        if (ergebnis.punkte) {
+          entwurf.punkte = ergebnis.punkte.map(([x, y]) => [Math.min(W, Math.max(0, x)), Math.min(H, Math.max(0, y))]);
+          geaendert = true;
+        } else alert(ergebnis.fehler);
+        neuZeichnen();
+        return;
+      }
       // Antippen ohne Bewegung: Teil unter dem Finger auswählen, sonst Auswahl aufheben
       if (!entwurf) {
         auswahl = teilUnter(z.p);
@@ -1260,6 +1285,10 @@ export async function openFotoAufmass(blob, vorlage) {
       }
       neuZeichnen();
       return;
+    }
+    if (z.art === 'griff' && z.bewegt && magnet) {
+      const q = eckeFangen(bildDaten(), lage(z.ziel), 10 * proPx());
+      if (q) setze(z.ziel, q);
     }
     neuZeichnen();
     fensterAuf();
@@ -1285,6 +1314,11 @@ export async function openFotoAufmass(blob, vorlage) {
       abstecken(typ);
     };
   });
+  $('.fa-magnet').onclick = () => {
+    magnet = !magnet;
+    try { localStorage.setItem('fa-magnet', magnet ? 'an' : 'aus'); } catch { /* egal */ }
+    neuZeichnen();
+  };
   $('.fa-raster').onclick = () => {
     rasterModus = rasterModus === 'aus' ? 'an' : rasterModus === 'an' ? 'fang' : 'aus';
     try { localStorage.setItem('fa-raster', rasterModus); } catch { /* egal */ }
