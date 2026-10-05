@@ -1,5 +1,5 @@
-// Bedien-Test des Raumaufmaßes im Browser (Chromium über Playwright), Handy-Format 390 × 844.
-// Vorher die App starten: python3 -m http.server 8000
+// Bedien-Test der eigenen Raumaufmaß-App (raumaufmass/) im Browser (Chromium über Playwright),
+// Handy-Format 390 × 844. Vorher im Hauptordner starten: python3 -m http.server 8000
 // Aufruf: node tests/raumaufmass.e2e.mjs [Ordner für Bildschirmfotos]
 // Zeichnet ein L mit Finger (Touch) und eines mit Maus, setzt Maße, verschiebt eine Wand,
 // testet Rückgängig/Wiederholen, Tür, Fenster, Raumhöhe, Speichern, Neuladen, PDF.
@@ -11,7 +11,7 @@ const require = createRequire(import.meta.url);
 let pw;
 try { pw = require('playwright'); } catch { pw = require('/opt/node22/lib/node_modules/playwright'); }
 const { chromium, devices } = pw;
-const URL0 = process.env.APP_URL || 'http://localhost:8000/';
+const URL0 = process.env.APP_URL || 'http://localhost:8000/raumaufmass/';
 const SHOTS = process.argv[2] || null;
 let letzteSeite = null;
 const shot = async (p, name) => { if (SHOTS) await p.screenshot({ path: `${SHOTS}/${name}.png` }); };
@@ -59,15 +59,23 @@ async function wandPunkt(p, name) {
   }, name);
 }
 const werte = (p) => p.locator('.ra-werte').innerText();
+// PDF des (einzigen) gespeicherten Aufmaßes bauen, wie beim Teilen
+const pdfHolen = (p) => p.evaluate(async () => {
+  const [pr] = await window.raumaufmassProjekte();
+  const blob = await window.raumaufmassPdf(pr.id);
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  let s = '';
+  for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+  return { b64: btoa(s), text: s, raeume: pr.raeume.length, gruppen: new Set(pr.raeume.map((x) => x.gruppe)).size, schraege: !!pr.raeume[0].waende.find((x) => x.schraege), df: pr.raeume[0].dachfenster.length };
+});
 
 async function neuesAufmass(p) {
   await p.goto(URL0);
-  const de = p.getByText('Deutsch', { exact: true });
-  if (await de.isVisible().catch(() => false)) await de.click();
-  await p.goto(`${URL0}#/aufmass/neu`);
-  await p.fill('#sheet-frei', 'Musterbaustelle');
-  await p.click('#sheet-frei-ok');
-  await p.click('#ra-neu');
+  await p.click('#neu');
+  await p.waitForSelector('#name');
+  await p.fill('#name', 'Musterbaustelle');
+  await p.press('#name', 'Tab');
+  await p.click('#raum-neu');
   await p.waitForSelector('.ra-view');
 }
 
@@ -187,38 +195,24 @@ async function ablauf(b, { touch }) {
   await shot(p, `${art}-7-fertig`);
   await p.click('.ra-fertig');
   await p.waitForSelector('.ra-view', { state: 'detached' });
-  await p.waitForSelector('#ra-karten .fa-karte', { timeout: 5000 });
-  const karte = await p.locator('#ra-karten').innerText();
+  await p.waitForSelector('#karten .fa-karte', { timeout: 5000 });
+  const karte = await p.locator('#karten').innerText();
   assert.match(karte, /Wohnzimmer[\s\S]*21,00 m² Boden · 20,00 m Umfang · 49,18 m² Wand/);
-  const pos = await p.evaluate(() => [...document.querySelectorAll('#positionen input, #positionen textarea')].map((x) => x.value).join(' | '));
-  assert.match(pos, /Wohnzimmer: Bodenfläche/);
-  assert.match(pos, /Wohnzimmer: Wandfläche/);
-  await shot(p, `${art}-8-positionen`);
+  await shot(p, `${art}-8-karten`);
 
-  // Speichern, neu laden, wieder öffnen
-  await p.click('#save-btn');
-  await p.waitForURL(/#\/aufmass$/);
+  // ist schon gespeichert: neu laden, Aufmaß wieder öffnen
   await p.reload();
-  await p.waitForTimeout(500);
-  await p.locator('.rcard, .card, a[href^="#/bericht/"]').first().click();
-  await p.waitForSelector('#ra-karten .fa-karte');
-  assert.match(await p.locator('#ra-karten').innerText(), /21,00 m² Boden/);
-  // PDF bauen (wie beim Teilen) und prüfen, dass der Grundriss drin ist
-  const pdf = await p.evaluate(async () => {
-    const db = await import('./db.js');
-    const { buildPdf } = await import('./pdf.js');
-    const r = (await db.allReports()).find((x) => x.art === 'aufmass');
-    const files = await db.filesFor(r.id);
-    const blob = await buildPdf(r, files, 'Max Mustermann');
-    const buf = new Uint8Array(await blob.arrayBuffer());
-    let s = '';
-    for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000));
-    return { b64: btoa(s), raeume: r.raeume.length, dateien: files.map((f) => f.name) };
-  });
+  await p.waitForSelector('#karten .fa-karte');
+  assert.match(await p.locator('#karten').innerText(), /21,00 m² Boden/);
+  await p.goto(URL0);
+  await p.click('.proj');
+  await p.waitForSelector('#karten .fa-karte');
+  assert.match(await p.locator('#karten').innerText(), /Wohnzimmer[\s\S]*21,00 m² Boden/);
+  // PDF bauen und prüfen, dass der Raum drin ist
+  const pdf = await pdfHolen(p);
   assert.equal(pdf.raeume, 1);
-  assert.ok(pdf.dateien.some((n) => /^grundriss-.*\.svg$/.test(n)));
   if (SHOTS) writeFileSync(`${SHOTS}/${art}-aufmass.pdf`, Buffer.from(pdf.b64, 'base64'));
-  await p.click('#ra-karten .ra-bearbeiten');
+  await p.click('#karten .ra-bearbeiten');
   await p.waitForSelector('.ra-view');
   w = await werte(p);
   assert.match(w, /21,00 m²/);
@@ -251,31 +245,15 @@ async function ablauf(b, { touch }) {
   await p.click('.ra-panel .ra-p-ok');
   await p.click('.ra-fertig');
   await p.waitForSelector('.ra-view', { state: 'detached' });
-  await p.waitForFunction(() => document.querySelector('#ra-karten')?.innerText.includes('Schräge'), null, { timeout: 5000 });
-  assert.match(await p.locator('#ra-karten').innerText(), /4,81 m² Schräge/);
-  const pos2 = await p.evaluate(() => [...document.querySelectorAll('#positionen input, #positionen textarea')].map((x) => x.value).join(' | '));
-  assert.match(pos2, /Wohnzimmer: Dachschräge/);
-  assert.match(pos2, /Wohnzimmer: Deckenfläche \(waagerecht\)/);
-  await p.click('#save-btn');
-  await p.waitForURL(/#\/aufmass$/);
-  const pdf3 = await p.evaluate(async () => {
-    const db = await import('./db.js');
-    const { buildPdf } = await import('./pdf.js');
-    const r = (await db.allReports()).find((x) => x.art === 'aufmass');
-    const blob = await buildPdf(r, await db.filesFor(r.id), 'Max Mustermann');
-    const buf = new Uint8Array(await blob.arrayBuffer());
-    let s = '';
-    for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000));
-    return { b64: btoa(s), schraege: !!r.raeume[0].waende.find((x) => x.schraege), df: r.raeume[0].dachfenster.length };
-  });
+  await p.waitForFunction(() => document.querySelector('#karten')?.innerText.includes('Schräge'), null, { timeout: 5000 });
+  assert.match(await p.locator('#karten').innerText(), /4,81 m² Schräge/);
+  const pdf3 = await pdfHolen(p);
   assert.ok(pdf3.schraege);
   assert.equal(pdf3.df, 1);
   if (SHOTS) writeFileSync(`${SHOTS}/${art}-aufmass-dachschraege.pdf`, Buffer.from(pdf3.b64, 'base64'));
 
   // Mehrere Räume: oben an Wand A (6,00 m) „Raum 2“ anbauen, 3,00 m tief, dann Raum wechseln
-  await p.locator('.rcard, .card, a[href^="#/bericht/"]').first().click();
-  await p.waitForSelector('#ra-karten .ra-bearbeiten');
-  await p.click('#ra-karten .ra-bearbeiten');
+  await p.click('#karten .ra-bearbeiten');
   await p.waitForSelector('.ra-view');
   await p.click('.mk-wz[data-wz="auswahl"]');
   const tippe3 = async ([x, y]) => {
@@ -320,28 +298,13 @@ async function ablauf(b, { touch }) {
   await p.click('.ra-panel .ra-p-ok');
   await p.click('.ra-fertig');
   await p.waitForSelector('.ra-view', { state: 'detached' });
-  await p.waitForFunction(() => document.querySelector('#ra-karten')?.innerText.includes('Grundriss gesamt'), null, { timeout: 5000 });
-  const karten = await p.locator('#ra-karten').innerText();
+  await p.waitForFunction(() => document.querySelector('#karten')?.innerText.includes('Grundriss gesamt'), null, { timeout: 5000 });
+  const karten = await p.locator('#karten').innerText();
   assert.match(karten, /Grundriss gesamt[\s\S]*2 Räume · 39,00 m² Boden/, karten);
-  const pos3 = await p.evaluate(() => [...document.querySelectorAll('#positionen input, #positionen textarea')].map((x) => x.value).join(' | '));
-  for (const n of ['Wohnzimmer', 'Raum 2']) assert.match(pos3, new RegExp(`${n}: Bodenfläche`));
   await shot(p, `${art}-15-karten`);
-  await p.click('#save-btn');
-  await p.waitForURL(/#\/aufmass$/);
-  const pdf4 = await p.evaluate(async () => {
-    const db = await import('./db.js');
-    const { buildPdf } = await import('./pdf.js');
-    const r = (await db.allReports()).find((x) => x.art === 'aufmass');
-    const files = await db.filesFor(r.id);
-    const blob = await buildPdf(r, files, 'Max Mustermann');
-    const buf = new Uint8Array(await blob.arrayBuffer());
-    let s = '';
-    for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000));
-    return { b64: btoa(s), raeume: r.raeume.length, gruppen: new Set(r.raeume.map((x) => x.gruppe)).size, dateien: files.map((f) => f.name) };
-  });
+  const pdf4 = await pdfHolen(p);
   assert.equal(pdf4.raeume, 2);
   assert.equal(pdf4.gruppen, 1);
-  assert.equal(pdf4.dateien.filter((n) => n === 'grundriss-gesamt.svg').length, 1);
   if (SHOTS) writeFileSync(`${SHOTS}/${art}-aufmass-mehrere-raeume.pdf`, Buffer.from(pdf4.b64, 'base64'));
   assert.deepEqual(fehler, [], `Fehler in der Konsole: ${fehler.join(' | ')}`);
 }
