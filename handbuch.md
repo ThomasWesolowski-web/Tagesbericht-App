@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.46.0**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.46.1**.
 
 | Was | Wo |
 | --- | --- |
@@ -103,7 +103,7 @@ Zoomen mit zwei Fingern oder dem Mausrad, Verschieben mit zwei Fingern (am Compu
 
 ## Stunden, Baustellen und Personal
 
-**Stunden:** Jeder führt seinen eigenen Stundennachweis pro Monat. Ein neuer Eintrag startet mit dem heutigen Datum, Beginn 7:00 und Ende 16:00; Art, Baustelle und Art der Arbeit werden selbst gewählt. Beginn und Ende werden mit der Uhr des Handys gewählt; die Minuten werden auf 5-Minuten-Schritte gerundet. Gespeichert werden kann erst, wenn Arbeit, Urlaub, Krank, Feiertag oder Berufsschule gewählt ist; bei Arbeit zusätzlich Baustelle (auch Freitext) und Art der Arbeit, bei Arbeit und Berufsschule Beginn und Ende. Die Pause ist erst Pflicht, wenn zwischen Beginn und Ende mehr als 6 Stunden liegen; bis 6 Stunden darf sie leer bleiben und zählt als 0 Minuten. Der Monat wird als Stundennachweis-PDF geteilt und im Repo unter stunden/ gespeichert. Das PDF passt immer auf eine Seite (bei vielen Einträgen wird die Schrift kleiner) und hat keine Unterschriftszeilen und keine Fußzeile. Mitarbeiter sehen nur ihre eigenen Stunden, der Admin kann jeden Mitarbeiter auswählen. Wer auf mehreren Geräten angemeldet ist (z. B. Handy und PC), sieht und bearbeitet seine Stunden auf allen; der Admin kann die Stunden aller Mitarbeiter ändern und löschen. Ist ein Eintrag auf zwei Geräten verschieden, gilt die letzte Änderung; gelöschte Einträge kommen nicht zurück.
+**Stunden:** Jeder führt seinen eigenen Stundennachweis pro Monat. Ein neuer Eintrag startet mit dem heutigen Datum, Beginn 7:00 und Ende 16:00; Art, Baustelle und Art der Arbeit werden selbst gewählt. Beginn und Ende werden mit der Uhr des Handys gewählt; die Minuten werden auf 5-Minuten-Schritte gerundet. Gespeichert werden kann erst, wenn Arbeit, Urlaub, Krank, Feiertag oder Berufsschule gewählt ist; bei Arbeit zusätzlich Baustelle (auch Freitext) und Art der Arbeit, bei Arbeit und Berufsschule Beginn und Ende. Die Pause ist erst Pflicht, wenn zwischen Beginn und Ende mehr als 6 Stunden liegen; bis 6 Stunden darf sie leer bleiben und zählt als 0 Minuten. Der Monat wird als Stundennachweis-PDF geteilt und im Repo unter stunden/ gespeichert. Das PDF passt immer auf eine Seite (bei vielen Einträgen wird die Schrift kleiner) und hat keine Unterschriftszeilen und keine Fußzeile. Mitarbeiter sehen nur ihre eigenen Stunden, der Admin kann jeden Mitarbeiter auswählen. Er findet die Stunden auch, wenn der Mitarbeiter seinen Namen in der App anders geschrieben hat als in der Personal-Liste (Nachname zuerst, mit oder ohne Sonderzeichen wie ș). Wer auf mehreren Geräten angemeldet ist (z. B. Handy und PC), sieht und bearbeitet seine Stunden auf allen; der Admin kann die Stunden aller Mitarbeiter ändern und löschen. Ist ein Eintrag auf zwei Geräten verschieden, gilt die letzte Änderung; gelöschte Einträge kommen nicht zurück.
 
 **Baustellen:** Liste aller Baustellen mit Adresse. Anlegen und ändern darf jeder; fertige Baustellen werden oben als abgeschlossen markiert und wandern nach unten. Löschen darf nur der Admin. Auf der Seite einer Baustelle stehen ihre Berichte, der Knopf für die Zusammenfassung und **Pläne und Dokumente**: PDF-Pläne, Bilder oder andere Dateien bis 25 MB anhängen (nachdem die Baustelle gespeichert ist). Sie kommen beim Abgleich auf alle Handys (im Repo unter stammdaten/plaene/). Anhängen darf jeder, entfernen nur der Admin.
 
@@ -150,6 +150,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 05.10.2026 | 1.46.1 | Stunden: Admin findet die Stunden eines Mitarbeiters auch, wenn dessen Name in der App in anderer Reihenfolge oder mit Sonderzeichen geschrieben ist |
 | 05.10.2026 | 1.46.0 | Raumaufmaß vorübergehend als eigene App (…/Tagesbericht-App/raumaufmass/), in der Berichte-App kein „Raum zeichnen“ mehr; alte Räume bleiben sichtbar |
 | 05.10.2026 | 1.45.1 | Raumaufmaß: „Raum teilen“ (Umriss in Räume aufteilen) wieder entfernt; Räume anbauen bleibt |
 | 05.10.2026 | 1.45.0 | Raumaufmaß: mehrere Räume in einem Grundriss; Raum anbauen, Umriss mit Trennwänden in Räume teilen, weitere Räume zeichnen, Räume verschieben und andocken (Wandstärke 11,5 cm), Grundriss gesamt im PDF |
