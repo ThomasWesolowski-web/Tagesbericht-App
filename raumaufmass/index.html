@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Raumaufmaß</title>
+  <meta name="description" content="Räume skizzieren, messen und als Grundriss mit Flächen ausgeben (Testversion).">
+  <meta name="theme-color" content="#f5f2ed" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#14171b" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Raumaufmaß">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="stylesheet" href="app.css">
+  <style>
+    .ra-app .view { padding-bottom: calc(var(--safe-b) + 40px); }
+    .ra-app .toast { bottom: calc(var(--safe-b) + 24px); }
+    .ra-app .knoepfe { display: grid; gap: 8px; margin-top: 12px; }
+    .ra-app .leer { color: var(--ink-3); text-align: center; padding: 28px 8px; }
+    .ra-app .proj { display: flex; gap: 10px; align-items: center; width: 100%; text-align: left; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); color: var(--ink); font: inherit; cursor: pointer; }
+    .ra-app .proj span { display: grid; flex: 1; min-width: 0; }
+    .ra-app .proj small { color: var(--ink-2); }
+    .ra-app .fa-karte-bild img { object-fit: contain; background: #fff; }
+  </style>
+  <script>
+    ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (n) { document.addEventListener(n, function (e) { e.preventDefault(); }, { passive: false }); });
+  </script>
+</head>
+<body>
+  <div id="app" class="app ra-app">
+    <header class="appbar" id="appbar"></header>
+    <main id="view" class="view" tabindex="-1"></main>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="ra-app.js"></script>
+</body>
+</html>

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   neuerRaum, raumAusEcken, berechne, raumAnbauen, andocken, verschiebeRaum, ueberschneiden,
   pruefeGruppe, pruefe, neueOeffnung, alsSvg, alsDxf, massstabFuer, naechsterName, wandGeo, setzeMass, punkteVon,
-} from '../raumgeometrie.js';
+} from '../raumaufmass/raumgeometrie.js';
 
 const nah = (a, b, tol = 1e-6, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg || ''} erwartet ${b}, ist ${a}`);
 

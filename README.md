@@ -33,15 +33,18 @@ In diesem Repo liegt nur der App-Code. Es enthält keine Berichte und keine Zuga
   oder bekannte Länge und Höhe im Foto markieren, daraus den Maßstab
   berechnen, Flächen, Öffnungen und Strecken antippen; Öffnungen nach VOB/C übermessen oder abziehen,
   Laibungen gesondert. Läuft komplett im Browser, Maße sind nur ungefähr (`fotoaufmass.js`)
-- Raumaufmaß im Reiter Aufmaß: Raum frei skizzieren (Finger, Stift, Maus), daraus gerade Wände
+- Raumaufmaß, vorübergehend als eigene App unter `raumaufmass/`
+  (https://thomaswesolowski-web.github.io/Tagesbericht-App/raumaufmass/, Aufmaße nur auf dem Gerät,
+  PDF zum Teilen; in der Berichte-App bleiben alte Räume nur sichtbar): Raum frei skizzieren (Finger, Stift, Maus), daraus gerade Wände
   (Douglas-Peucker, Ecken, Ausrichten 0/90/45°, Schließen); Maßstab über ein echtes Maß, weitere Maße
   mit Ausgleich und Widerspruchsprüfung; Wände/Ecken bearbeiten, Türen und Fenster, Raumhöhe;
-  Boden, Decke, Wand netto und Umfang als Positionen, Grundriss maßstäblich im PDF, Export SVG/DXF
+  Boden, Decke, Wand netto und Umfang, Grundriss maßstäblich im PDF, Export SVG/DXF
   Kniestock und Dachschräge je Wand (Dachflächen als Ebenen: Satteldach, Walmdach, Giebelwände),
   Dachfenster, Decke waagerecht und Schrägflächen als eigene Positionen;
   mehrere Räume in einem Grundriss (Raum anbauen, Räume verschieben und andocken), Grundriss gesamt
   im PDF
-  (`raumgeometrie.js` rechnet, `raumaufmass.js` ist der Editor; Tests in `tests/`)
+  (`raumaufmass/raumgeometrie.js` rechnet, `raumaufmass/raumaufmass.js` ist der Editor,
+  `raumaufmass/ra-app.js` die Liste und das PDF; Tests in `tests/`)
 
 ## Einrichten
 

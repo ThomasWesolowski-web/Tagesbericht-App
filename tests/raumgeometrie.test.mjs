@@ -5,7 +5,7 @@ import {
   neuerRaum, raumAusEcken, berechne, erkenneKontur, setzeMass, konfliktLoesen, verschiebeWand, verschiebeEcke,
   teileWand, loescheWand, loescheEcke, richtenAus, neueOeffnung, aendereOeffnung, pruefe, alsPositionen, Verlauf,
   laengeLesen, wandGeo, alsSvg, alsDxf, raumJson, douglasPeucker, punkteVon,
-} from '../raumgeometrie.js';
+} from '../raumaufmass/raumgeometrie.js';
 import { positionSumme } from '../report.js';
 
 const nah = (a, b, tol = 1e-6, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg || ''} erwartet ${b}, ist ${a}`);

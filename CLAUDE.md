@@ -22,8 +22,8 @@ Veröffentlicht über GitHub Pages aus `main` (Root): https://thomaswesolowski-w
 | `media.js` | Fotos verkleinern (1600 px), Anhänge vorbereiten |
 | `markup.js` | Fotos markieren |
 | `fotoaufmass.js` | Foto-Aufmaß (Rahmen/Homografie, Formen, VOB/C-Abzüge, Laibungen) |
-| `raumgeometrie.js` | Raumaufmaß: Erkennung, Maße, Flächen, SVG/DXF (ohne Oberfläche, mit Node testbar) |
-| `raumaufmass.js` | Raumaufmaß-Editor (Grundriss zeichnen) |
+| `raumgeometrie.js` | Raumaufmaß-Rechnung, nur noch zum Anzeigen alter Räume in Berichten und PDFs |
+| `raumaufmass/` | Raumaufmaß als eigene App (vorübergehend): `ra-app.js` Liste/PDF, `raumaufmass.js` Editor, `raumgeometrie.js` Rechnung (mit Node testbar), eigener `sw.js` (`CACHE` raumaufmass-vN) |
 | `i18n.js` | Oberflächen-Sprachen DE/PL/RO/MK/SQ |
 | `translate.js` | Freitexte beim Hochladen ins Deutsche übersetzen (MyMemory) |
 | `handbuch.js`, `handbuch.md` | Handbuch in der App (Kopie des Claude Docs) |
@@ -36,6 +36,9 @@ Veröffentlicht über GitHub Pages aus `main` (Root): https://thomaswesolowski-w
   (`APP_VERSION` in `app.js` und `CACHE` in `sw.js` hochzählen). Ohne neue Cache-Nummer zeigen die
   Handys weiter die alte App.
 - **Neue Dateien**, die die App lädt, auch in `SHELL` in `sw.js` eintragen, sonst fehlen sie offline.
+- **Raumaufmaß-App** (`raumaufmass/`): bei Änderungen dort `CACHE` in `raumaufmass/sw.js` hochzählen.
+  `raumgeometrie.js` gibt es zweimal (Hauptordner für alte Berichte, `raumaufmass/` für die App);
+  Rechenänderungen in beiden nachziehen. Die Raumaufmaß-App ist nur Deutsch.
 - **Neue Oberflächentexte** in `ROWS` in `i18n.js` in allen fünf Sprachen eintragen
   (Reihenfolge: Deutsch, Polnisch, Rumänisch, Mazedonisch, Albanisch). Der Code und alle PDFs und
   Berichte bleiben deutsch; Admin sieht die App immer auf Deutsch.
@@ -54,5 +57,5 @@ Veröffentlicht über GitHub Pages aus `main` (Root): https://thomaswesolowski-w
 for f in *.js; do node --check "$f"; done   # Syntax
 python3 -m http.server 8000                 # dann http://localhost:8000 im Browser
 node --test tests/*.test.mjs                # Raumaufmaß-Rechnung
-node tests/raumaufmass.e2e.mjs              # Raumaufmaß im Browser (Server auf 8000 muss laufen)
+node tests/raumaufmass.e2e.mjs              # Raumaufmaß-App im Browser (Server auf 8000 muss laufen)
 ```

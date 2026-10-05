@@ -1,6 +1,6 @@
 // Offline-Betrieb: die App-Dateien kommen aus dem Cache und werden im
 // Hintergrund aktualisiert. Anfragen an GitHub laufen nie über den Cache.
-const CACHE = 'tagesberichte-v68';
+const CACHE = 'tagesberichte-v69';
 const SHELL = [
   './',
   'index.html',
@@ -19,7 +19,6 @@ const SHELL = [
   'fotoaufmass.js',
   'erkennen.js',
   'raumgeometrie.js',
-  'raumaufmass.js',
   'handbuch.js',
   'handbuch.md',
   'vendor/jspdf.umd.min.js',
@@ -43,7 +42,8 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      // nur eigene alte Caches löschen (die Raumaufmaß-App unter raumaufmass/ hat ihre eigenen)
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('tagesberichte-') && k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });
@@ -54,6 +54,8 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
   // Videos und PDFs (Anleitung) direkt vom Netz laden, nicht durch die App ersetzen
   if (req.headers.has('range') || /\.(mp4|pdf)$/i.test(url.pathname)) return;
+  // Die Raumaufmaß-App (raumaufmass/) hat ihren eigenen Offline-Speicher
+  if (url.pathname.includes('/raumaufmass/')) return;
 
   const key = req.mode === 'navigate' ? 'index.html' : req;
   event.respondWith(
