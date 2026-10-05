@@ -474,9 +474,38 @@ export async function setzeAdminFreigabe(settings, geraetId, an) {
 
 // Hochgeladener Stundennachweis eines Mitarbeiters für einen Monat
 // (für den Administrator und für dieselbe Person auf einem anderen Gerät).
+// Gefunden wird jede Monatsdatei mit denselben Namensteilen, egal in welcher Reihenfolge und
+// ob mit oder ohne Sonderzeichen (z. B. „Nachname Vorname“ oder ș statt s).
 export async function loadStundenRemote(settings, ym, name) {
-  const res = await getJson(client(settings), settings, `stunden/${ym}_${slug(name) || 'mitarbeiter'}.json`);
-  return { eintraege: res?.data?.eintraege || [], geloescht: res?.data?.geloescht || [] };
+  const gh = client(settings);
+  const eigen = `stunden/${ym}_${slug(name) || 'mitarbeiter'}.json`;
+  let pfade = [eigen];
+  try {
+    const liste = await gh(`${contentsPath('stunden')}?ref=${encodeURIComponent(settings.branch)}`);
+    const gesucht = namensTeile(slug(name));
+    const passend = (Array.isArray(liste) ? liste : [])
+      .filter((f) => f.type === 'file' && f.name.startsWith(`${ym}_`) && f.name.endsWith('.json')
+        && namensTeile(f.name.slice(ym.length + 1, -5)) === gesucht)
+      .map((f) => f.path);
+    if (passend.length) pfade = passend;
+  } catch (err) {
+    if (err.status === 404) return { eintraege: [], geloescht: [] };
+  }
+  const daten = await Promise.all(pfade.map((p) => getJson(gh, settings, p)));
+  const eintraege = new Map();
+  const geloescht = new Set();
+  for (const res of daten) {
+    for (const e of res?.data?.eintraege || []) {
+      const alt = eintraege.get(e.id);
+      if (!alt || (e.updatedAt || 0) > (alt.updatedAt || 0)) eintraege.set(e.id, e);
+    }
+    for (const id of res?.data?.geloescht || []) geloescht.add(id);
+  }
+  return { eintraege: [...eintraege.values()], geloescht: [...geloescht] };
+}
+
+function namensTeile(s) {
+  return s.split('-').filter(Boolean).sort().join('-');
 }
 
 // ---------- Geräte: wer hat die App eingerichtet? ----------
