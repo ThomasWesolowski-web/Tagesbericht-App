@@ -384,9 +384,9 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
     const y0 = y + rand;
     const abb = ([x, yy]) => [x0 + (x - gr.x0) * s, y0 + (yy - gr.y0) * s];
     const rgb = (hex) => [1, 3, 5].map((k) => parseInt(hex.slice(k, k + 2), 16));
-    for (const e of planElemente(raum, abb, { wand: 0.6, duenn: 0.2, schrift: 2.6, massAbstand: 7 })) {
+    for (const e of planElemente(raum, abb, { wand: 0.6, duenn: 0.2, schrift: 2.6, massAbstand: 7, flaeche: '#f3f5f8', schraege: '#e2e8f0' })) {
       if (e.art === 'flaeche') {
-        doc.setFillColor(...rgb('#f3f5f8'));
+        doc.setFillColor(...rgb(e.farbe));
         const rel = e.punkte.slice(1).map((q, k) => [q[0] - e.punkte[k][0], q[1] - e.punkte[k][1]]);
         doc.lines(rel, e.punkte[0][0], e.punkte[0][1], [1, 1], 'F', true);
       } else if (e.art === 'linie' || e.art === 'bogen') {
@@ -434,11 +434,14 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
     table(
       [{ label: 'Wert', w: CW - 40 }, { label: 'Menge', w: 26, align: 'right' }, { label: '', w: 14 }],
       [
-        ['Raumhöhe', raumZahl(b.hoehe), 'm'],
+        [b.mitSchraege ? 'Raumhöhe (flache Decke)' : 'Raumhöhe', raumZahl(b.hoehe), 'm'],
         ['Bodenfläche', raumZahl(b.bodenflaeche), 'm²'],
-        ['Deckenfläche', raumZahl(b.deckenflaeche), 'm²'],
+        [b.mitSchraege ? 'Deckenfläche waagerecht' : 'Deckenfläche', raumZahl(b.deckenflaeche), 'm²'],
+        ...b.schraegen.map((e) => [`Dachschräge an Wand ${e.wandName} (Kniestock ${raumZahl(e.kniestock)} m, ${raumZahl(e.winkel)}°)`, raumZahl(e.flaeche), 'm²']),
+        ...b.dachfenster.map((o) => [`${o.name} (${raumZahl(o.breite)} × ${raumZahl(o.laenge)} m), abgezogen`, raumZahl(o.flaeche), 'm²']),
+        ...(b.mitSchraege ? [['Dachschrägen netto', raumZahl(b.dachNetto), 'm²']] : []),
         ['Wandumfang', raumZahl(b.umfang), 'lfm'],
-        ['Wandfläche brutto (Umfang × Höhe)', raumZahl(b.wandBrutto), 'm²'],
+        [b.mitSchraege ? 'Wandfläche brutto (Kniestock- und Giebelwände)' : 'Wandfläche brutto (Umfang × Höhe)', raumZahl(b.wandBrutto), 'm²'],
         ['Türflächen', raumZahl(b.tuerFlaeche), 'm²'],
         ['Fensterflächen', raumZahl(b.fensterFlaeche), 'm²'],
         [`Wandfläche netto${raum.einstellungen?.abzug === 'vob' ? ' (Öffnungen bis 2,5 m² übermessen)' : ''}`, raumZahl(b.wandNetto), 'm²'],

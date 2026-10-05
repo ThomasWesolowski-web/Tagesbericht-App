@@ -381,6 +381,7 @@ export function neuerRaum(nr = 1, einstellungen = {}) {
     ecken: [],
     waende: [],
     oeffnungen: [],
+    dachfenster: [],
     massstabGesetzt: false,
     skizze: { striche: [], faktor: 1 },
     einstellungen: { ...STANDARD, ...einstellungen },
@@ -395,6 +396,7 @@ export function raumAusEcken(raum, punkte, quelle) {
   r.ecken = p.map(([x, y]) => ({ id: neueId(), x, y }));
   r.waende = r.ecken.map((e, i) => ({ id: neueId(), von: e.id, bis: r.ecken[(i + 1) % r.ecken.length].id, mass: null }));
   r.oeffnungen = [];
+  r.dachfenster = [];
   if (quelle) r.quelle = quelle;
   return r;
 }
@@ -421,7 +423,9 @@ function waendeNeu(raum, ids) {
   const n = raum.ecken.length;
   raum.waende = raum.ecken.map((e, i) => {
     const alt = ids?.[i] ? raum.waende.find((w) => w.id === ids[i]) : null;
-    return { id: ids?.[i] || neueId(), von: e.id, bis: raum.ecken[(i + 1) % n].id, mass: alt?.mass ?? null };
+    const w = { id: ids?.[i] || neueId(), von: e.id, bis: raum.ecken[(i + 1) % n].id, mass: alt?.mass ?? null };
+    if (alt?.schraege) w.schraege = alt.schraege;
+    return w;
   });
 }
 
@@ -435,10 +439,10 @@ function oeffnungMitte(raum, o) {
 
 // Nach einer Änderung: Öffnungen dort lassen, wo sie im Raum waren (auf ihre Wand projiziert,
 // fehlt die Wand, auf die nächste), und in die Wand einpassen.
-function oeffnungenNachziehen(vorher, nachher) {
-  const mitten = new Map(vorher.oeffnungen.map((o) => [o.id, oeffnungMitte(vorher, o)]));
+function oeffnungenNachziehen(vorher, nachher, feld = 'oeffnungen') {
+  const mitten = new Map((vorher[feld] || []).map((o) => [o.id, oeffnungMitte(vorher, o)]));
   const weg = [];
-  nachher.oeffnungen = nachher.oeffnungen.filter((o) => {
+  nachher[feld] = (nachher[feld] || []).filter((o) => {
     const m = mitten.get(o.id);
     let i = wandIndex(nachher, o.wand);
     if (i < 0 && m) {
@@ -470,7 +474,7 @@ function masseAufraeumen(raum) {
 }
 
 function abschliessen(vorher, nachher) {
-  const oeffnungenWeg = oeffnungenNachziehen(vorher, nachher);
+  const oeffnungenWeg = [...oeffnungenNachziehen(vorher, nachher), ...oeffnungenNachziehen(vorher, nachher, 'dachfenster')];
   const masseWeg = masseAufraeumen(nachher);
   return { raum: nachher, masseWeg, oeffnungenWeg };
 }
@@ -560,6 +564,8 @@ export function teileWand(raum, wandId, anteil = 0.5) {
   ids.splice(i + 1, 0, neuId);
   r.waende[i].mass = null;
   waendeNeu(r, ids);
+  // beide Teile liegen auf derselben Linie und behalten die Dachschräge
+  if (r.waende[i].schraege) r.waende[i + 1].schraege = kopie(r.waende[i].schraege);
   return { ...abschliessen(raum, r), neueWand: neuId, neueEcke: r.ecken[i + 1].id };
 }
 
@@ -611,6 +617,7 @@ export function skaliere(raum, faktor) {
   const r = kopie(raum);
   for (const e of r.ecken) { e.x *= faktor; e.y *= faktor; }
   for (const o of r.oeffnungen) o.abstand *= faktor;
+  for (const o of r.dachfenster || []) o.abstand *= faktor;
   r.skizze = { ...(r.skizze || { striche: [] }), faktor: (r.skizze?.faktor || 1) * faktor };
   return r;
 }
@@ -809,6 +816,195 @@ export function loescheOeffnung(raum, id) {
   return { raum: r };
 }
 
+// ---------- Dachschrägen und Kniestock ----------
+// Eine Wand kann eine Dachschräge tragen: wand.schraege = { kniestock, art, wert }.
+// kniestock = Höhe der Wand bis zum Beginn der Schräge (m). art sagt, wie die Schräge gemessen
+// wurde: 'tiefe' = waagerechte Breite der Schräge im Grundriss (m), 'winkel' = Dachneigung (Grad),
+// 'laenge' = Länge der Schräge selbst (m). Die Schräge steigt von der Wand nach innen bis zur
+// Raumhöhe. Jede Schräge ist eine Ebene; die Decke liegt an jeder Stelle auf der niedrigsten
+// Ebene, höchstens auf Raumhöhe. So ergeben sich Satteldach (zwei gegenüberliegende Schrägen),
+// Walmdach (Schrägen an allen Seiten) und Giebelwände von selbst.
+
+export const SCHRAEGE_STANDARD = { kniestock: 1, art: 'winkel', wert: 40 };
+
+export function schraegeWerte(raum, i) {
+  const s = raum.waende[i]?.schraege;
+  if (!s) return null;
+  const H = Number(raum.hoehe) || 0;
+  const k = Number(s.kniestock);
+  const w = Number(s.wert);
+  const dh = H - k;
+  const ungueltig = (grund) => ({ gueltig: false, grund });
+  if (!(k >= 0)) return ungueltig('Kniestock fehlt.');
+  if (!(dh > 0.005)) return ungueltig(`Der Kniestock (${fmt2(k)} m) muss niedriger sein als die Raumhöhe (${fmt2(H)} m).`);
+  if (!(w > 0)) return ungueltig('Für die Schräge fehlt ein Wert.');
+  let tiefe;
+  if (s.art === 'winkel') {
+    if (w >= 89) return ungueltig('Die Dachneigung muss unter 89° liegen.');
+    tiefe = dh / Math.tan((w * Math.PI) / 180);
+  } else if (s.art === 'laenge') {
+    if (w <= dh + 0.005) return ungueltig(`Die Schräge muss länger sein als der Höhenunterschied (${fmt2(dh)} m).`);
+    tiefe = Math.sqrt(w * w - dh * dh);
+  } else tiefe = w;
+  const steigung = dh / tiefe;
+  return {
+    gueltig: true, kniestock: k, tiefe, steigung,
+    winkel: (Math.atan(steigung) * 180) / Math.PI,
+    laenge: Math.hypot(tiefe, dh),
+    faktor: Math.sqrt(1 + steigung * steigung), // Schrägfläche je m² Grundriss
+  };
+}
+
+export const hatSchraegen = (raum) => raum.waende.some((w) => w.schraege);
+
+// Dachebenen: h(p) = k + steigung · Abstand von der Wand nach innen
+function ebenen(raum) {
+  const out = [];
+  raum.waende.forEach((w, i) => {
+    const v = schraegeWerte(raum, i);
+    if (!v?.gueltig) return;
+    const g = wandGeo(raum, i);
+    out.push({ i, wand: w.id, ...v, a: g.a, n: g.innen, h: (p) => v.kniestock + v.steigung * dot(sub(p, g.a), g.innen) });
+  });
+  return out;
+}
+
+// Deckenhöhe an einem Punkt (m)
+export function hoeheBei(raum, p, E = ebenen(raum)) {
+  const H = Number(raum.hoehe) || 0;
+  return E.reduce((m, e) => Math.min(m, e.h(p)), H);
+}
+
+// Vieleck an einer Geraden abschneiden: behalten wird, wo f(p) <= 0 (f linear)
+function abschneiden(poly, f) {
+  const out = [];
+  for (let i = 0; i < poly.length; i++) {
+    const P = poly[i];
+    const Q = poly[(i + 1) % poly.length];
+    const fp = f(P);
+    const fq = f(Q);
+    if (fp <= 0) out.push(P);
+    if ((fp < 0 && fq > 0) || (fp > 0 && fq < 0)) out.push(add(P, mul(sub(Q, P), fp / (fp - fq))));
+  }
+  return out;
+}
+
+// Grundriss aufteilen: flache Decke und je Schräge der Bereich, in dem sie die Decke bildet
+function dachBereiche(raum, E = ebenen(raum)) {
+  const p = punkteVon(raum);
+  const H = Number(raum.hoehe) || 0;
+  const flach = E.reduce((q, e) => (q.length ? abschneiden(q, (x) => H - e.h(x)) : q), p);
+  const schraegen = E.map((e, j) => {
+    let q = abschneiden(p, (x) => e.h(x) - H);
+    E.forEach((v, m) => {
+      // bei gleicher Ebene (z. B. geteilte Wand) bekommt die erste den Bereich
+      if (m !== j && q.length) q = abschneiden(q, (x) => e.h(x) - v.h(x) + (m < j ? 1e-9 : 0));
+    });
+    return { ...e, poly: q, grundriss: q.length >= 3 ? Math.abs(flaecheMitVorzeichen(q)) : 0 };
+  });
+  return { flach, flachFlaeche: flach.length >= 3 ? Math.abs(flaecheMitVorzeichen(flach)) : 0, schraegen };
+}
+
+// Höhenverlauf entlang einer Wand: Fläche, niedrigste und höchste Stelle
+function wandHoehen(raum, i, E) {
+  const H = Number(raum.hoehe) || 0;
+  const g = wandGeo(raum, i);
+  const fn = [{ c: H, m: 0 }, ...E.map((e) => ({ c: e.h(g.a), m: e.steigung * dot(g.r, e.n) }))];
+  const ts = [0, g.l];
+  for (let x = 0; x < fn.length; x++) {
+    for (let y = x + 1; y < fn.length; y++) {
+      const dm = fn[x].m - fn[y].m;
+      if (Math.abs(dm) < 1e-12) continue;
+      const t = (fn[y].c - fn[x].c) / dm;
+      if (t > 1e-9 && t < g.l - 1e-9) ts.push(t);
+    }
+  }
+  ts.sort((a, b) => a - b);
+  const h = (t) => fn.reduce((m, f) => Math.min(m, f.c + f.m * t), Infinity);
+  const punkte = ts.map((t) => [t, h(t)]);
+  let flaeche = 0;
+  for (let k = 1; k < punkte.length; k++) flaeche += ((punkte[k][0] - punkte[k - 1][0]) * (Math.max(0, punkte[k][1]) + Math.max(0, punkte[k - 1][1]))) / 2;
+  const hs = punkte.map((q) => q[1]);
+  return { flaeche, min: Math.min(...hs), max: Math.max(...hs), punkte, h };
+}
+
+// ---------- Dachfenster ----------
+// raum.dachfenster = [{ id, name, wand, abstand, breite, laenge, unten }]: liegt in der Schräge
+// der Wand; abstand entlang der Wand, unten = Abstand der Unterkante vom Kniestock in der Schräge.
+
+export const DACHFENSTER_STANDARD = { breite: 0.78, laenge: 1.18, unten: 0.5 };
+
+export function neuesDachfenster(raum, wandId, mitteAbstand) {
+  const i = wandIndex(raum, wandId);
+  if (i < 0) return { fehler: 'Wand nicht gefunden.' };
+  if (!schraegeWerte(raum, i)?.gueltig) return { fehler: 'Diese Wand hat keine Dachschräge.' };
+  const g = wandGeo(raum, i);
+  const breite = Math.min(DACHFENSTER_STANDARD.breite, g.l);
+  const r = kopie(raum);
+  r.dachfenster = r.dachfenster || [];
+  const o = {
+    id: neueId(),
+    name: `Dachfenster ${r.dachfenster.length + 1}`,
+    wand: wandId,
+    abstand: rund(Math.max(0, Math.min(g.l - breite, (mitteAbstand ?? g.l / 2) - breite / 2)), 1e6),
+    breite,
+    laenge: DACHFENSTER_STANDARD.laenge,
+    unten: DACHFENSTER_STANDARD.unten,
+  };
+  r.dachfenster.push(o);
+  return { raum: r, dachfenster: o.id };
+}
+
+// Ecken eines Dachfensters im Grundriss (Meter): Länge in der Schräge waagerecht projiziert
+export function dachfensterEcken(raum, o) {
+  const i = wandIndex(raum, o.wand);
+  const v = i >= 0 ? schraegeWerte(raum, i) : null;
+  if (!v?.gueltig) return null;
+  const g = wandGeo(raum, i);
+  const t0 = o.unten / v.faktor;
+  const t1 = (o.unten + o.laenge) / v.faktor;
+  const ecke = (s0, t) => add(add(g.a, mul(g.r, s0)), mul(g.innen, t));
+  return [ecke(o.abstand, t0), ecke(o.abstand + o.breite, t0), ecke(o.abstand + o.breite, t1), ecke(o.abstand, t1)];
+}
+
+export function aendereDachfenster(raum, id, felder) {
+  const r = kopie(raum);
+  const o = (r.dachfenster || []).find((x) => x.id === id);
+  if (!o) return { fehler: 'Dachfenster nicht gefunden.' };
+  Object.assign(o, felder);
+  const i = wandIndex(r, o.wand);
+  if (i >= 0) {
+    const g = wandGeo(r, i);
+    if (o.breite > g.l) return { fehler: `Das Dachfenster ist breiter als die Wand (${fmt2(g.l)} m).` };
+    o.abstand = rund(Math.max(0, Math.min(g.l - o.breite, o.abstand)), 1e6);
+  }
+  return { raum: r };
+}
+
+export function loescheDachfenster(raum, id) {
+  const r = kopie(raum);
+  r.dachfenster = (r.dachfenster || []).filter((o) => o.id !== id);
+  return { raum: r };
+}
+
+// Dachschräge einer Wand setzen (null = entfernen)
+export function setzeSchraege(raum, wandId, schraege) {
+  const i = wandIndex(raum, wandId);
+  if (i < 0) return { fehler: 'Wand nicht gefunden.' };
+  const r = kopie(raum);
+  if (schraege) {
+    r.waende[i].schraege = { kniestock: Number(schraege.kniestock), art: schraege.art, wert: Number(schraege.wert) };
+    const v = schraegeWerte(r, i);
+    if (!v.gueltig) return { fehler: v.grund };
+  } else {
+    delete r.waende[i].schraege;
+  }
+  // Dachfenster brauchen eine Schräge
+  const weg = (r.dachfenster || []).filter((o) => !r.waende.find((w) => w.id === o.wand)?.schraege);
+  r.dachfenster = (r.dachfenster || []).filter((o) => !weg.includes(o));
+  return { raum: r, oeffnungenWeg: weg };
+}
+
 // ---------- Berechnung ----------
 
 export function berechne(raum) {
@@ -827,7 +1023,24 @@ export function berechne(raum) {
     return { ...o, flaeche: f, abgezogen: !vob || f > VOB_GRENZE, wandName: wandName(wandIndex(raum, o.wand)) };
   });
   const summe = (typ, nur) => oeffnungen.filter((o) => o.typ === typ && (!nur || o.abgezogen)).reduce((s, o) => s + o.flaeche, 0);
-  const wandBrutto = umfang * hoehe;
+  // Dachschrägen: Wandhöhen, flache Decke und Schrägflächen
+  const E = zu ? ebenen(raum) : [];
+  const mitSchraege = E.length > 0;
+  if (mitSchraege) {
+    waende.forEach((w, i) => {
+      const wh = wandHoehen(raum, i, E);
+      Object.assign(w, { flaeche: wh.flaeche, hoeheMin: wh.min, hoeheMax: wh.max });
+    });
+  } else waende.forEach((w) => Object.assign(w, { flaeche: w.laenge * hoehe, hoeheMin: hoehe, hoeheMax: hoehe }));
+  const bereiche = mitSchraege ? dachBereiche(raum, E) : null;
+  const schraegen = mitSchraege ? bereiche.schraegen.filter((e) => e.grundriss > 1e-9).map((e) => ({
+    wand: e.wand, wandName: wandName(e.i), kniestock: e.kniestock, winkel: e.winkel, tiefe: e.tiefe, laenge: e.laenge,
+    grundriss: e.grundriss, flaeche: e.grundriss * e.faktor, poly: e.poly,
+  })) : [];
+  const dachfenster = (raum.dachfenster || []).map((o) => ({ ...o, flaeche: o.breite * o.laenge, wandName: wandName(wandIndex(raum, o.wand)) }));
+  const dachFlaeche = schraegen.reduce((s, e) => s + e.flaeche, 0);
+  const dachfensterFlaeche = dachfenster.reduce((s, o) => s + o.flaeche, 0);
+  const wandBrutto = mitSchraege ? waende.reduce((s, w) => s + w.flaeche, 0) : umfang * hoehe;
   const abzug = summe('tuer', true) + summe('fenster', true);
   // Innenwinkel an jeder Ecke (für die Anzeige)
   const winkel = zu ? raum.ecken.map((_, i) => {
@@ -841,7 +1054,14 @@ export function berechne(raum) {
   return {
     geschlossen: zu,
     bodenflaeche: flaeche,
-    deckenflaeche: flaeche,
+    deckenflaeche: mitSchraege ? bereiche.flachFlaeche : flaeche, // waagerechter Teil der Decke
+    mitSchraege,
+    schraegen,
+    dachFlaeche,
+    dachfenster,
+    dachfensterFlaeche,
+    dachNetto: dachFlaeche - dachfensterFlaeche,
+    flachPoly: mitSchraege ? bereiche.flach : null,
     umfang,
     hoehe,
     wandBrutto,
@@ -860,7 +1080,7 @@ export function berechne(raum) {
 export function raumKurz(raum) {
   if (!geschlossen(raum)) return 'Raum noch nicht geschlossen';
   const b = berechne(raum);
-  return `${fmt2(b.bodenflaeche)} m² Boden · ${fmt2(b.umfang)} m Umfang · ${fmt2(b.wandNetto)} m² Wand`;
+  return `${fmt2(b.bodenflaeche)} m² Boden · ${fmt2(b.umfang)} m Umfang · ${fmt2(b.wandNetto)} m² Wand${b.mitSchraege ? ` · ${fmt2(b.dachNetto)} m² Schräge` : ''}`;
 }
 
 // ---------- Prüfung vor dem Speichern ----------
@@ -888,6 +1108,11 @@ export function pruefe(raum) {
   if (!raum.massstabGesetzt) fehler.push('Es fehlt ein echtes Maß. Bitte mit „Maß“ eine Wand antippen und ihre Länge eingeben.');
   const h = Number(raum.hoehe);
   if (!(h > 0)) fehler.push('Bitte eine Raumhöhe eingeben.');
+  const E = ebenen(raum);
+  if (E.length && h > 0) {
+    const tief = Math.min(...p.map((q) => hoeheBei(raum, q, E)));
+    if (tief < -1e-6) fehler.push('Die Dachschrägen treffen sich unter dem Boden. Bitte Kniestock und Neigung prüfen.');
+  }
   else if (h < 1.5 || h > 10) warnungen.push(`Die Raumhöhe ${fmt2(h)} m ist ungewöhnlich.`);
   const b = berechne(raum);
   if (raum.massstabGesetzt && b.bodenflaeche < 0.5) warnungen.push(`Die Bodenfläche ist sehr klein (${fmt2(b.bodenflaeche)} m²).`);
@@ -898,7 +1123,23 @@ export function pruefe(raum) {
     if (!(o.breite > 0) || !(o.hoehe > 0)) fehler.push(`${o.name}: Breite und Höhe fehlen.`);
     if (o.abstand < -1e-6 || o.abstand + o.breite > l + 1e-6) fehler.push(`${o.name} passt nicht in Wand ${wandName(i)} (${fmt2(l)} m).`);
     const oben = (o.typ === 'fenster' ? Number(o.bruestung) || 0 : 0) + o.hoehe;
-    if (h > 0 && oben > h + 1e-6) warnungen.push(`${o.name} reicht über die Raumhöhe (${fmt2(oben)} m).`);
+    if (h > 0 && E.length) {
+      const wh = wandHoehen(raum, i, E);
+      const frei = Math.min(wh.h(o.abstand), wh.h(o.abstand + o.breite), ...wh.punkte.filter(([t]) => t > o.abstand && t < o.abstand + o.breite).map((q) => q[1]));
+      if (oben > frei + 1e-6) warnungen.push(`${o.name} reicht in die Dachschräge (oben ${fmt2(oben)} m, Wand dort nur ${fmt2(frei)} m hoch).`);
+    } else if (h > 0 && oben > h + 1e-6) warnungen.push(`${o.name} reicht über die Raumhöhe (${fmt2(oben)} m).`);
+  }
+  // Dachschrägen und Dachfenster
+  raum.waende.forEach((w, i) => {
+    const v = schraegeWerte(raum, i);
+    if (v && !v.gueltig) fehler.push(`Dachschräge an Wand ${wandName(i)}: ${v.grund}`);
+  });
+  for (const o of raum.dachfenster || []) {
+    const i = wandIndex(raum, o.wand);
+    const v = i >= 0 ? schraegeWerte(raum, i) : null;
+    if (!v?.gueltig) { fehler.push(`${o.name} sitzt an keiner Dachschräge.`); continue; }
+    if (!(o.breite > 0) || !(o.laenge > 0)) fehler.push(`${o.name}: Breite und Länge fehlen.`);
+    if (o.unten < 0 || o.unten + o.laenge > v.laenge + 1e-6) warnungen.push(`${o.name} passt nicht in die Schräge an Wand ${wandName(i)} (Schräge ${fmt2(v.laenge)} m lang).`);
   }
   // Öffnungen in derselben Wand dürfen sich nicht überlappen
   for (const w of raum.waende) {
@@ -925,14 +1166,31 @@ export function alsPositionen(raum) {
     : { ...newZeile(), wert: fmtPos(b.bodenflaeche), text: `Fläche aus Grundriss (${b.waende.length} Wände)` };
   const oeZeile = (o) => ({ ...newZeile(), stueck: '1', laenge: fmtPos(o.breite), hoehe: fmtPos(o.hoehe), abzug: true, text: `${o.name} (Wand ${o.wandName})` });
   const ueber = (o) => ({ ...newZeile(), text: `${o.name} (Wand ${o.wandName}): ${fmt2(o.breite)} × ${fmt2(o.hoehe)} m = ${fmt2(o.flaeche)} m², übermessen`, info: true });
+  // Mit Dachschrägen: Wände einzeln (Kniestock- und Giebelwände sind nicht raumhoch)
+  const wandZeilen = b.mitSchraege
+    ? b.waende.map((w) => (Math.abs(w.hoeheMax - w.hoeheMin) < 0.0005
+      ? { ...newZeile(), laenge: fmtPos(w.laenge), hoehe: fmtPos(w.hoeheMin), text: `Wand ${w.name}${w.hoeheMin < b.hoehe - 0.0005 ? ' (Kniestock)' : ''}` }
+      : { ...newZeile(), wert: fmtPos(w.flaeche), text: `Wand ${w.name}: ${fmt2(w.laenge)} m lang, ${fmt2(w.hoeheMin)} bis ${fmt2(w.hoeheMax)} m hoch` }))
+    : [{ ...newZeile(), laenge: fmtPos(b.umfang), hoehe, text: `Umfang × Raumhöhe` }];
+  const decke = b.mitSchraege
+    ? [{ bezeichnung: `${n}: Deckenfläche (waagerecht)`, einheit: 'm2', zeilen: [{ ...newZeile(), wert: fmtPos(b.deckenflaeche), text: 'Flacher Teil der Decke aus Grundriss' }] },
+      {
+        bezeichnung: `${n}: Dachschräge`,
+        einheit: 'm2',
+        zeilen: [
+          ...b.schraegen.map((e) => ({ ...newZeile(), wert: fmtPos(e.flaeche), text: `Schräge an Wand ${e.wandName}: Kniestock ${fmt2(e.kniestock)} m, ${fmt2(e.winkel)}°, ${fmt2(e.grundriss)} m² im Grundriss` })),
+          ...b.dachfenster.map((o) => ({ ...newZeile(), stueck: '1', laenge: fmtPos(o.breite), breite: fmtPos(o.laenge), abzug: true, text: `${o.name} (Wand ${o.wandName})` })),
+        ],
+      }]
+    : [{ bezeichnung: `${n}: Deckenfläche`, einheit: 'm2', zeilen: [{ ...boden }] }];
   const out = [
     { bezeichnung: `${n}: Bodenfläche`, einheit: 'm2', zeilen: [boden] },
-    { bezeichnung: `${n}: Deckenfläche`, einheit: 'm2', zeilen: [{ ...boden }] },
+    ...decke,
     {
       bezeichnung: `${n}: Wandfläche`,
       einheit: 'm2',
       zeilen: [
-        { ...newZeile(), laenge: fmtPos(b.umfang), hoehe, text: `Umfang × Raumhöhe` },
+        ...wandZeilen,
         ...b.oeffnungen.filter((o) => o.abgezogen).map(oeZeile),
         ...b.oeffnungen.filter((o) => !o.abgezogen).map(ueber),
       ],
@@ -960,7 +1218,13 @@ export function raumJson(raum) {
       tuerFlaeche: r3(b.tuerFlaeche),
       fensterFlaeche: r3(b.fensterFlaeche),
       wandNetto: r3(b.wandNetto),
-      waende: b.waende.map((w) => ({ id: w.id, name: w.name, laenge: r3(w.laenge), richtung: rund(w.richtung, 100), mass: w.mass })),
+      waende: b.waende.map((w) => ({ id: w.id, name: w.name, laenge: r3(w.laenge), richtung: rund(w.richtung, 100), mass: w.mass, flaeche: r3(w.flaeche), hoeheMin: r3(w.hoeheMin), hoeheMax: r3(w.hoeheMax) })),
+      ...(b.mitSchraege ? {
+        dachFlaeche: r3(b.dachFlaeche),
+        dachfensterFlaeche: r3(b.dachfensterFlaeche),
+        dachNetto: r3(b.dachNetto),
+        schraegen: b.schraegen.map((e) => ({ wand: e.wand, name: e.wandName, kniestock: r3(e.kniestock), winkel: rund(e.winkel, 100), tiefe: r3(e.tiefe), laenge: r3(e.laenge), grundriss: r3(e.grundriss), flaeche: r3(e.flaeche) })),
+      } : {}),
     },
   };
 }
@@ -1004,6 +1268,38 @@ export function planElemente(raum, abb, o = {}) {
   const zu = geschlossen(raum);
   const P = p.map(abb);
   if (zu && g.mitFlaeche) els.push({ art: 'flaeche', punkte: P, farbe: g.flaeche });
+  // Dachschrägen: Fläche dunkler, Knick- und Gratlinien gestrichelt, Neigung und Kniestock als Text
+  const E = zu ? ebenen(raum) : [];
+  if (E.length) {
+    const amRand = (q) => p.some((a, i) => abstandZuStrecke(q, a, p[(i + 1) % n]).d < 1e-6);
+    for (const e of dachBereiche(raum, E).schraegen) {
+      if (e.poly.length < 3 || Math.abs(flaecheMitVorzeichen(e.poly)) < 1e-9) continue;
+      if (g.mitFlaeche) els.push({ art: 'flaeche', punkte: e.poly.map(abb), farbe: g.schraege || '#dce4ee' });
+      e.poly.forEach((a, k) => {
+        const b = e.poly[(k + 1) % e.poly.length];
+        if (abst(a, b) < 1e-6 || amRand(mul(add(a, b), 0.5))) return;
+        els.push({ art: 'linie', a: abb(a), b: abb(b), breite: g.duenn, farbe: g.mass, gestrichelt: true });
+      });
+      // Beschriftung im Streifen vor der Wand, parallel zur Wand, neben den Dachfenstern
+      const wg = wandGeo(raum, e.i);
+      const m = add(add(wg.a, mul(wg.r, wg.l / 2)), mul(wg.innen, Math.min(freieTiefe(raum, e), wg.l)));
+      if (punktInnen(m, e.poly)) {
+        els.push({ art: 'text', p: abb(m), text: `Schräge ${fmtPos(Math.round(e.winkel * 10) / 10)}° · Kniestock ${fmt2(e.kniestock)}`, groesse: g.schrift * 0.72, winkel: lesbar(wg.r), farbe: g.mass, anker: 'mitte' });
+      }
+    }
+    // Dachfenster als Rechteck im Grundriss (Länge in der Schräge waagerecht projiziert)
+    for (const o of raum.dachfenster || []) {
+      const qm = dachfensterEcken(raum, o);
+      if (!qm) continue;
+      const wg = wandGeo(raum, wandIndex(raum, o.wand));
+      const q = qm.map(abb);
+      q.forEach((a, k) => els.push({ art: 'linie', a, b: q[(k + 1) % 4], breite: g.duenn * 1.3, farbe: g.farbe }));
+      els.push({ art: 'linie', a: q[0], b: q[2], breite: g.duenn * 0.7, farbe: g.mass });
+      els.push({ art: 'linie', a: q[1], b: q[3], breite: g.duenn * 0.7, farbe: g.mass });
+      const mt = mul(add(q[0], q[2]), 0.5);
+      els.push({ art: 'text', p: add(mt, mul(einheit(sub(q[3], q[0])), Math.max(abst(q[0], q[3]) / 2 + g.schrift * 0.8, g.schrift))), text: `DF ${fmtPos(o.breite * 100)}/${fmtPos(o.laenge * 100)}`, groesse: g.schrift * 0.72, winkel: lesbar(wg.r), farbe: g.mass, anker: 'mitte' });
+    }
+  }
   // Wände mit Lücken für Öffnungen
   const wn = zu ? n : n - 1;
   for (let i = 0; i < wn; i++) {
@@ -1086,6 +1382,22 @@ export function planElemente(raum, abb, o = {}) {
     els.push({ art: 'text', p: [cp[0], cp[1] + g.schrift * 0.75], text: `${g.ungefaehr ? '≈ ' : ''}${fmt2(b.bodenflaeche)} m²`, groesse: g.schrift, farbe: g.mass, anker: 'mitte', winkel: 0 });
   }
   return els;
+}
+
+// Abstand von der Wand für die Beschriftung einer Schräge: Mitte des breitesten Streifens ohne
+// Dachfenster (die Fenster liegen meist mitten in der Schräge)
+function freieTiefe(raum, e) {
+  const belegt = (raum.dachfenster || []).filter((o) => o.wand === e.wand)
+    .map((o) => [o.unten / e.faktor - 0.05, (o.unten + o.laenge) / e.faktor + 0.05]).sort((a, b) => a[0] - b[0]);
+  let best = null;
+  let t = 0;
+  for (const [von, bis] of [...belegt, [e.tiefe, e.tiefe]]) {
+    const a = Math.max(0, t);
+    const b = Math.min(von, e.tiefe);
+    if (b > a && (!best || b - a > best[1] - best[0])) best = [a, b];
+    t = Math.max(t, bis);
+  }
+  return best ? (best[0] + best[1]) / 2 : e.tiefe / 2;
 }
 
 // Text immer von links lesbar
@@ -1235,6 +1547,26 @@ export function alsDxf(raum) {
       linie(angel, add(angel, mul(dir, o.breite)), 'TUEREN');
     }
     text(add(mul(add(A, B), 0.5), mul(g.innen, 0.3)), `${o.name} ${fmt2(o.breite)}x${fmt2(o.hoehe)}`, 100, o.typ === 'tuer' ? 'TUEREN' : 'FENSTER');
+  }
+  // Dachschrägen: Knick- und Gratlinien, Dachfenster
+  const E = n >= 3 ? ebenen(raum) : [];
+  if (E.length) {
+    const p = punkteVon(raum);
+    const amRand = (q) => p.some((a, i) => abstandZuStrecke(q, a, p[(i + 1) % n]).d < 1e-6);
+    for (const e of dachBereiche(raum, E).schraegen) {
+      e.poly.forEach((a, k) => {
+        const b = e.poly[(k + 1) % e.poly.length];
+        if (abst(a, b) > 1e-6 && !amRand(mul(add(a, b), 0.5))) linie(a, b, 'DACHSCHRAEGE');
+      });
+      const g = wandGeo(raum, e.i);
+      text(add(add(g.a, mul(g.r, g.l / 2)), mul(g.innen, Math.min(e.tiefe / 2, g.l))), `Schraege ${fmt2(e.winkel)} Grad, Kniestock ${fmt2(e.kniestock)}`, 100, 'DACHSCHRAEGE');
+    }
+    for (const o of raum.dachfenster || []) {
+      const q = dachfensterEcken(raum, o);
+      if (!q) continue;
+      q.forEach((a, k) => linie(a, q[(k + 1) % 4], 'DACHFENSTER'));
+      text(mul(add(q[0], q[2]), 0.5), `${o.name} ${fmt2(o.breite)}x${fmt2(o.laenge)}`, 80, 'DACHFENSTER');
+    }
   }
   if (n >= 3) {
     const b = berechne(raum);

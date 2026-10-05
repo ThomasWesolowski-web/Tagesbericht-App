@@ -8,6 +8,8 @@ import {
   konfliktLoesen, verschiebeWand, verschiebeEcke, setzeRichtung, richtenAus, teileWand, loescheWand, loescheEcke,
   neueOeffnung, aendereOeffnung, loescheOeffnung, planElemente, elementeAlsSvg, richtungsText, richtungAusrichten,
   Verlauf, laengeLesen, wandName, fmt2, alsSvg, alsDxf, winkelVon, punkteVon, massstabFuer,
+  schraegeWerte, setzeSchraege, SCHRAEGE_STANDARD, neuesDachfenster, aendereDachfenster, loescheDachfenster,
+  dachfensterEcken, punktInnen,
 } from './raumgeometrie.js';
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -42,6 +44,7 @@ export async function openRaumAufmass(vorlage) {
   d.einstellungen = { ...STANDARD, ...(d.einstellungen || {}) };
   d.skizze = d.skizze || { striche: [], faktor: 1 };
   d.oeffnungen = d.oeffnungen || [];
+  d.dachfenster = d.dachfenster || [];
   let entwurf = null; // offene Kontur: { punkte, offen } (offen = „offen lassen“ gewählt)
   let werkzeug = geschlossen(d) ? (d.massstabGesetzt ? 'auswahl' : 'mass') : 'zeichnen';
   let auswahl = null; // { art: 'wand'|'ecke'|'oeffnung', id }
@@ -193,6 +196,11 @@ export async function openRaumAufmass(vorlage) {
           html += `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="var(--accent)" stroke-width="12" stroke-linecap="round" opacity=".6"/>`;
         }
       }
+      if (auswahl.art === 'dachfenster') {
+        const o = (r.dachfenster || []).find((x) => x.id === auswahl.id);
+        const q = o ? dachfensterEcken(r, o) : null;
+        if (q) html += `<polygon points="${q.map(abb).map((x) => x.join(',')).join(' ')}" fill="var(--accent)" fill-opacity=".25" stroke="var(--accent)" stroke-width="4"/>`;
+      }
     }
     // Ecken als Griffe
     if (geschlossen(r)) {
@@ -231,7 +239,7 @@ export async function openRaumAufmass(vorlage) {
       const b = berechne(d);
       const u = d.massstabGesetzt ? '' : '≈ ';
       w.hidden = false;
-      w.innerHTML = `<b>${u}${fmt2(b.bodenflaeche)} m²</b><span>Umfang ${u}${fmt2(b.umfang)} m · Höhe ${fmt2(b.hoehe)} m</span><span>Wand netto ${u}${fmt2(b.wandNetto)} m²</span>`;
+      w.innerHTML = `<b>${u}${fmt2(b.bodenflaeche)} m²</b><span>Umfang ${u}${fmt2(b.umfang)} m · Höhe ${fmt2(b.hoehe)} m</span><span>Wand netto ${u}${fmt2(b.wandNetto)} m²</span>${b.mitSchraege ? `<span>Schräge ${u}${fmt2(b.dachNetto)} m² · Decke ${u}${fmt2(b.deckenflaeche)} m²</span>` : ''}`;
     } else w.hidden = true;
     hinweis();
   };
@@ -387,8 +395,11 @@ export async function openRaumAufmass(vorlage) {
         <button type="button" class="chip" data-tun="senkrecht">Senkrecht</button>
         <button type="button" class="chip" data-tun="winkel">Winkel ${zahlText(richtung % 180, 1)}°</button>
         <button type="button" class="chip" data-tun="teilen">Ecke einfügen</button>
+        <button type="button" class="chip" data-tun="schraege">${w.schraege ? 'Dachschräge ändern' : 'Dachschräge'}</button>
+        ${schraegeWerte(d, i)?.gueltig ? '<button type="button" class="chip" data-tun="dachfenster">Dachfenster einsetzen</button>' : ''}
         <button type="button" class="chip ra-gefahr" data-tun="loeschen">Wand löschen</button>
-      </div>`, () => {
+      </div>
+      ${w.schraege ? `<p class="fa-klein">${schraegeText(i)}</p>` : ''}`, () => {
       const inp = panel.querySelector('.ra-laenge');
       const ok = () => {
         const l = laengeLesen(inp.value);
@@ -424,9 +435,116 @@ export async function openRaumAufmass(vorlage) {
           if (tun === 'loeschen') {
             if (uebernehme(loescheWand(d, id))) { auswahl = null; panelZu(); zeichne(); return; }
           }
+          if (tun === 'schraege') await schraegeFragen(id);
+          if (tun === 'dachfenster') {
+            const erg = neuesDachfenster(d, id);
+            if (uebernehme(erg)) { auswaehlen({ art: 'dachfenster', id: erg.dachfenster }); return; }
+          }
           if (auswahl?.id === id) wandPanel(id);
         };
       });
+    });
+  };
+
+  // Kurzbeschreibung der Schräge einer Wand
+  const schraegeText = (i) => {
+    const v = schraegeWerte(d, i);
+    if (!v) return '';
+    if (!v.gueltig) return `Dachschräge: ${v.grund}`;
+    return `Dachschräge: Kniestock ${fmt2(v.kniestock)} m, Neigung ${zahlText(v.winkel, 1)}°, ${fmt2(v.tiefe)} m tief, Schräge ${fmt2(v.laenge)} m lang.`;
+  };
+
+  const schraegeFragen = async (wandId) => {
+    const i = wandIndex(d, wandId);
+    if (i < 0) return;
+    const alt = d.waende[i].schraege;
+    const s = { ...SCHRAEGE_STANDARD, ...(alt || {}) };
+    const ARTEN = [
+      { id: 'winkel', label: 'Neigung', feld: 'Neigung in Grad', tipp: 'z. B. 40' },
+      { id: 'tiefe', label: 'Tiefe', feld: 'Tiefe in m (waagerecht von der Wand)', tipp: 'z. B. 1,80' },
+      { id: 'laenge', label: 'Länge der Schräge', feld: 'Länge der Schräge in m', tipp: 'z. B. 2,30' },
+    ];
+    const wert = await dialog(`
+      <b>Dachschräge an Wand ${wandName(i)}</b>
+      <p class="fa-klein">Kniestock = Wandhöhe bis dort, wo die Schräge beginnt. Die Schräge steigt nach innen bis zur Raumhöhe (flache Decke oder First). Gegenüberliegende Schrägen ergeben ein Satteldach, die Giebelwände rechnet die App selbst.</p>
+      <label class="fa-feld"><span>Kniestock in m</span><input type="text" inputmode="decimal" autocomplete="off" class="ra-kn" value="${zahlText(s.kniestock, 3)}"></label>
+      <div class="fa-feld"><span>Schräge gemessen als</span><div class="seg ra-art">${ARTEN.map((a) => `<button type="button" data-art="${a.id}" aria-pressed="${s.art === a.id}">${a.label}</button>`).join('')}</div></div>
+      <label class="fa-feld"><span class="ra-art-label"></span><input type="text" inputmode="decimal" autocomplete="off" class="ra-wert-ein" value="${zahlText(s.wert, 3)}"></label>
+      <p class="fa-klein ra-vorschau"></p>
+      <p class="fa-klein fa-warn ra-fehler"></p>
+      <div class="fa-panel-knoepfe">${alt ? '<button type="button" class="btn ghost ra-gefahr" data-wert="weg">Entfernen</button>' : ''}<button type="button" class="btn ghost" data-wert="">Abbrechen</button><button type="button" class="btn primary ra-ok">Übernehmen</button></div>`, (fertig) => {
+      let art = s.art;
+      const kn = dialogBox.querySelector('.ra-kn');
+      const ein = dialogBox.querySelector('.ra-wert-ein');
+      const lesen = () => ({ kniestock: Number(String(kn.value).replace(',', '.')), art, wert: Number(String(ein.value).replace(',', '.')) });
+      const zeigen = () => {
+        const a = ARTEN.find((x) => x.id === art);
+        dialogBox.querySelector('.ra-art-label').textContent = a.feld;
+        ein.placeholder = a.tipp;
+        dialogBox.querySelectorAll('[data-art]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.art === art)));
+        const probe = { ...d, waende: d.waende.map((x, k) => (k === i ? { ...x, schraege: lesen() } : x)) };
+        const v = schraegeWerte(probe, i);
+        dialogBox.querySelector('.ra-vorschau').textContent = v?.gueltig ? `Ergibt: Neigung ${zahlText(v.winkel, 1)}°, ${fmt2(v.tiefe)} m tief, Schräge ${fmt2(v.laenge)} m lang.` : '';
+        dialogBox.querySelector('.ra-fehler').textContent = v && !v.gueltig && kn.value && ein.value ? v.grund : '';
+      };
+      dialogBox.querySelectorAll('[data-art]').forEach((b) => {
+        b.onclick = () => {
+          // bisherigen Wert in die neue Messart umrechnen, damit nichts verloren geht
+          const probe = { ...d, waende: d.waende.map((x, k) => (k === i ? { ...x, schraege: lesen() } : x)) };
+          const v = schraegeWerte(probe, i);
+          art = b.dataset.art;
+          if (v?.gueltig) ein.value = zahlText(art === 'winkel' ? v.winkel : art === 'tiefe' ? v.tiefe : v.laenge, art === 'winkel' ? 1 : 3);
+          zeigen();
+        };
+      });
+      kn.oninput = zeigen;
+      ein.oninput = zeigen;
+      dialogBox.querySelector('.ra-ok').onclick = () => {
+        const x = lesen();
+        const probe = { ...d, waende: d.waende.map((w, k) => (k === i ? { ...w, schraege: x } : w)) };
+        const v = schraegeWerte(probe, i);
+        if (!v.gueltig) { dialogBox.querySelector('.ra-fehler').textContent = v.grund; return; }
+        fertig(JSON.stringify(x));
+      };
+      zeigen();
+    });
+    if (!wert) return;
+    const erg = setzeSchraege(d, wandId, wert === 'weg' ? null : JSON.parse(wert));
+    if (uebernehme(erg)) hinweis(wert === 'weg' ? `Dachschräge an Wand ${wandName(i)} entfernt.` : `Dachschräge an Wand ${wandName(i)} gesetzt. ${schraegeText(i)}`);
+  };
+
+  const dachfensterPanel = (id) => {
+    const o = (d.dachfenster || []).find((x) => x.id === id);
+    if (!o) { panelZu(); return; }
+    const i = wandIndex(d, o.wand);
+    const v = schraegeWerte(d, i);
+    const feld = (key, label, wert) => `<label class="fa-feld"><span>${label}</span><input type="text" inputmode="decimal" data-feld="${key}" value="${zahlText(wert, 3)}"></label>`;
+    panelAuf(`
+      <div class="fa-panel-kopf"><b>${escH(o.name)} · Wand ${wandName(i)}</b><button type="button" class="btn primary ra-p-ok">Fertig</button></div>
+      <div class="ra-raster2">
+        ${feld('breite', 'Breite in m', o.breite)}
+        ${feld('laenge', 'Länge in der Schräge in m', o.laenge)}
+        ${feld('unten', 'Abstand vom Kniestock in m', o.unten)}
+        ${feld('abstand', `Abstand von Ecke ${i + 1} in m`, o.abstand)}
+      </div>
+      <p class="fa-klein">${v?.gueltig ? `Die Schräge ist ${fmt2(v.laenge)} m lang. Die Fensterfläche wird von der Dachschräge abgezogen.` : ''}</p>
+      <label class="fa-feld"><span>Bezeichnung</span><input type="text" data-name value="${escH(o.name)}"></label>
+      <div class="fa-vorschlaege"><button type="button" class="chip ra-gefahr" data-tun="loeschen">Dachfenster löschen</button></div>`, () => {
+      const setze = (felder) => {
+        if (uebernehme(aendereDachfenster(d, id, felder))) dachfensterPanel(id);
+      };
+      panel.querySelectorAll('[data-feld]').forEach((inp) => {
+        inp.onchange = () => {
+          const x = Number(String(inp.value).replace(',', '.'));
+          const nullErlaubt = inp.dataset.feld === 'abstand' || inp.dataset.feld === 'unten';
+          if (!Number.isFinite(x) || x < 0 || (!nullErlaubt && x <= 0)) { hinweis('Bitte eine Zahl eingeben, z. B. 0,78.'); dachfensterPanel(id); return; }
+          setze({ [inp.dataset.feld]: x });
+        };
+      });
+      panel.querySelector('[data-name]').onchange = (e) => setze({ name: e.target.value.trim() || o.name });
+      panel.querySelector('[data-tun="loeschen"]').onclick = () => {
+        if (uebernehme(loescheDachfenster(d, id))) { auswahl = null; panelZu(); zeichne(); }
+      };
     });
   };
 
@@ -490,6 +608,7 @@ export async function openRaumAufmass(vorlage) {
     if (!a) panelZu();
     else if (a.art === 'wand') wandPanel(a.id);
     else if (a.art === 'ecke') eckePanel(a.id);
+    else if (a.art === 'dachfenster') dachfensterPanel(a.id);
     else oeffnungPanel(a.id);
     zeichne();
   };
@@ -537,11 +656,14 @@ export async function openRaumAufmass(vorlage) {
       <div class="fa-panel-kopf"><b>Raum und Einstellungen</b><button type="button" class="btn primary ra-p-ok">Fertig</button></div>
       <div class="ra-raster2">
         <label class="fa-feld"><span>Raumname</span><input type="text" data-raum="name" value="${escH(d.name)}"></label>
-        <label class="fa-feld"><span>Raumhöhe in m</span><input type="text" inputmode="decimal" data-raum="hoehe" value="${zahlText(d.hoehe, 3)}"></label>
+        <label class="fa-feld"><span>${b?.mitSchraege ? 'Raumhöhe (flache Decke) in m' : 'Raumhöhe in m'}</span><input type="text" inputmode="decimal" data-raum="hoehe" value="${zahlText(d.hoehe, 3)}"></label>
       </div>
       ${b ? `<div class="ra-werteliste">
         ${zeile('Bodenfläche', `${u}${fmt2(b.bodenflaeche)} m²`)}
-        ${zeile('Deckenfläche', `${u}${fmt2(b.deckenflaeche)} m²`)}
+        ${zeile(b.mitSchraege ? 'Decke waagerecht' : 'Deckenfläche', `${u}${fmt2(b.deckenflaeche)} m²`)}
+        ${b.mitSchraege ? zeile('Dachschrägen', `${u}${fmt2(b.dachFlaeche)} m²`) : ''}
+        ${b.dachfenster.length ? zeile('Dachfenster', `${fmt2(b.dachfensterFlaeche)} m²`) : ''}
+        ${b.mitSchraege ? zeile('Dachschrägen netto', `${u}${fmt2(b.dachNetto)} m²`) : ''}
         ${zeile('Wandumfang', `${u}${fmt2(b.umfang)} lfm`)}
         ${zeile('Wandfläche brutto', `${u}${fmt2(b.wandBrutto)} m²`)}
         ${zeile('Türflächen', `${u === '' ? '' : ''}${fmt2(b.tuerFlaeche)} m²`)}
@@ -592,7 +714,7 @@ export async function openRaumAufmass(vorlage) {
         const ja = await dialog('<b>Den Raum neu zeichnen?</b><p class="fa-klein">Wände, Maße, Türen und Fenster werden entfernt. Mit „Rückgängig“ kommt alles zurück.</p><div class="fa-panel-knoepfe"><button type="button" class="btn ghost" data-wert="">Abbrechen</button><button type="button" class="btn primary" data-wert="ja">Neu zeichnen</button></div>');
         if (!ja) return;
         const r = kopie(d);
-        Object.assign(r, { ecken: [], waende: [], oeffnungen: [], massstabGesetzt: false, skizze: { striche: [], faktor: 1 } });
+        Object.assign(r, { ecken: [], waende: [], oeffnungen: [], dachfenster: [], massstabGesetzt: false, skizze: { striche: [], faktor: 1 } });
         d = r;
         entwurf = null;
         entwurfErkannt = null;
@@ -679,6 +801,18 @@ export async function openRaumAufmass(vorlage) {
       if (dd <= 20 && (!best || dd < best.d)) best = { id: o.id, d: dd };
     }
     return best;
+  };
+
+  const trefferDachfenster = (sp) => {
+    for (const o of d.dachfenster || []) {
+      const q = dachfensterEcken(d, o);
+      if (!q) continue;
+      const qs = q.map(abb);
+      // kleine Fenster etwas großzügiger treffen
+      const m = [(qs[0][0] + qs[2][0]) / 2, (qs[0][1] + qs[2][1]) / 2];
+      if (punktInnen(sp, qs) || Math.hypot(sp[0] - m[0], sp[1] - m[1]) < 18) return { id: o.id };
+    }
+    return null;
   };
 
   // ---------- Zeiger (Finger, Stift, Maus) ----------
@@ -785,6 +919,21 @@ export async function openRaumAufmass(vorlage) {
     $('.ra-text').textContent = erg.fehler || `Wand ${wandName(i)} um ${fmt2(Math.abs(t))} m nach ${t >= 0 ? 'außen' : 'innen'}`;
     spaeter();
   };
+  const dachfensterZiehen = (zg, sp) => {
+    const o = zg.start.dachfenster.find((x) => x.id === zg.id);
+    const i = wandIndex(zg.start, o.wand);
+    const g = wandGeo(zg.start, i);
+    const v = schraegeWerte(zg.start, i);
+    const p0 = welt(zg.sp);
+    const p1 = welt(sp);
+    const dx = [p1[0] - p0[0], p1[1] - p0[1]];
+    const ab = Math.max(0, Math.min(g.l - o.breite, Math.round((o.abstand + dx[0] * g.r[0] + dx[1] * g.r[1]) * 100) / 100));
+    const unten = Math.max(0, Math.min(Math.max(0, v.laenge - o.laenge), Math.round((o.unten + (dx[0] * g.innen[0] + dx[1] * g.innen[1]) * v.faktor) * 100) / 100));
+    const erg = aendereDachfenster(zg.start, zg.id, { abstand: ab, unten });
+    if (!erg.fehler) { vorschau = erg.raum; zg.erg = erg; }
+    $('.ra-text').textContent = `Abstand ${fmt2(ab)} m · vom Kniestock ${fmt2(unten)} m`;
+    spaeter();
+  };
   const oeffnungZiehen = (zg, sp) => {
     const o = zg.start.oeffnungen.find((x) => x.id === zg.id);
     const i = wandIndex(zg.start, o.wand);
@@ -830,6 +979,8 @@ export async function openRaumAufmass(vorlage) {
       if (ecke) { zug = { art: 'ecke', id: ecke.id, start: kopie(d), sp, bewegt: false }; return; }
       const oe = trefferOeffnung(sp);
       if (oe) { zug = { art: 'oeffnung', id: oe.id, start: kopie(d), sp, bewegt: false }; return; }
+      const df = trefferDachfenster(sp);
+      if (df) { zug = { art: 'dachfenster', id: df.id, start: kopie(d), sp, bewegt: false }; return; }
       const w = trefferWand(sp);
       if (w) { zug = { art: 'wand', id: w.id, start: kopie(d), sp, bewegt: false }; return; }
       zug = { art: 'pan', sp, ox: ansicht.ox, oy: ansicht.oy, leer: true };
@@ -883,6 +1034,7 @@ export async function openRaumAufmass(vorlage) {
     if (zug.art === 'ecke') eckeZiehen(zug, sp);
     if (zug.art === 'wand') wandZiehen(zug, sp);
     if (zug.art === 'oeffnung') oeffnungZiehen(zug, sp);
+    if (zug.art === 'dachfenster') dachfensterZiehen(zug, sp);
   });
 
   const zeigerEnde = async (e) => {
@@ -905,7 +1057,7 @@ export async function openRaumAufmass(vorlage) {
     if (zg.art === 'strich' && strich) { await strichFertig(); return; }
     if (zg.art === 'pan') { if (zg.leer && !zg.bewegt) auswaehlen(null); return; }
     const sp = lokal(e);
-    if (zg.art === 'ecke' || zg.art === 'wand' || zg.art === 'oeffnung') {
+    if (zg.art === 'ecke' || zg.art === 'wand' || zg.art === 'oeffnung' || zg.art === 'dachfenster') {
       const art = zg.art;
       if (zg.bewegt && zg.erg) {
         vorschau = null;

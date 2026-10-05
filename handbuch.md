@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.43.0**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.44.0**.
 
 | Was | Wo |
 | --- | --- |
@@ -95,6 +95,8 @@ Gespeichert werden das verkleinerte Original-Foto und ein Foto mit allen Maßen;
 4. **Tür und Fenster:** auf eine Wand tippen. Tür: Breite (76, 88,5 oder 101 cm oder frei), Höhe, Anschlag links/rechts, öffnet nach innen/außen. Fenster: Breite, Höhe, Brüstung. Standard Tür 88,5 × 201 cm, Fenster 120 × 120 cm mit 90 cm Brüstung.
 5. **Einstellungen:** Raumname, Raumhöhe (Standard 2,50 m), Raster 10/20/50 cm oder 1 m, Türen und Fenster bei der Wandfläche alle abziehen (Standard) oder bis 2,5 m² übermessen, Toleranzen fürs Ausrichten, Grundriss als SVG oder DXF (CAD) teilen. Hier stehen auch alle Werte: Boden, Decke, Umfang, Wandfläche brutto, Tür- und Fensterflächen, Wandfläche netto.
 
+**Kniestock und Dachschräge:** Mit „Auswahl“ die Wand antippen, an der das Dach herunterkommt, dann „Dachschräge“. Den Kniestock eingeben (Wandhöhe bis dort, wo die Schräge beginnt) und die Schräge auf eine von drei Arten: Neigung in Grad, Tiefe (waagerecht von der Wand bis dort, wo die Decke flach wird) oder Länge der Schräge selbst. Die Raumhöhe in den Einstellungen ist dann die Höhe der flachen Decke oder des Firsts. Schrägen an zwei gegenüberliegenden Wänden ergeben ein Satteldach, an allen Wänden ein Walmdach; die Giebelwände rechnet die App selbst aus. Im Grundriss ist die Schräge dunkler, die Knicklinie gestrichelt. Mit „Dachfenster einsetzen“ an derselben Wand kommt ein Dachfenster (Standard 78 × 118 cm) in die Schräge; Breite, Länge in der Schräge und Abstand vom Kniestock lassen sich ändern, die Fläche wird von der Schräge abgezogen. Mit Schräge werden die Positionen „Deckenfläche (waagerecht)“ und „Dachschräge“, die Wandfläche steht dann Wand für Wand (Kniestockwand Länge × Kniestock, Giebelwand mit ihrer Fläche). Liegt ein Fenster oder eine Tür zu hoch für die Schräge, warnt die App beim Übernehmen.
+
 Zoomen mit zwei Fingern oder dem Mausrad, Verschieben mit zwei Fingern (am Computer: mit rechter Maustaste ziehen oder in „Auswahl“ auf leerer Fläche). „Alles zeigen“ holt den ganzen Raum ins Bild. Rückgängig und Wiederholen gehen für alle Schritte. „Übernehmen“ prüft vorher den Raum (geschlossen, keine sich kreuzenden Wände, Maßstab gesetzt, Türen und Fenster passen in ihre Wand). Danach stehen Bodenfläche, Deckenfläche, Wandfläche (Umfang × Höhe minus Türen und Fenster) und Umfang als Positionen im Aufmaß, und der Grundriss kommt maßstäblich (z. B. 1:50) mit allen Werten ins PDF. Über den Stift auf der Karte lässt sich der Raum später ändern.
 
 ## Stunden, Baustellen und Personal
@@ -146,6 +148,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 05.10.2026 | 1.44.0 | Raumaufmaß: Kniestock und Dachschräge je Wand (Neigung, Tiefe oder Länge der Schräge), Satteldach und Walmdach, Giebelwände automatisch, Dachfenster; Positionen Decke waagerecht und Dachschräge, Wände einzeln |
 | 05.10.2026 | 1.43.0 | Raumaufmaß: Raum frei skizzieren, die App erkennt gerade Wände; Maßstab über ein echtes Maß, Wände und Ecken bearbeiten, Türen und Fenster, Raumhöhe; Boden, Decke, Wände und Umfang als Positionen, Grundriss maßstäblich im PDF, Export SVG und DXF |
 | 05.10.2026 | 1.42.0 | Foto-Aufmaß: Ecken-Magnet (Ecken rasten an Ecken im Foto ein) und Öffnung erkennen per Antippen, beides auf dem Handy ohne Internet |
 | 04.10.2026 | 1.41.2 | Uhrzeit wieder mit der Uhr des Handys (Stunden- und Minuten-Rad); Minuten werden auf 5er-Schritte gerundet |

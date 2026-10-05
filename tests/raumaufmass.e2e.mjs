@@ -223,6 +223,51 @@ async function ablauf(b, { touch }) {
   assert.match(w, /Höhe 2,62 m/);
   assert.match(w, /Wand netto 49,18 m²/);
   await shot(p, `${art}-9-wieder-offen`);
+
+  // Dachschräge an Wand B (rechts, 2,50 m): Kniestock 1,00 m, 45° → 1,62 m tief (Raumhöhe 2,62)
+  // Grundriss der Schräge: 1,62 × 2,50 = 4,05 m² → 5,73 m² Schrägfläche, Decke 21 − 4,05 = 16,95 m²
+  await p.click('.mk-wz[data-wz="auswahl"]');
+  const box2 = await p.locator('.ra-svg').boundingBox();
+  const [bx, by] = await wandPunkt(p, 'B');
+  await (touch ? p.touchscreen.tap(box2.x + bx, box2.y + by) : p.mouse.click(box2.x + bx, box2.y + by));
+  await p.waitForSelector('.ra-panel [data-tun="schraege"]');
+  await p.click('.ra-panel [data-tun="schraege"]');
+  await p.waitForSelector('.ra-dialog:not([hidden]) .ra-kn');
+  await p.fill('.ra-kn', '1');
+  await p.click('.ra-dialog [data-art="winkel"]');
+  await p.fill('.ra-wert-ein', '45');
+  assert.match(await p.locator('.ra-vorschau').innerText(), /1,62 m tief/);
+  await p.click('.ra-dialog .ra-ok');
+  w = await werte(p);
+  assert.match(w, /Schräge 5,73 m² · Decke 16,95 m²/, `Schräge falsch: ${w}`);
+  // Dachfenster 78 × 118 cm einsetzen → 5,73 − 0,92 = 4,81 m²
+  await p.click('.ra-panel [data-tun="dachfenster"]');
+  await p.waitForSelector('.ra-panel [data-feld="laenge"]');
+  assert.match(await werte(p), /Schräge 4,81 m²/);
+  await shot(p, `${art}-10-dachschraege`);
+  await p.click('.ra-panel .ra-p-ok');
+  await p.click('.ra-fertig');
+  await p.waitForSelector('.ra-view', { state: 'detached' });
+  await p.waitForFunction(() => document.querySelector('#ra-karten')?.innerText.includes('Schräge'), null, { timeout: 5000 });
+  assert.match(await p.locator('#ra-karten').innerText(), /4,81 m² Schräge/);
+  const pos2 = await p.evaluate(() => [...document.querySelectorAll('#positionen input, #positionen textarea')].map((x) => x.value).join(' | '));
+  assert.match(pos2, /Wohnzimmer: Dachschräge/);
+  assert.match(pos2, /Wohnzimmer: Deckenfläche \(waagerecht\)/);
+  await p.click('#save-btn');
+  await p.waitForURL(/#\/aufmass$/);
+  const pdf3 = await p.evaluate(async () => {
+    const db = await import('./db.js');
+    const { buildPdf } = await import('./pdf.js');
+    const r = (await db.allReports()).find((x) => x.art === 'aufmass');
+    const blob = await buildPdf(r, await db.filesFor(r.id), 'Max Mustermann');
+    const buf = new Uint8Array(await blob.arrayBuffer());
+    let s = '';
+    for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+    return { b64: btoa(s), schraege: !!r.raeume[0].waende.find((x) => x.schraege), df: r.raeume[0].dachfenster.length };
+  });
+  assert.ok(pdf3.schraege);
+  assert.equal(pdf3.df, 1);
+  if (SHOTS) writeFileSync(`${SHOTS}/${art}-aufmass-dachschraege.pdf`, Buffer.from(pdf3.b64, 'base64'));
   assert.deepEqual(fehler, [], `Fehler in der Konsole: ${fehler.join(' | ')}`);
 }
 
