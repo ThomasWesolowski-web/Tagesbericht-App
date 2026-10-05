@@ -38,7 +38,9 @@ In diesem Repo liegt nur der App-Code. Es enthält keine Berichte und keine Zuga
   mit Ausgleich und Widerspruchsprüfung; Wände/Ecken bearbeiten, Türen und Fenster, Raumhöhe;
   Boden, Decke, Wand netto und Umfang als Positionen, Grundriss maßstäblich im PDF, Export SVG/DXF
   Kniestock und Dachschräge je Wand (Dachflächen als Ebenen: Satteldach, Walmdach, Giebelwände),
-  Dachfenster, Decke waagerecht und Schrägflächen als eigene Positionen
+  Dachfenster, Decke waagerecht und Schrägflächen als eigene Positionen;
+  mehrere Räume in einem Grundriss (Raum anbauen, Umriss mit Trennwänden teilen, Räume verschieben und
+  andocken), Grundriss gesamt im PDF
   (`raumgeometrie.js` rechnet, `raumaufmass.js` ist der Editor; Tests in `tests/`)
 
 ## Einrichten

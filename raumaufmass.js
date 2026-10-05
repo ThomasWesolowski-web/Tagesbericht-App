@@ -1,7 +1,10 @@
 // Raumaufmaß: Raum grob mit Finger, Stift oder Maus auf einem Raster skizzieren. Die App erkennt
 // daraus gerade Wände und Ecken (raumgeometrie.js), ein echtes Maß legt den Maßstab fest. Danach
 // lassen sich Wände, Ecken, Maße, Türen und Fenster ändern. Alles läuft im Browser, ohne Server.
-// openRaumAufmass(raum) liefert { daten, svg } (svg = maßstäblicher Grundriss) oder null.
+// openRaumAufmass(raum, { nachbarn, namen }) liefert { daten, svg, raeume, gesamtSvg } oder null:
+// daten/svg = der zuletzt bearbeitete Raum, raeume = alle geänderten oder neuen Räume des Grundrisses
+// ({ daten, svg } je Raum), gesamtSvg = Grundriss gesamt, wenn mehrere Räume zusammengehören.
+// nachbarn = die anderen Räume desselben Grundrisses (gleiche gruppe), namen = alle Raumnamen im Aufmaß.
 
 import {
   STANDARD, RASTER, erkenneKontur, raumAusEcken, geschlossen, wandGeo, wandIndex, berechne, pruefe, setzeMass,
@@ -9,7 +12,8 @@ import {
   neueOeffnung, aendereOeffnung, loescheOeffnung, planElemente, elementeAlsSvg, richtungsText, richtungAusrichten,
   Verlauf, laengeLesen, wandName, fmt2, alsSvg, alsDxf, winkelVon, punkteVon, massstabFuer,
   schraegeWerte, setzeSchraege, SCHRAEGE_STANDARD, neuesDachfenster, aendereDachfenster, loescheDachfenster,
-  dachfensterEcken, punktInnen,
+  dachfensterEcken, punktInnen, teileRaum, raumAnbauen, andocken, verschiebeRaum, raumMitte, pruefeGruppe,
+  naechsterName, neuerRaum,
 } from './raumgeometrie.js';
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -34,13 +38,16 @@ const IC = {
 const HINWEIS = {
   zeichnen: 'Raum grob mit dem Finger nachfahren. Ecken müssen nicht genau sein, die App macht gerade Wände daraus.',
   auswahl: 'Wand, Ecke, Tür oder Fenster antippen zum Ändern. Ziehen verschiebt. Auf leerer Fläche ziehen verschiebt die Ansicht.',
+  gruppe: 'Wand, Ecke, Tür oder Fenster antippen zum Ändern. Einen grauen Raum antippen, um ihn zu bearbeiten.',
   mass: 'Wand antippen und ihre echte Länge eingeben.',
   tuer: 'Auf eine Wand tippen, um dort eine Tür einzusetzen.',
   fenster: 'Auf eine Wand tippen, um dort ein Fenster einzusetzen.',
 };
 
-export async function openRaumAufmass(vorlage) {
+export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {}) {
   let d = kopie(vorlage);
+  let andere = kopie(nachbarn); // die anderen Räume des Grundrisses (grau)
+  const anfangs = new Map([vorlage, ...nachbarn].map((r) => [r.id, JSON.stringify(r)]));
   d.einstellungen = { ...STANDARD, ...(d.einstellungen || {}) };
   d.skizze = d.skizze || { striche: [], faktor: 1 };
   d.oeffnungen = d.oeffnungen || [];
@@ -49,7 +56,7 @@ export async function openRaumAufmass(vorlage) {
   let werkzeug = geschlossen(d) ? (d.massstabGesetzt ? 'auswahl' : 'mass') : 'zeichnen';
   let auswahl = null; // { art: 'wand'|'ecke'|'oeffnung', id }
   let geaendert = false;
-  const verlauf = new Verlauf({ raum: d, entwurf });
+  const verlauf = new Verlauf({ raum: d, andere, entwurf });
   let ansicht = { s: 60, ox: 0, oy: 0 }; // Bildschirmpunkte je Meter, Verschiebung
   let strich = null; // Freihandstrich in Arbeit: { punkte, modus }
   let vorschau = null; // vorübergehender Raum beim Ziehen
@@ -102,7 +109,8 @@ export async function openRaumAufmass(vorlage) {
   };
   const einpassen = () => {
     const [w, h] = groesse();
-    const pts = geschlossen(d) ? punkteVon(d) : (entwurf?.punkte || []);
+    const eigene = geschlossen(d) ? punkteVon(d) : (entwurf?.punkte || []);
+    const pts = [...eigene, ...andere.filter(geschlossen).flatMap(punkteVon)];
     if (pts.length < 2) {
       // leeres Blatt: etwa 7 m Breite sichtbar, Nullpunkt links oben mit etwas Rand
       ansicht.s = Math.max(20, Math.min(w, h) / 7 / (d.skizze?.faktor || 1));
@@ -150,6 +158,9 @@ export async function openRaumAufmass(vorlage) {
   };
 
   const anzeigeRaum = () => vorschau || d;
+  // Schiebepunkt eines Raums: unter dem Namen und der Fläche in der Mitte
+  const griffPunkt = (r) => { const m = abb(raumMitte(r)); return [m[0], m[1] + 44]; };
+  const gruppenMassstab = () => andere.some((x) => geschlossen(x) && x.massstabGesetzt);
   // offene Kontur als vorläufiger Raum (ohne letzte Wand)
   const offeneKontur = (punkte, schliessen) => {
     if (!punkte || punkte.length < 2) return null;
@@ -166,7 +177,13 @@ export async function openRaumAufmass(vorlage) {
   const zeichne = () => {
     const r = anzeigeRaum();
     let html = rasterSvg();
-    const optionen = { schrift: 13, wand: 3.5, duenn: 1.2, massAbstand: 24, masse: d.einstellungen.masseZeigen, namen: geschlossen(r), ungefaehr: !d.massstabGesetzt };
+    // mit Nachbarräumen stehen die Maße innen an den Wänden, sonst laufen die Maßketten in den Nachbarraum
+    const optionen = { schrift: 13, wand: 3.5, duenn: 1.2, massAbstand: 24, masse: d.einstellungen.masseZeigen && (andere.length ? 'innen' : true), namen: geschlossen(r), ungefaehr: !d.massstabGesetzt };
+    // andere Räume des Grundrisses grau, Maße innen
+    for (const x of andere) {
+      if (!geschlossen(x)) continue;
+      html += elementeAlsSvg(planElemente(x, abb, { namen: false, schrift: 12, wand: 3, duenn: 1, massAbstand: 20, masse: d.einstellungen.masseZeigen ? 'innen' : false, ungefaehr: !x.massstabGesetzt, farbe: '#9aa3ad', mass: '#8a939d', fest: '#8a939d', flaeche: '#f4f6f8', schraege: '#e9edf1' }));
+    }
     if (geschlossen(r)) {
       html += elementeAlsSvg(planElemente(r, abb, optionen));
     } else if (entwurfErkannt && !strich) {
@@ -195,6 +212,11 @@ export async function openRaumAufmass(vorlage) {
           const b = abb([g.a[0] + g.r[0] * (o.abstand + o.breite), g.a[1] + g.r[1] * (o.abstand + o.breite)]);
           html += `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="var(--accent)" stroke-width="12" stroke-linecap="round" opacity=".6"/>`;
         }
+      }
+      if (auswahl.art === 'raum') {
+        html += `<polygon points="${punkteVon(r).map(abb).map((x) => x.join(',')).join(' ')}" fill="var(--accent)" fill-opacity=".08" stroke="var(--accent)" stroke-width="3" stroke-dasharray="8 6"/>`;
+        const [x, y] = griffPunkt(r);
+        html += `<g class="ra-griff"><circle cx="${x}" cy="${y}" r="17" fill="#0b57d0"/><path d="M${x - 10} ${y}h20M${x} ${y - 10}v20M${x - 10} ${y}l4-4M${x - 10} ${y}l4 4M${x + 10} ${y}l-4-4M${x + 10} ${y}l-4 4M${x} ${y - 10}l-4 4M${x} ${y - 10}l4 4M${x} ${y + 10}l-4-4M${x} ${y + 10}l4-4" stroke="#fff" stroke-width="2" stroke-linecap="round" fill="none"/></g>`;
       }
       if (auswahl.art === 'dachfenster') {
         const o = (r.dachfenster || []).find((x) => x.id === auswahl.id);
@@ -233,7 +255,7 @@ export async function openRaumAufmass(vorlage) {
     view.querySelectorAll('.mk-wz').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.wz === werkzeug)));
     $('.ra-zurueck').disabled = !verlauf.kannZurueck;
     $('.ra-vor').disabled = !verlauf.kannVor;
-    $('.ra-titel').textContent = d.name || 'Raumaufmaß';
+    $('.ra-titel').textContent = andere.length ? `${d.name || 'Raum'} · ${andere.length + 1} Räume` : (d.name || 'Raumaufmaß');
     const w = $('.ra-werte');
     if (geschlossen(d)) {
       const b = berechne(d);
@@ -263,11 +285,11 @@ export async function openRaumAufmass(vorlage) {
     if (werkzeug === 'zeichnen' && geschlossen(d)) { t.textContent = 'Der Raum ist geschlossen. Mit „Auswahl“ Wände und Ecken ändern, mit „Maß“ Längen eingeben.'; return; }
     if (werkzeug !== 'zeichnen' && !geschlossen(d)) { t.textContent = 'Zuerst den Raum mit „Zeichnen“ skizzieren.'; return; }
     if (werkzeug === 'mass' && !d.massstabGesetzt) { t.textContent = 'Jetzt ein echtes Maß eingeben: eine Wand antippen. Danach stimmt der ganze Raum im Maßstab.'; return; }
-    t.textContent = HINWEIS[werkzeug];
+    t.textContent = werkzeug === 'auswahl' && andere.length ? HINWEIS.gruppe : HINWEIS[werkzeug];
   };
 
   const merken = () => {
-    verlauf.merken({ raum: d, entwurf });
+    verlauf.merken({ raum: d, andere, entwurf });
     geaendert = true;
   };
   const melden = (erg) => {
@@ -291,15 +313,18 @@ export async function openRaumAufmass(vorlage) {
     if (!e || !e.geschlossen) { hinweis('Daraus lässt sich kein Raum schließen. Bitte mindestens drei Wände zeichnen.'); zeichne(); return; }
     const vorher = d;
     d = raumAusEcken(d, e.ecken);
-    d.massstabGesetzt = false;
+    // im Grundriss mit anderen Räumen ist der Maßstab schon da: gezeichnet wird in Metern
+    d.massstabGesetzt = gruppenMassstab();
     d.skizze = { striche: [...(vorher.skizze?.striche || []), ...(entwurf?.striche || [])], faktor: vorher.skizze?.faktor || 1 };
+    let an = null;
+    if (d.massstabGesetzt) ({ raum: d, an } = andocken(d, andere, { fang: 0.4 }));
     entwurf = null;
     entwurfErkannt = null;
     werkzeug = 'mass';
     auswahl = null;
     merken();
     zeichne();
-    hinweis(`Raum mit ${d.waende.length} Wänden erkannt. Jetzt eine Wand antippen und ihre echte Länge eingeben.`);
+    hinweis(`Raum mit ${d.waende.length} Wänden erkannt${an ? `, an ${an} angedockt` : ''}. Jetzt eine Wand antippen und ihre echte Länge eingeben.`);
   };
 
   // ---------- Dialoge ----------
@@ -374,6 +399,13 @@ export async function openRaumAufmass(vorlage) {
 
   // ---------- Panels ----------
   const panelZu = () => { panel.hidden = true; panel.innerHTML = ''; };
+  // Nach dem Antippen schickt der Browser noch einen „click“ an dieselbe Stelle. Liegt dort jetzt das
+  // gerade geöffnete Panel oder ein Dialog, darf dieser Klick keinen Knopf auslösen.
+  for (const el of [panel, $('.ra-dialog')]) {
+    el.addEventListener('click', (e) => {
+      if (letzterTipp && Date.now() - letzterTipp.zeit < 600 && Math.hypot(e.clientX - letzterTipp.x, e.clientY - letzterTipp.y) < 12) { e.stopPropagation(); e.preventDefault(); }
+    }, true);
+  }
   const panelAuf = (html, binden) => {
     panel.innerHTML = html;
     panel.hidden = false;
@@ -397,6 +429,8 @@ export async function openRaumAufmass(vorlage) {
         <button type="button" class="chip" data-tun="teilen">Ecke einfügen</button>
         <button type="button" class="chip" data-tun="schraege">${w.schraege ? 'Dachschräge ändern' : 'Dachschräge'}</button>
         ${schraegeWerte(d, i)?.gueltig ? '<button type="button" class="chip" data-tun="dachfenster">Dachfenster einsetzen</button>' : ''}
+        <button type="button" class="chip" data-tun="anbauen">Raum anbauen</button>
+        <button type="button" class="chip" data-tun="raumteilen">Raum teilen</button>
         <button type="button" class="chip ra-gefahr" data-tun="loeschen">Wand löschen</button>
       </div>
       ${w.schraege ? `<p class="fa-klein">${schraegeText(i)}</p>` : ''}`, () => {
@@ -436,6 +470,12 @@ export async function openRaumAufmass(vorlage) {
             if (uebernehme(loescheWand(d, id))) { auswahl = null; panelZu(); zeichne(); return; }
           }
           if (tun === 'schraege') await schraegeFragen(id);
+          if (tun === 'anbauen' || tun === 'raumteilen') {
+            if (!d.massstabGesetzt) { hinweis('Zuerst ein echtes Maß eingeben, dann lassen sich Räume anbauen oder teilen.'); return; }
+            if (tun === 'anbauen') { await anbauenFragen(id); return; }
+            await teilenFragen(id);
+            return;
+          }
           if (tun === 'dachfenster') {
             const erg = neuesDachfenster(d, id);
             if (uebernehme(erg)) { auswaehlen({ art: 'dachfenster', id: erg.dachfenster }); return; }
@@ -511,6 +551,145 @@ export async function openRaumAufmass(vorlage) {
     if (!wert) return;
     const erg = setzeSchraege(d, wandId, wert === 'weg' ? null : JSON.parse(wert));
     if (uebernehme(erg)) hinweis(wert === 'weg' ? `Dachschräge an Wand ${wandName(i)} entfernt.` : `Dachschräge an Wand ${wandName(i)} gesetzt. ${schraegeText(i)}`);
+  };
+
+  // ---------- Mehrere Räume ----------
+  const neuerName = () => naechsterName([...namen, d.name, ...andere.map((x) => x.name)]);
+  const cm = (m) => zahlText(m * 100, 1);
+  const staerkeLesen = (wert) => {
+    const x = Number(String(wert).replace(',', '.'));
+    return Number.isFinite(x) && x >= 0 && x <= 100 ? x / 100 : null;
+  };
+  const staerkeMerken = (t) => {
+    if (Math.abs(t - (d.einstellungen.wandstaerke ?? 0.115)) > 1e-9) d.einstellungen = { ...d.einstellungen, wandstaerke: t };
+  };
+
+  // Aktiven Raum wechseln (der bisherige wird grau)
+  const wechseln = (id, text) => {
+    const k = andere.findIndex((x) => x.id === id);
+    if (k < 0) return;
+    if (!geschlossen(d) && (d.ecken.length || entwurf)) { hinweis('Zuerst diesen Raum fertig zeichnen oder „Verwerfen“.'); zeichne(); return; }
+    const neu = andere[k];
+    andere = [...andere.slice(0, k), ...andere.slice(k + 1), ...(geschlossen(d) ? [d] : [])];
+    d = neu;
+    entwurf = null;
+    entwurfErkannt = null;
+    auswahl = null;
+    panelZu();
+    merken();
+    zeichne();
+    hinweis(text || `Jetzt wird ${d.name} bearbeitet.`);
+  };
+
+  const anbauenFragen = async (wandId) => {
+    const i = wandIndex(d, wandId);
+    const g = wandGeo(d, i);
+    const t = d.einstellungen.wandstaerke ?? 0.115;
+    const wert = await dialog(`
+      <b>Raum an Wand ${wandName(i)} anbauen</b>
+      <p class="fa-klein">Auf der anderen Seite der Wand entsteht ein neuer Raum (Innenmaße). Danach wie gewohnt Maße eingeben, Wände ziehen, Türen und Fenster setzen.</p>
+      <label class="fa-feld"><span>Name</span><input type="text" class="ra-n" value="${escH(neuerName())}"></label>
+      <div class="ra-raster2">
+        <label class="fa-feld"><span>Tiefe in m</span><input type="text" inputmode="decimal" autocomplete="off" class="ra-tiefe" placeholder="z. B. 3,00"></label>
+        <label class="fa-feld"><span>Breite in m</span><input type="text" inputmode="decimal" autocomplete="off" class="ra-breite" value="${zahlText(g.l, 3)}"></label>
+        <label class="fa-feld"><span>Abstand von Ecke ${i + 1} in m</span><input type="text" inputmode="decimal" autocomplete="off" class="ra-ab" value="0"></label>
+        <label class="fa-feld"><span>Wandstärke dazwischen in cm</span><input type="text" inputmode="decimal" autocomplete="off" class="ra-t" value="${cm(t)}"></label>
+      </div>
+      <p class="fa-klein fa-warn ra-fehler"></p>
+      <div class="fa-panel-knoepfe"><button type="button" class="btn ghost" data-wert="">Abbrechen</button><button type="button" class="btn primary ra-ok">Anbauen</button></div>`, (fertig) => {
+      const q = (k) => dialogBox.querySelector(k);
+      q('.ra-ok').onclick = () => {
+        const tiefeText = q('.ra-tiefe').value.trim();
+        const tiefe = tiefeText ? laengeLesen(tiefeText) : 3;
+        const breite = laengeLesen(q('.ra-breite').value);
+        const ab = Number(String(q('.ra-ab').value || '0').replace(',', '.'));
+        const st = staerkeLesen(q('.ra-t').value);
+        if (!tiefe || !breite || !Number.isFinite(ab) || st == null) { q('.ra-fehler').textContent = 'Bitte Zahlen eingeben, z. B. 3,00.'; return; }
+        fertig(JSON.stringify({ name: q('.ra-n').value.trim() || neuerName(), tiefe, tiefeGemessen: !!tiefeText, breite, breiteGemessen: Math.abs(breite - g.l) > 0.0005, abstand: ab, staerke: st }));
+      };
+    });
+    if (!wert) return;
+    const o = JSON.parse(wert);
+    const erg = raumAnbauen(d, wandId, o);
+    if (erg.fehler) { hinweis(erg.fehler); return; }
+    d = erg.raum;
+    staerkeMerken(o.staerke);
+    andere = [...andere, d];
+    d = erg.neu;
+    d.einstellungen = { ...d.einstellungen, wandstaerke: o.staerke };
+    werkzeug = 'auswahl';
+    auswahl = null;
+    panelZu();
+    einpassen();
+    merken();
+    zeichne();
+    hinweis(`${d.name} angebaut${o.tiefeGemessen ? '' : ' (Tiefe vorläufig 3,00 m)'}. Jetzt Maße eingeben oder Wände ziehen.`);
+  };
+
+  const teilenFragen = async (wandId) => {
+    const i = wandIndex(d, wandId);
+    const g = wandGeo(d, i);
+    const t = d.einstellungen.wandstaerke ?? 0.115;
+    const tipp = auswahl?.t != null ? Math.round(auswahl.t * g.l * 100) / 100 : Math.round((g.l / 2) * 100) / 100;
+    const wert = await dialog(`
+      <b>Raum teilen</b>
+      <p class="fa-klein">Eine Trennwand quer zu Wand ${wandName(i)} teilt den Raum in zwei Räume. So wird aus dem Umriss von Haus oder Wohnung Raum für Raum.</p>
+      <label class="fa-feld"><span>Name des neuen Raums (ab Ecke ${i + 1})</span><input type="text" class="ra-n" value="${escH(neuerName())}"></label>
+      <div class="ra-raster2">
+        <label class="fa-feld"><span>Breite des neuen Raums in m</span><input type="text" inputmode="decimal" autocomplete="off" class="ra-breite" value="${zahlText(Math.max(0.1, tipp - t / 2), 3)}"></label>
+        <label class="fa-feld"><span>Wandstärke in cm</span><input type="text" inputmode="decimal" autocomplete="off" class="ra-t" value="${cm(t)}"></label>
+      </div>
+      <p class="fa-klein">Wand ${wandName(i)} ist ${fmt2(g.l)} m lang. Gemessen wird innen ab Ecke ${i + 1} bis zur Trennwand.</p>
+      <p class="fa-klein fa-warn ra-fehler"></p>
+      <div class="fa-panel-knoepfe"><button type="button" class="btn ghost" data-wert="">Abbrechen</button><button type="button" class="btn primary ra-ok">Teilen</button></div>`, (fertig) => {
+      const q = (k) => dialogBox.querySelector(k);
+      q('.ra-ok').onclick = () => {
+        const breite = laengeLesen(q('.ra-breite').value);
+        const st = staerkeLesen(q('.ra-t').value);
+        if (!breite || st == null) { q('.ra-fehler').textContent = 'Bitte Zahlen eingeben, z. B. 2,10.'; return; }
+        const probe = teileRaum(d, wandId, breite + st / 2, { staerke: st });
+        if (probe.fehler) { q('.ra-fehler').textContent = probe.fehler; return; }
+        fertig(JSON.stringify({ name: q('.ra-n').value.trim() || neuerName(), breite, staerke: st }));
+      };
+    });
+    if (!wert) return;
+    const o = JSON.parse(wert);
+    const erg = teileRaum(d, wandId, o.breite + o.staerke / 2, { staerke: o.staerke, name: o.name });
+    if (erg.fehler) { hinweis(erg.fehler); return; }
+    d = erg.raum;
+    staerkeMerken(o.staerke);
+    andere = [...andere, erg.neu];
+    auswahl = null;
+    panelZu();
+    merken();
+    zeichne();
+    hinweis(`Geteilt: ${d.name} und ${erg.neu.name}. Den grauen Raum antippen, um ihn zu bearbeiten.`);
+  };
+
+  const weitererRaum = () => {
+    if (!geschlossen(d)) { hinweis('Zuerst diesen Raum fertig zeichnen.'); return; }
+    if (!d.massstabGesetzt) { hinweis('Zuerst ein echtes Maß eingeben, dann lassen sich weitere Räume zeichnen.'); return; }
+    if (!d.gruppe) d = { ...d, gruppe: (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`) };
+    andere = [...andere, d];
+    d = { ...neuerRaum(1, d.einstellungen), name: neuerName(), hoehe: d.hoehe, gruppe: d.gruppe };
+    werkzeug = 'zeichnen';
+    auswahl = null;
+    panelZu();
+    merken();
+    zeichne();
+    hinweis('Neuen Raum daneben zeichnen. Nah an einem anderen Raum dockt er mit der Wandstärke an.');
+  };
+
+  const raumPanel = () => {
+    panelAuf(`
+      <div class="fa-panel-kopf"><b>${escH(d.name)} · ${d.massstabGesetzt ? '' : '≈ '}${fmt2(berechne(d).bodenflaeche)} m²</b><button type="button" class="btn primary ra-p-ok">Fertig</button></div>
+      <p class="fa-klein">Am blauen Punkt ziehen, um den ganzen Raum zu verschieben. Nah an einem anderen Raum rastet er mit der Wandstärke ein.</p>
+      <label class="fa-feld"><span>Raumname</span><input type="text" data-name value="${escH(d.name)}"></label>
+      <div class="fa-vorschlaege"><button type="button" class="chip" data-tun="weiter">Weiteren Raum zeichnen</button></div>
+      <p class="fa-klein">Zum Anbauen oder Teilen eine Wand antippen.</p>`, () => {
+      panel.querySelector('[data-name]').onchange = (e) => { const r = kopie(d); r.name = e.target.value.trim() || d.name; uebernehme({ raum: r }); raumPanel(); };
+      panel.querySelector('[data-tun="weiter"]').onclick = weitererRaum;
+    });
   };
 
   const dachfensterPanel = (id) => {
@@ -609,6 +788,7 @@ export async function openRaumAufmass(vorlage) {
     else if (a.art === 'wand') wandPanel(a.id);
     else if (a.art === 'ecke') eckePanel(a.id);
     else if (a.art === 'dachfenster') dachfensterPanel(a.id);
+    else if (a.art === 'raum') raumPanel();
     else oeffnungPanel(a.id);
     zeichne();
   };
@@ -682,8 +862,9 @@ export async function openRaumAufmass(vorlage) {
         <label class="fa-feld"><span>Ecke ab Grad</span><input type="text" inputmode="decimal" data-zahl="eckWinkel" value="${zahlText(e.eckWinkel, 1)}"></label>
         <label class="fa-feld"><span>Schließen bis Punkte</span><input type="text" inputmode="decimal" data-zahl="schliessAbstand" value="${zahlText(e.schliessAbstand, 0)}"></label>
         <label class="fa-feld"><span>Glätten Punkte</span><input type="text" inputmode="decimal" data-zahl="vereinfachen" value="${zahlText(e.vereinfachen, 0)}"></label>
+        <label class="fa-feld"><span>Wandstärke zwischen Räumen in cm</span><input type="text" inputmode="decimal" data-staerke value="${cm(e.wandstaerke ?? 0.115)}"></label>
       </div>
-      ${geschlossen(d) ? `<div class="fa-vorschlaege"><button type="button" class="chip" data-export="svg">Grundriss als SVG</button><button type="button" class="chip" data-export="dxf">Grundriss als DXF (CAD)</button></div>` : ''}
+      ${geschlossen(d) ? `<div class="fa-vorschlaege"><button type="button" class="chip" data-export="svg">Grundriss als SVG</button><button type="button" class="chip" data-export="dxf">Grundriss als DXF (CAD)</button>${andere.length ? '<button type="button" class="chip" data-export="svg" data-gesamt>Grundriss gesamt als SVG</button><button type="button" class="chip" data-export="dxf" data-gesamt>Grundriss gesamt als DXF</button>' : ''}<button type="button" class="chip" data-tun="weiter">Weiteren Raum zeichnen</button></div>` : ''}
       <div class="fa-vorschlaege"><button type="button" class="chip ra-gefahr" data-tun="neu">Neu zeichnen</button></div>`, () => {
       panel.querySelectorAll('[data-raum]').forEach((inp) => {
         inp.onchange = () => {
@@ -709,12 +890,15 @@ export async function openRaumAufmass(vorlage) {
           einst({ [inp.dataset.zahl]: v });
         };
       });
-      panel.querySelectorAll('[data-export]').forEach((btn) => { btn.onclick = () => exportieren(btn.dataset.export); });
+      panel.querySelectorAll('[data-export]').forEach((btn) => { btn.onclick = () => exportieren(btn.dataset.export, btn.hasAttribute('data-gesamt')); });
+      const st = panel.querySelector('[data-staerke]');
+      st.onchange = () => { const t = staerkeLesen(st.value); if (t == null) { einstellungen(); return; } einst({ wandstaerke: t }); };
+      panel.querySelector('[data-tun="weiter"]')?.addEventListener('click', weitererRaum);
       panel.querySelector('[data-tun="neu"]').onclick = async () => {
         const ja = await dialog('<b>Den Raum neu zeichnen?</b><p class="fa-klein">Wände, Maße, Türen und Fenster werden entfernt. Mit „Rückgängig“ kommt alles zurück.</p><div class="fa-panel-knoepfe"><button type="button" class="btn ghost" data-wert="">Abbrechen</button><button type="button" class="btn primary" data-wert="ja">Neu zeichnen</button></div>');
         if (!ja) return;
         const r = kopie(d);
-        Object.assign(r, { ecken: [], waende: [], oeffnungen: [], dachfenster: [], massstabGesetzt: false, skizze: { striche: [], faktor: 1 } });
+        Object.assign(r, { ecken: [], waende: [], oeffnungen: [], dachfenster: [], massstabGesetzt: gruppenMassstab(), skizze: { striche: [], faktor: 1 } });
         d = r;
         entwurf = null;
         entwurfErkannt = null;
@@ -728,13 +912,14 @@ export async function openRaumAufmass(vorlage) {
     zeichne();
   }
 
-  const exportieren = async (art) => {
+  const exportieren = async (art, gesamt = false) => {
     const p = pruefe(d);
     if (!d.massstabGesetzt) { hinweis('Für den Export bitte zuerst ein echtes Maß eingeben.'); return; }
-    const name = `${(d.name || 'raum').replace(/[^\wäöüÄÖÜß-]+/g, '_')}.${art}`;
+    const was = gesamt ? [d, ...andere].filter((x) => geschlossen(x) && x.massstabGesetzt) : d;
+    const name = `${(gesamt ? 'grundriss-gesamt' : d.name || 'raum').replace(/[^\wäöüÄÖÜß-]+/g, '_')}.${art}`;
     const blob = art === 'svg'
-      ? new Blob([alsSvg(d, massstabFuer(d))], { type: 'image/svg+xml' })
-      : new Blob([alsDxf(d)], { type: 'application/dxf' });
+      ? new Blob([alsSvg(was, massstabFuer(was))], { type: 'image/svg+xml' })
+      : new Blob([alsDxf(was)], { type: 'application/dxf' });
     const datei = new File([blob], name, { type: blob.type });
     try {
       if (navigator.canShare?.({ files: [datei] })) { await navigator.share({ files: [datei], title: name }); return; }
@@ -767,7 +952,7 @@ export async function openRaumAufmass(vorlage) {
     });
     // Maßzahl antippen zählt wie die Wand
     if (!best && d.einstellungen.masseZeigen) {
-      for (const el of planElemente(r, abb, { schrift: 13, massAbstand: 24 })) {
+      for (const el of planElemente(r, abb, { schrift: 13, massAbstand: 24, masse: andere.length ? 'innen' : true })) {
         if (el.art === 'text' && el.wand && Math.hypot(sp[0] - el.p[0], sp[1] - el.p[1]) < 24) {
           const i = wandIndex(r, el.wand);
           return { id: el.wand, d: 0, t: 0.5, i };
@@ -934,6 +1119,23 @@ export async function openRaumAufmass(vorlage) {
     $('.ra-text').textContent = `Abstand ${fmt2(ab)} m · vom Kniestock ${fmt2(unten)} m`;
     spaeter();
   };
+  const raumZiehen = (zg, sp) => {
+    const p0 = welt(zg.sp);
+    const p1 = welt(sp);
+    const dx = [Math.round((p1[0] - p0[0]) * 100) / 100, Math.round((p1[1] - p0[1]) * 100) / 100];
+    const { raum } = verschiebeRaum(zg.start, dx);
+    const dock = andocken(raum, andere, { fang: Math.max(0.05, 16 / ansicht.s) });
+    vorschau = dock.raum;
+    zg.erg = { raum: dock.raum };
+    $('.ra-text').textContent = dock.an ? `An ${dock.an} angedockt` : 'Raum verschieben';
+    spaeter();
+  };
+  // Welcher Raum liegt unter dem Finger? (aktiver Raum zuerst)
+  const raumUnter = (sp) => {
+    const p = welt(sp);
+    if (geschlossen(d) && punktInnen(p, punkteVon(d))) return d;
+    return andere.find((x) => geschlossen(x) && punktInnen(p, punkteVon(x))) || null;
+  };
   const oeffnungZiehen = (zg, sp) => {
     const o = zg.start.oeffnungen.find((x) => x.id === zg.id);
     const i = wandIndex(zg.start, o.wand);
@@ -975,6 +1177,10 @@ export async function openRaumAufmass(vorlage) {
       return;
     }
     if (werkzeug === 'auswahl') {
+      if (auswahl?.art === 'raum' && geschlossen(d)) {
+        const [gx, gy] = griffPunkt(d);
+        if (Math.hypot(sp[0] - gx, sp[1] - gy) <= 26) { zug = { art: 'raum', start: kopie(d), sp, bewegt: false }; return; }
+      }
       const ecke = trefferEcke(sp);
       if (ecke) { zug = { art: 'ecke', id: ecke.id, start: kopie(d), sp, bewegt: false }; return; }
       const oe = trefferOeffnung(sp);
@@ -982,7 +1188,7 @@ export async function openRaumAufmass(vorlage) {
       const df = trefferDachfenster(sp);
       if (df) { zug = { art: 'dachfenster', id: df.id, start: kopie(d), sp, bewegt: false }; return; }
       const w = trefferWand(sp);
-      if (w) { zug = { art: 'wand', id: w.id, start: kopie(d), sp, bewegt: false }; return; }
+      if (w) { zug = { art: 'wand', id: w.id, start: kopie(d), sp, bewegt: false, t: w.t }; return; }
       zug = { art: 'pan', sp, ox: ansicht.ox, oy: ansicht.oy, leer: true };
       return;
     }
@@ -1035,10 +1241,13 @@ export async function openRaumAufmass(vorlage) {
     if (zug.art === 'wand') wandZiehen(zug, sp);
     if (zug.art === 'oeffnung') oeffnungZiehen(zug, sp);
     if (zug.art === 'dachfenster') dachfensterZiehen(zug, sp);
+    if (zug.art === 'raum') raumZiehen(zug, sp);
   });
 
+  let letzterTipp = null; // Ort und Zeit des letzten Loslassens (gegen den nachfolgenden Klick)
   const zeigerEnde = async (e) => {
     if (!zeiger.has(e.pointerId)) return;
+    letzterTipp = { x: e.clientX, y: e.clientY, zeit: Date.now() };
     zeiger.delete(e.pointerId);
     if (geste) {
       if (zeiger.size < 2) geste = null;
@@ -1055,7 +1264,21 @@ export async function openRaumAufmass(vorlage) {
     if (!zg) return;
     if (e.type === 'pointercancel') { strich = null; vorschau = null; zeichne(); return; }
     if (zg.art === 'strich' && strich) { await strichFertig(); return; }
-    if (zg.art === 'pan') { if (zg.leer && !zg.bewegt) auswaehlen(null); return; }
+    if (zg.art === 'pan') {
+      if (zg.leer && !zg.bewegt) {
+        const x = raumUnter(lokal(e));
+        if (x && x !== d) wechseln(x.id);
+        else if (x && auswahl?.art !== 'raum') auswaehlen({ art: 'raum' });
+        else auswaehlen(null);
+      }
+      return;
+    }
+    if (zg.art === 'raum') {
+      vorschau = null;
+      if (zg.bewegt && zg.erg) uebernehme(zg.erg);
+      auswaehlen({ art: 'raum' });
+      return;
+    }
     const sp = lokal(e);
     if (zg.art === 'ecke' || zg.art === 'wand' || zg.art === 'oeffnung' || zg.art === 'dachfenster') {
       const art = zg.art;
@@ -1065,13 +1288,15 @@ export async function openRaumAufmass(vorlage) {
         auswaehlen({ art, id: zg.id });
       } else {
         vorschau = null;
-        auswaehlen({ art, id: zg.id });
+        auswaehlen({ art, id: zg.id, ...(zg.t != null ? { t: zg.t } : {}) });
       }
       return;
     }
     if (zg.art === 'tipp') {
       if (!geschlossen(d)) { hinweis('Zuerst den Raum mit „Zeichnen“ skizzieren.'); zeichne(); return; }
       const w = trefferWand(sp, d, werkzeug === 'mass' ? 26 : 34);
+      const unter = w ? null : raumUnter(sp);
+      if (unter && unter !== d) { wechseln(unter.id); return; }
       if (!w) { hinweis(werkzeug === 'mass' ? 'Bitte direkt auf eine Wand oder ihre Maßzahl tippen.' : 'Bitte direkt auf eine Wand tippen.'); zeichne(); return; }
       if (werkzeug === 'mass') { massFragen(w.id); return; }
       if (werkzeug === 'tuer' || werkzeug === 'fenster') {
@@ -1112,6 +1337,7 @@ export async function openRaumAufmass(vorlage) {
   const verlaufLaden = (z) => {
     const faktorVorher = d.skizze?.faktor || 1;
     d = z.raum;
+    andere = z.andere || [];
     entwurf = z.entwurf;
     entwurfErkannt = entwurf ? offeneKontur(entwurf.punkte, entwurf.offen ? false : undefined) : null;
     if (entwurfErkannt?.geschlossen) entwurfErkannt = offeneKontur(entwurf.punkte, false);
@@ -1151,7 +1377,16 @@ export async function openRaumAufmass(vorlage) {
       schliessen(null);
     };
     $('.ra-fertig').onclick = async () => {
-      const p = pruefe(d);
+      // ein neuer, noch leerer Raum im Grundriss fällt weg
+      const alle = [d, ...andere].filter((x) => x === d ? (geschlossen(x) || !andere.length || x.ecken.length || entwurf) : true);
+      const p = { fehler: [], warnungen: [] };
+      for (const x of alle) {
+        const px = pruefe(x);
+        const vor = alle.length > 1 ? `${x.name || 'Raum'}: ` : '';
+        p.fehler.push(...px.fehler.map((f) => vor + f));
+        p.warnungen.push(...px.warnungen.map((f) => vor + f));
+      }
+      p.warnungen.push(...pruefeGruppe(alle.filter(geschlossen)));
       if (p.fehler.length) {
         await dialog(`<b>Bitte noch korrigieren</b><ul class="ra-liste">${p.fehler.map((f) => `<li>${escH(f)}</li>`).join('')}</ul>${p.warnungen.length ? `<p class="fa-klein">Außerdem:</p><ul class="ra-liste">${p.warnungen.map((f) => `<li>${escH(f)}</li>`).join('')}</ul>` : ''}
           <div class="fa-panel-knoepfe"><button type="button" class="btn primary" data-wert="ok">OK</button></div>`);
@@ -1162,7 +1397,15 @@ export async function openRaumAufmass(vorlage) {
           <div class="fa-panel-knoepfe"><button type="button" class="btn ghost" data-wert="">Zurück</button><button type="button" class="btn primary" data-wert="ja">Trotzdem übernehmen</button></div>`);
         if (!ja) return;
       }
-      schliessen({ daten: d, svg: alsSvg(d, massstabFuer(d)) });
+      const geaenderte = alle.filter((x) => x === d || anfangs.get(x.id) !== JSON.stringify(x));
+      const aktiv = alle.includes(d) ? d : geaenderte[0];
+      if (!aktiv) { schliessen(null); return; }
+      schliessen({
+        daten: aktiv,
+        svg: alsSvg(aktiv, massstabFuer(aktiv)),
+        raeume: geaenderte.map((x) => ({ daten: x, svg: alsSvg(x, massstabFuer(x)) })),
+        gesamtSvg: alle.length > 1 ? alsSvg(alle, massstabFuer(alle)) : null,
+      });
     };
   });
 }

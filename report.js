@@ -334,7 +334,7 @@ export function toMarkdown(r, files, author, options = {}) {
         md += `![${m.planName}](${encodeURI(f.remoteName)})\n\n_${m.planName}${m.seite > 1 ? `, Seite ${m.seite}` : ''}${nr.length ? ` · Fotos: ${nr.join(', ')}` : ''}_\n\n`;
       }
     }
-    const grundrisse = files.filter((f) => f.raumAufmass);
+    const grundrisse = files.filter((f) => f.raumAufmass).sort((a, b) => (b.raumAufmass.rolle === 'gesamt') - (a.raumAufmass.rolle === 'gesamt'));
     if (grundrisse.length) {
       md += '\n## Grundrisse\n\n';
       for (const f of grundrisse) md += `![${f.name}](${encodeURI(f.remoteName)})\n\n_${(f.text || f.name).replace(/\s*\n\s*/g, ' ')}_\n\n`;
@@ -375,6 +375,12 @@ function aufmassMarkdown(r) {
     for (const x of raeume) {
       const b = raumBerechne(x);
       md += `| ${esc(x.name)} | ${raumZahl(b.hoehe)} m | ${raumZahl(b.bodenflaeche)} m² | ${raumZahl(b.deckenflaeche)} m²${b.mitSchraege ? ' (waagerecht)' : ''} | ${raumZahl(b.umfang)} m | ${raumZahl(b.wandBrutto)} m² | ${raumZahl(b.tuerFlaeche)} m² | ${raumZahl(b.fensterFlaeche)} m² | ${raumZahl(b.wandNetto)} m² |\n`;
+    }
+    // Grundrisse mit mehreren Räumen (gleiche gruppe)
+    for (const g of [...new Set(raeume.map((x) => x.gruppe).filter(Boolean))]) {
+      const liste = raeume.filter((x) => x.gruppe === g);
+      if (liste.length < 2) continue;
+      md += `\nGrundriss gesamt: ${liste.map((x) => esc(x.name)).join(', ')}; Bodenfläche zusammen ${raumZahl(liste.reduce((sum, x) => sum + raumBerechne(x).bodenflaeche, 0))} m².\n`;
     }
     for (const x of raeume) {
       const b = raumBerechne(x);
