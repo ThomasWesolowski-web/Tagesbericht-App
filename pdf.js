@@ -6,7 +6,7 @@ import {
   workedHours, maschinenStunden, formatHours, formatDate, weekday, gewerkeText,
 } from './report.js';
 import { slug } from './media.js';
-import { planElemente, massstabFuer, grenzen, berechne as raumBerechne, fmt2 as raumZahl } from './raumgeometrie.js';
+import { planElemente, gruppeElemente, massstabFuer, grenzen, berechne as raumBerechne, fmt2 as raumZahl } from './raumgeometrie.js';
 import { sortStunden, summe, kw, hatZeiten, stundenOf, typLabel, monatLabel, tage } from './stunden.js';
 
 let loading;
@@ -372,19 +372,22 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
 
   // Grundrisse aus dem Raumaufmaß: als Vektorzeichnung im üblichen Maßstab (1:20 … 1:200)
   const raeume = isAufmass ? (r.raeume || []).filter((x) => x.ecken?.length >= 3 && x.massstabGesetzt) : [];
-  for (const raum of raeume) {
-    const gr = grenzen(raum);
+  // Grundriss maßstäblich zeichnen (ein Raum oder mehrere Räume eines Grundrisses)
+  const grundrissZeichnen = (was, titel) => {
+    const liste = Array.isArray(was) ? was : [was];
+    const gr = grenzen(liste);
     const rand = 14; // Platz für Maßketten
-    const mst = massstabFuer(raum, CW - 2 * rand, 150);
+    const mst = massstabFuer(liste, CW - 2 * rand, 150);
     const s = 1000 / mst;
     const bw = (gr.x1 - gr.x0) * s;
     const bh = (gr.y1 - gr.y0) * s;
-    heading(`Grundriss ${raum.name || 'Raum'}`, bh + 2 * rand + 30);
+    heading(titel, bh + 2 * rand + 30);
     const x0 = M + (CW - bw) / 2;
     const y0 = y + rand;
     const abb = ([x, yy]) => [x0 + (x - gr.x0) * s, y0 + (yy - gr.y0) * s];
     const rgb = (hex) => [1, 3, 5].map((k) => parseInt(hex.slice(k, k + 2), 16));
-    for (const e of planElemente(raum, abb, { wand: 0.6, duenn: 0.2, schrift: 2.6, massAbstand: 7, flaeche: '#f3f5f8', schraege: '#e2e8f0' })) {
+    const opt = { wand: 0.6, duenn: 0.2, schrift: 2.6, massAbstand: 7, flaeche: '#f3f5f8', schraege: '#e2e8f0' };
+    for (const e of Array.isArray(was) ? gruppeElemente(liste, abb, opt) : planElemente(was, abb, opt)) {
       if (e.art === 'flaeche') {
         doc.setFillColor(...rgb(e.farbe));
         const rel = e.punkte.slice(1).map((q, k) => [q[0] - e.punkte[k][0], q[1] - e.punkte[k][1]]);
@@ -430,6 +433,22 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
     font('normal', 8.5); color(MUTED);
     doc.text(`1 m · Maßstab 1:${mst} (A4 ohne Anpassen drucken) · Maße in m, blau = gemessen`, M + s + 3, y + 1);
     y += 7;
+  };
+  // Mehrere Räume in einem Grundriss: zuerst der Gesamtplan
+  for (const g of [...new Set(raeume.map((x) => x.gruppe).filter(Boolean))]) {
+    const liste = raeume.filter((x) => x.gruppe === g);
+    if (liste.length < 2) continue;
+    grundrissZeichnen(liste, 'Grundriss gesamt');
+    const werte = liste.map((x) => [x, raumBerechne(x)]);
+    table(
+      [{ label: 'Raum', w: CW - 78 }, { label: 'Boden m²', w: 26, align: 'right' }, { label: 'Wand netto m²', w: 26, align: 'right' }, { label: '', w: 26 }],
+      [...werte.map(([x, b]) => [x.name || 'Raum', raumZahl(b.bodenflaeche), raumZahl(b.wandNetto), '']),
+        ['Gesamt', raumZahl(werte.reduce((sum, [, b]) => sum + b.bodenflaeche, 0)), raumZahl(werte.reduce((sum, [, b]) => sum + b.wandNetto, 0)), '']],
+      { boldLast: true },
+    );
+  }
+  for (const raum of raeume) {
+    grundrissZeichnen(raum, `Grundriss ${raum.name || 'Raum'}`);
     const b = raumBerechne(raum);
     table(
       [{ label: 'Wert', w: CW - 40 }, { label: 'Menge', w: 26, align: 'right' }, { label: '', w: 14 }],

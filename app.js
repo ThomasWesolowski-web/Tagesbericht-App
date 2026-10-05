@@ -19,9 +19,9 @@ import { openMarkup } from './markup.js';
 import { planReportId, planTauglich, istPdf, pdfSeiten, planQuelle, formenSkalieren, pinNummern } from './plaene.js';
 import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from './fotoaufmass.js';
 import { openRaumAufmass } from './raumaufmass.js';
-import { neuerRaum, alsPositionen as raumPositionen, raumKurz } from './raumgeometrie.js';
+import { neuerRaum, alsPositionen as raumPositionen, raumKurz, alsSvg as raumSvg, massstabFuer, berechne as raumBerechne, geschlossen as raumZu } from './raumgeometrie.js';
 
-const APP_VERSION = '1.44.0';
+const APP_VERSION = '1.45.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -1150,46 +1150,85 @@ async function renderEditor(id) {
     report.positionen = liste.length ? liste : [newPosition(1)];
   };
   const raDateien = async (id) => (await db.filesFor(report.id)).filter((f) => f.raumAufmass?.id === id && !pendingRemovals.has(f.id));
+  const raDateiSpeichern = async (id, rolle, svg, name, text) => {
+    const blob = new Blob([svg], { type: 'image/svg+xml' });
+    const fid = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+    pendingAdds.add(fid);
+    await db.putFile({ id: fid, reportId: report.id, name, type: 'image/svg+xml', size: blob.size, blob, addedAt: Date.now(), raumAufmass: { id, rolle }, text });
+  };
+  // Räume eines gemeinsamen Grundrisses (gleiche gruppe), nur fertige
+  const raGruppe = (gruppe) => (gruppe ? report.raeume.filter((x) => x.gruppe === gruppe && raumZu(x) && x.massstabGesetzt) : []);
+  // Datei „Grundriss gesamt“ neu erzeugen (ab zwei Räumen) oder entfernen
+  const raGesamt = async (gruppe, svg) => {
+    if (!gruppe) return;
+    for (const f of await raDateien(gruppe)) await faDateiWeg(f);
+    const liste = raGruppe(gruppe);
+    if (liste.length < 2) return;
+    await raDateiSpeichern(gruppe, 'gesamt', svg || raumSvg(liste, massstabFuer(liste)), 'grundriss-gesamt.svg', `Grundriss gesamt: ${liste.map((x) => x.name).join(', ')}`);
+  };
   const raOeffnen = async (vorlage) => {
     let erg;
+    const nachbarn = vorlage.gruppe ? report.raeume.filter((x) => x.gruppe === vorlage.gruppe && x.id !== vorlage.id) : [];
     try {
-      erg = await openRaumAufmass(vorlage);
+      erg = await openRaumAufmass(vorlage, { nachbarn, namen: report.raeume.filter((x) => x.id !== vorlage.id).map((x) => x.name) });
     } catch (err) {
       toast(`Das Raumaufmaß konnte nicht geöffnet werden (${err.message}).`, 5000);
       return;
     }
     if (!erg) return;
-    const raum = erg.daten;
-    for (const f of await raDateien(raum.id)) await faDateiWeg(f);
-    const blob = new Blob([erg.svg], { type: 'image/svg+xml' });
-    const fid = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
-    pendingAdds.add(fid);
-    await db.putFile({ id: fid, reportId: report.id, name: `grundriss-${slug(raum.name) || 'raum'}.svg`, type: 'image/svg+xml', size: blob.size, blob, addedAt: Date.now(), raumAufmass: { id: raum.id, rolle: 'plan' }, text: `Grundriss ${raum.name}` });
-    const i = report.raeume.findIndex((x) => x.id === raum.id);
-    if (i >= 0) report.raeume[i] = raum; else report.raeume.push(raum);
-    raPositionen(raum);
+    const liste = erg.raeume || [{ daten: erg.daten, svg: erg.svg }];
+    const gruppen = new Set([vorlage.gruppe]);
+    for (const { daten: raum, svg } of liste) {
+      for (const f of await raDateien(raum.id)) await faDateiWeg(f);
+      await raDateiSpeichern(raum.id, 'plan', svg, `grundriss-${slug(raum.name) || 'raum'}.svg`, `Grundriss ${raum.name}`);
+      const i = report.raeume.findIndex((x) => x.id === raum.id);
+      if (i >= 0) report.raeume[i] = raum; else report.raeume.push(raum);
+      raPositionen(raum);
+      gruppen.add(raum.gruppe);
+    }
+    for (const g of gruppen) await raGesamt(g);
     aufmassNeu();
     changed();
     drawRa();
-    toast('Raumaufmaß als Positionen übernommen.');
+    toast(liste.length > 1 ? `${liste.length} Räume als Positionen übernommen.` : 'Raumaufmaß als Positionen übernommen.');
   };
   const drawRa = async () => {
     const box = $('#ra-karten');
     if (!box) return;
     const files = await db.filesFor(report.id);
-    const planVon = (r) => files.find((f) => f.raumAufmass?.id === r.id && !pendingRemovals.has(f.id));
+    const planVon = (id) => files.find((f) => f.raumAufmass?.id === id && !pendingRemovals.has(f.id));
+    const gezeigt = new Set();
     box.innerHTML = report.raeume.map((r) => {
-      const plan = planVon(r);
-      return `<div class="fa-karte" data-id="${r.id}">
+      const plan = planVon(r.id);
+      // vor dem ersten Raum eines Grundrisses mit mehreren Räumen: Karte „Grundriss gesamt“
+      let gesamt = '';
+      const gr = raGruppe(r.gruppe);
+      if (gr.length > 1 && !gezeigt.has(r.gruppe)) {
+        gezeigt.add(r.gruppe);
+        const gp = planVon(r.gruppe);
+        const boden = gr.reduce((sum, x) => sum + raumBerechne(x).bodenflaeche, 0);
+        gesamt = `<div class="fa-karte ra-gesamt" data-gruppe="${esc(r.gruppe)}">
+          <button type="button" class="fa-karte-bild ra-karte-bild" aria-label="Grundriss ansehen">${gp ? `<img src="${objectUrl(gp.blob)}" alt="">` : ICON.plan}</button>
+          <div class="fa-karte-text"><b>Grundriss gesamt</b><small>${gr.length} Räume · ${formatMenge(boden)} m² Boden</small></div>
+          <button type="button" class="btn soft ra-bearbeiten" aria-label="Grundriss bearbeiten">${ICON.pencil}</button>
+        </div>`;
+      }
+      return `${gesamt}<div class="fa-karte" data-id="${r.id}">
         <button type="button" class="fa-karte-bild ra-karte-bild" aria-label="Grundriss ansehen">${plan ? `<img src="${objectUrl(plan.blob)}" alt="">` : ICON.plan}</button>
         <div class="fa-karte-text"><b>${esc(r.name)}</b><small>${esc(raumKurz(r))}</small></div>
         <button type="button" class="btn soft ra-bearbeiten" aria-label="Raum bearbeiten">${ICON.pencil}</button>
         <button type="button" class="icon-btn fa-weg ra-weg" aria-label="Raum entfernen">${ICON.trash}</button>
       </div>`;
     }).join('');
-    $$('.fa-karte', box).forEach((el) => {
+    $$('.ra-gesamt', box).forEach((el) => {
+      const gr = raGruppe(el.dataset.gruppe);
+      const gp = planVon(el.dataset.gruppe);
+      $('.ra-karte-bild', el).onclick = () => { if (gp) openFile(gp); else raOeffnen(gr[0]); };
+      $('.ra-bearbeiten', el).onclick = () => raOeffnen(gr[0]);
+    });
+    $$('.fa-karte[data-id]', box).forEach((el) => {
       const r = report.raeume.find((x) => x.id === el.dataset.id);
-      const plan = planVon(r);
+      const plan = planVon(r.id);
       $('.ra-karte-bild', el).onclick = () => { if (plan) openFile(plan); else raOeffnen(r); };
       $('.ra-bearbeiten', el).onclick = () => raOeffnen(r);
       $('.ra-weg', el).onclick = async () => {
@@ -1198,6 +1237,7 @@ async function renderEditor(id) {
         report.raeume = report.raeume.filter((x) => x !== r);
         report.positionen = report.positionen.filter((p) => p.raum !== r.id);
         if (!report.positionen.length) report.positionen.push(newPosition(1));
+        await raGesamt(r.gruppe);
         aufmassNeu();
         changed();
         drawRa();

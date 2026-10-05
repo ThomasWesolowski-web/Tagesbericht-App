@@ -26,6 +26,7 @@ export const STANDARD = {
   minWand: 14, // kürzere gezeichnete Stücke zählen nicht als Wand (Bildschirmpunkte)
   abzug: 'alle', // 'alle' = Türen und Fenster immer abziehen, 'vob' = bis 2,5 m² übermessen
   masseZeigen: true,
+  wandstaerke: 0.115, // Trennwand zwischen zwei Räumen eines Grundrisses in m
 };
 export const VOB_GRENZE = 2.5;
 export const MIN_LAENGE = 0.01; // 1 cm: kürzere Wände sind ungültig
@@ -1083,6 +1084,275 @@ export function raumKurz(raum) {
   return `${fmt2(b.bodenflaeche)} m² Boden · ${fmt2(b.umfang)} m Umfang · ${fmt2(b.wandNetto)} m² Wand${b.mitSchraege ? ` · ${fmt2(b.dachNetto)} m² Schräge` : ''}`;
 }
 
+// ---------- Mehrere Räume (gemeinsamer Grundriss) ----------
+// Räume mit derselben raum.gruppe liegen in einem gemeinsamen Meter-Koordinatensystem. Jeder Raum
+// bleibt ein eigener Raum mit Innenmaßen; zwischen zwei Räumen liegt die Trennwand (wandstaerke).
+
+export const neueGruppe = () => neueId();
+const staerkeVon = (raum, o) => Math.max(0, Number(o?.staerke ?? raum.einstellungen?.wandstaerke ?? STANDARD.wandstaerke) || 0);
+
+// Mitte zum Beschriften und Anfassen (auch bei L- und U-Form im Raum)
+export function raumMitte(raum) {
+  const p = punkteVon(raum);
+  return p.length ? innenPunkt(p, schwerpunkt(p)) : [0, 0];
+}
+
+// Ganzen Raum verschieben (Meter)
+export function verschiebeRaum(raum, [dx, dy]) {
+  const r = kopie(raum);
+  for (const e of r.ecken) { e.x = rund(e.x + dx, 1e6); e.y = rund(e.y + dy, 1e6); }
+  for (const s of r.skizze?.striche || []) for (const q of s) { q[0] += dx / (r.skizze.faktor || 1); q[1] += dy / (r.skizze.faktor || 1); }
+  return { raum: r };
+}
+
+// Kante k eines Polygons um t nach innen versetzen; die Nachbarkanten behalten ihre Richtung
+function kanteVersetzen(poly, k, t) {
+  const n = poly.length;
+  const a = poly[k];
+  const b = poly[(k + 1) % n];
+  const r = einheit(sub(b, a));
+  const inn = [-r[1], r[0]];
+  const vor = poly[(k - 1 + n) % n];
+  const nach = poly[(k + 2) % n];
+  const p0 = add(a, mul(inn, t));
+  const a2 = schnitt(p0, r, vor, sub(a, vor));
+  const b2 = schnitt(p0, r, b, sub(nach, b));
+  if (!a2 || !b2) return null;
+  // Die Nachbarkanten dürfen sich dabei nicht umdrehen
+  if (dot(sub(a2, vor), sub(a, vor)) <= 1e-9 || dot(sub(nach, b2), sub(nach, b)) <= 1e-9) return null;
+  const out = poly.map((q) => [q[0], q[1]]);
+  out[k] = a2;
+  out[(k + 1) % n] = b2;
+  return out;
+}
+
+// Raum aus einem Teil-Polygon bauen. quellen[k] = Index der Wand im alten Raum, aus der Kante k
+// stammt (-1 = neue Trennwand). behalten: IDs der alten Wände übernehmen (der Raum bleibt derselbe).
+function raumAusTeil(alt, poly, quellen, behalten, basis) {
+  const r = kopie(basis);
+  r.ecken = poly.map(([x, y]) => ({ id: neueId(), x: rund(x, 1e6), y: rund(y, 1e6) }));
+  const benutzt = new Set();
+  r.waende = poly.map((_, k) => {
+    const q = quellen[k];
+    const w = q >= 0 ? alt.waende[q] : null;
+    const id = behalten && w && !benutzt.has(w.id) ? w.id : neueId();
+    if (w) benutzt.add(w.id);
+    const neu = { id, von: r.ecken[k].id, bis: r.ecken[(k + 1) % poly.length].id, mass: w?.mass ?? null };
+    if (w?.schraege) neu.schraege = kopie(w.schraege);
+    return neu;
+  });
+  r.oeffnungen = [];
+  r.dachfenster = [];
+  return r;
+}
+
+// Öffnungen und Dachfenster des alten Raums auf die Teile verteilen: an die Kante, die aus derselben
+// alten Wand stammt und der Mitte der Öffnung am nächsten liegt
+function oeffnungenVerteilen(alt, teile) {
+  for (const feld of ['oeffnungen', 'dachfenster']) {
+    for (const o of alt[feld] || []) {
+      const q = wandIndex(alt, o.wand);
+      const m = oeffnungMitte(alt, o);
+      if (q < 0 || !m) continue;
+      let best = null;
+      for (const t of teile) {
+        t.quellen.forEach((src, k) => {
+          if (src !== q) return;
+          const g = wandGeo(t.raum, k);
+          const d = abstandZuStrecke(m, g.a, g.b).d;
+          if (!best || d < best.d - 1e-9) best = { d, t, k, g };
+        });
+      }
+      if (!best) continue;
+      const x = kopie(o);
+      x.wand = best.t.raum.waende[best.k].id;
+      const tt = dot(sub(m, best.g.a), best.g.r) - x.breite / 2;
+      x.abstand = rund(Math.max(0, Math.min(Math.max(0, best.g.l - x.breite), tt)), 1e6);
+      best.t.raum[feld].push(x);
+    }
+  }
+}
+
+// Doppelte Punkte (Kante ohne Länge) entfernen, Quelle der übrigen Kante bleibt
+function ohneDoppelte(poly, quellen) {
+  const p = [];
+  const q = [];
+  poly.forEach((x, k) => {
+    const nachher = poly[(k + 1) % poly.length];
+    if (abst(x, nachher) < 1e-6) return;
+    p.push(x);
+    q.push(quellen[k]);
+  });
+  return { poly: p, quellen: q };
+}
+
+// Raum mit einer Trennwand senkrecht zu einer Wand teilen. abstand = Mitte der Trennwand ab Anfang
+// der Wand (m). Der Raum behält den Teil am Ende der Wand, der neue Raum bekommt den anderen.
+export function teileRaum(raum, wandId, abstand, o = {}) {
+  const i = wandIndex(raum, wandId);
+  if (i < 0 || !geschlossen(raum)) return { fehler: 'Wand nicht gefunden.' };
+  const t = staerkeVon(raum, o);
+  const g = wandGeo(raum, i);
+  if (!(abstand - t / 2 >= MIN_LAENGE && abstand + t / 2 <= g.l - MIN_LAENGE)) {
+    return { fehler: `Die Trennwand muss ganz auf Wand ${wandName(i)} liegen (zwischen ${fmt2(t / 2 + MIN_LAENGE)} und ${fmt2(g.l - t / 2 - MIN_LAENGE)} m).` };
+  }
+  const P = add(g.a, mul(g.r, abstand));
+  // erste Wand, die die Trennwand von P aus nach innen trifft
+  let treffer = null;
+  raum.waende.forEach((_, j) => {
+    if (j === i) return;
+    const h = wandGeo(raum, j);
+    const nenner = kreuz(g.innen, h.r);
+    if (Math.abs(nenner) < 1e-12) return;
+    const s = kreuz(sub(h.a, P), h.r) / nenner;
+    const u = kreuz(sub(h.a, P), g.innen) / nenner;
+    if (s > 1e-6 && u >= -1e-9 && u <= h.l + 1e-9 && (!treffer || s < treffer.s)) treffer = { j, s, u };
+  });
+  if (!treffer) return { fehler: 'Die Trennwand trifft keine gegenüberliegende Wand.' };
+  const { j } = treffer;
+  const Q = add(P, mul(g.innen, treffer.s));
+  const n = raum.ecken.length;
+  const c = punkteVon(raum);
+  // Teil A: P → Ende von Wand i … Anfang von Wand j → Q; Teil B: Q → … → Anfang von Wand i → P
+  const a = { poly: [P], quellen: [i] };
+  for (let k = (i + 1) % n; ; k = (k + 1) % n) {
+    a.poly.push(c[k]);
+    a.quellen.push(k);
+    if (k === j) break;
+  }
+  a.poly.push(Q);
+  a.quellen.push(-1);
+  const b = { poly: [Q], quellen: [j] };
+  for (let k = (j + 1) % n; ; k = (k + 1) % n) {
+    b.poly.push(c[k]);
+    b.quellen.push(k);
+    if (k === i) break;
+  }
+  b.poly.push(P);
+  b.quellen.push(-1);
+  const teile = [];
+  for (const roh of [a, b]) {
+    const x = ohneDoppelte(roh.poly, roh.quellen);
+    const k = x.quellen.indexOf(-1);
+    const poly = t > 0 ? kanteVersetzen(x.poly, k, t / 2) : x.poly;
+    if (!poly) return { fehler: 'Die Trennwand liegt zu nah an einer Ecke.' };
+    const f = ungueltig({ ecken: poly.map(([px, py]) => ({ x: px, y: py })) });
+    if (f) return { fehler: `So lässt sich der Raum nicht teilen: ${f}` };
+    teile.push({ poly, quellen: x.quellen });
+  }
+  const gruppe = raum.gruppe || neueGruppe();
+  const basis = { ...kopie(raum), gruppe };
+  const nr = o.name || `${raum.name || 'Raum'} (2)`;
+  const ta = { raum: raumAusTeil(raum, teile[0].poly, teile[0].quellen, true, basis), quellen: teile[0].quellen };
+  const tb = { raum: raumAusTeil(raum, teile[1].poly, teile[1].quellen, false, { ...basis, id: neueId(), name: nr, quelle: 'teilen', skizze: { striche: [], faktor: raum.skizze?.faktor || 1 } }), quellen: teile[1].quellen };
+  oeffnungenVerteilen(raum, [ta, tb]);
+  const masseWeg = masseAufraeumen(ta.raum);
+  masseAufraeumen(tb.raum);
+  return { raum: ta.raum, neu: tb.raum, masseWeg, oeffnungenWeg: [] };
+}
+
+// Neuen rechteckigen Raum auf der anderen Seite einer Wand anbauen (mit Trennwand dazwischen).
+// breite/abstand entlang der Wand, tiefe nach außen. Die gemeinsame Wand ist Wand A des neuen Raums.
+export function raumAnbauen(raum, wandId, o = {}) {
+  const i = wandIndex(raum, wandId);
+  if (i < 0 || !geschlossen(raum)) return { fehler: 'Wand nicht gefunden.' };
+  const g = wandGeo(raum, i);
+  const t = staerkeVon(raum, o);
+  const tiefe = Number(o.tiefe ?? 3);
+  const breite = Number(o.breite ?? g.l);
+  const ab = Number(o.abstand ?? 0);
+  if (!(tiefe >= MIN_LAENGE) || !(breite >= MIN_LAENGE)) return { fehler: 'Breite und Tiefe des neuen Raums fehlen.' };
+  const aussen = mul(g.innen, -1);
+  const a = add(add(g.a, mul(g.r, ab)), mul(aussen, t));
+  const b = add(a, mul(g.r, breite));
+  const gruppe = raum.gruppe || neueGruppe();
+  const neu = raumAusEcken({ ...neuerRaum(1, raum.einstellungen), name: o.name || 'Raum', hoehe: raum.hoehe, gruppe }, [b, a, add(a, mul(aussen, tiefe)), add(b, mul(aussen, tiefe))], 'anbau');
+  for (const e of neu.ecken) { e.x = rund(e.x, 1e6); e.y = rund(e.y, 1e6); }
+  neu.massstabGesetzt = !!raum.massstabGesetzt;
+  neu.skizze = { striche: [], faktor: raum.skizze?.faktor || 1 };
+  if (o.breiteGemessen || (raum.waende[i].mass != null && Math.abs(breite - g.l) < 1e-9 && Math.abs(ab) < 1e-9)) neu.waende[0].mass = rund(wandGeo(neu, 0).l, 1e6);
+  if (o.tiefeGemessen) neu.waende[1].mass = rund(wandGeo(neu, 1).l, 1e6);
+  return { raum: { ...kopie(raum), gruppe }, neu };
+}
+
+// Raum an Nachbarräume andocken: liegt eine Wand fast parallel gegenüber einer Nachbarwand (bis fang m
+// neben dem Abstand der Trennwand), wird der Raum so verschoben, dass genau die Wandstärke dazwischen
+// liegt. Danach in der zweiten Richtung an eine weitere Wand oder bündig an eine Ecke.
+export function andocken(raum, nachbarn, o = {}) {
+  const t = staerkeVon(raum, o);
+  const fang = o.fang ?? 0.3;
+  if (!geschlossen(raum)) return { raum, an: null };
+  const kand = [];
+  raum.waende.forEach((_, i) => {
+    const g = wandGeo(raum, i);
+    const aus = mul(g.innen, -1);
+    for (const nb of nachbarn) {
+      if (!geschlossen(nb) || nb.id === raum.id) continue;
+      nb.waende.forEach((__, j) => {
+        const h = wandGeo(nb, j);
+        if (dot(g.r, h.r) > -0.9995) return; // nur gegenläufig parallele Wände
+        const u0 = dot(sub(h.a, g.a), g.r);
+        const u1 = dot(sub(h.b, g.a), g.r);
+        if (Math.min(g.l, Math.max(u0, u1)) - Math.max(0, Math.min(u0, u1)) < 0.05) return; // liegen nicht nebeneinander
+        const v = dot(sub(h.a, g.a), aus) - t;
+        if (Math.abs(v) <= fang) kand.push({ v, n: aus, g, h, nb });
+      });
+    }
+  });
+  if (!kand.length) return { raum, an: null };
+  kand.sort((x, y) => Math.abs(x.v) - Math.abs(y.v));
+  const erst = kand[0];
+  let schub = mul(erst.n, erst.v);
+  const zweit = kand.find((k) => Math.abs(dot(k.n, erst.n)) < 0.01);
+  if (zweit) schub = add(schub, mul(zweit.n, zweit.v));
+  else {
+    // bündig an eine Ecke der Nachbarwand
+    const { g, h } = erst;
+    const versatz = [dot(sub(h.b, g.a), g.r), dot(sub(h.a, g.b), g.r), dot(sub(h.a, g.a), g.r), dot(sub(h.b, g.b), g.r)]
+      .filter((x) => Math.abs(x) <= fang).sort((x, y) => Math.abs(x) - Math.abs(y));
+    if (versatz.length) schub = add(schub, mul(g.r, versatz[0]));
+  }
+  return { raum: verschiebeRaum(raum, schub).raum, an: erst.nb.name || 'Raum', schub };
+}
+
+// Überschneiden sich zwei Räume? (Berühren an einer Wand zählt nicht)
+export function ueberschneiden(r1, r2) {
+  if (!geschlossen(r1) || !geschlossen(r2)) return false;
+  const p = punkteVon(r1);
+  const q = punkteVon(r2);
+  const e = 1e-6;
+  const o = (x, y, z) => kreuz(sub(y, x), sub(z, x));
+  for (let i = 0; i < p.length; i++) {
+    const a = p[i];
+    const b = p[(i + 1) % p.length];
+    for (let j = 0; j < q.length; j++) {
+      const c = q[j];
+      const d = q[(j + 1) % q.length];
+      if (((o(c, d, a) > e && o(c, d, b) < -e) || (o(c, d, a) < -e && o(c, d, b) > e))
+        && ((o(a, b, c) > e && o(a, b, d) < -e) || (o(a, b, c) < -e && o(a, b, d) > e))) return true;
+    }
+  }
+  const tiefInnen = (x, poly) => punktInnen(x, poly) && poly.every((a, k) => abstandZuStrecke(x, a, poly[(k + 1) % poly.length]).d > 1e-4);
+  return p.some((x) => tiefInnen(x, q)) || q.some((x) => tiefInnen(x, p)) || tiefInnen(raumMitte(r1), q) || tiefInnen(raumMitte(r2), p);
+}
+
+// Warnungen für den ganzen Grundriss
+export function pruefeGruppe(raeume) {
+  const warnungen = [];
+  for (let i = 0; i < raeume.length; i++) {
+    for (let j = i + 1; j < raeume.length; j++) {
+      if (ueberschneiden(raeume[i], raeume[j])) warnungen.push(`${raeume[i].name || 'Raum'} und ${raeume[j].name || 'Raum'} überschneiden sich.`);
+    }
+  }
+  return warnungen;
+}
+
+// Nächster freier Name „Raum n“
+export function naechsterName(namen) {
+  const nr = Math.max(0, ...namen.map((x) => (/^Raum (\d+)$/.exec(String(x)) || [])[1] || 0).map(Number), namen.length) + 1;
+  return `Raum ${nr}`;
+}
+
 // ---------- Prüfung vor dem Speichern ----------
 
 export function pruefe(raum) {
@@ -1346,7 +1616,26 @@ export function planElemente(raum, abb, o = {}) {
   }
   // Maßketten außen an jeder Wand; Wände an einspringenden Ecken (Nische, L-Form) bekommen ihr
   // Maß innen, sonst kreuzen sich die Maßlinien in der Ecke
-  if (g.masse) {
+  if (g.masse === 'innen') {
+    // Gesamtgrundriss: Maß nur als Zahl innen an der Wand, im längsten Stück ohne Öffnung
+    for (let i = 0; i < wn; i++) {
+      const ge = wandGeo(raum, i);
+      if (ge.l < 1e-6) continue;
+      const w = raum.waende[i];
+      const luecken = raum.oeffnungen.filter((x) => x.wand === w.id).map((x) => [x.abstand, x.abstand + x.breite]).sort((a, b) => a[0] - b[0]);
+      let frei = null;
+      let t = 0;
+      for (const [von, bis] of [...luecken, [ge.l, ge.l]]) {
+        if (!frei || von - t > frei[1] - frei[0]) frei = [t, Math.max(t, von)];
+        t = Math.max(t, bis);
+      }
+      const m = add(ge.a, mul(ge.r, (frei[0] + frei[1]) / 2));
+      const a = abb(m);
+      const nIn = einheit(sub(abb(add(m, ge.innen)), a));
+      const fest = w?.mass != null;
+      els.push({ art: 'text', p: add(a, mul(nIn, g.schrift * 0.8)), text: `${g.namen ? `${wandName(i)}: ` : ''}${g.ungefaehr ? '≈ ' : ''}${fmt2(ge.l)}`, groesse: g.schrift * 0.85, winkel: lesbar(sub(abb(ge.b), abb(ge.a))), fett: fest, farbe: fest ? g.fest : g.mass, anker: 'mitte', wand: w?.id });
+    }
+  } else if (g.masse) {
     const einspringend = p.map((q, i) => zu && kreuz(sub(q, p[(i - 1 + n) % n]), sub(p[(i + 1) % n], q)) < -1e-9);
     for (let i = 0; i < wn; i++) {
       const a = P[i];
@@ -1480,14 +1769,15 @@ export function elementeAlsSvg(els) {
 
 // Rahmen aller Ecken in Metern
 export function grenzen(raum) {
-  const p = punkteVon(raum);
+  const p = Array.isArray(raum) ? raum.flatMap(punkteVon) : punkteVon(raum);
   if (!p.length) return null;
   const xs = p.map((q) => q[0]);
   const ys = p.map((q) => q[1]);
   return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
 }
 
-// Größter üblicher Maßstab, bei dem der Raum auf eine A4-Seite (ca. 170 × 150 mm) passt
+// Größter üblicher Maßstab, bei dem der Raum (oder eine Liste von Räumen) auf eine A4-Seite
+// (ca. 170 × 150 mm) passt
 export function massstabFuer(raum, breiteMm = 170, hoeheMm = 150) {
   const g = grenzen(raum);
   if (!g) return 50;
@@ -1497,27 +1787,40 @@ export function massstabFuer(raum, breiteMm = 170, hoeheMm = 150) {
   return 1000;
 }
 
-// Maßstäbliches SVG (Einheit mm auf dem Papier), z. B. 1:50
+// Zeichen-Elemente für mehrere Räume eines Grundrisses (Maße innen an den Wänden)
+export function gruppeElemente(raeume, abb, o = {}) {
+  return raeume.flatMap((r) => planElemente(r, abb, { namen: false, ...o, masse: o.masse === false ? false : 'innen' }));
+}
+
+// Maßstäbliches SVG (Einheit mm auf dem Papier), z. B. 1:50. Mit einer Liste von Räumen: Grundriss gesamt.
 export function alsSvg(raum, massstab = 50) {
-  const gr = grenzen(raum);
+  const liste = Array.isArray(raum) ? raum : [raum];
+  const gr = grenzen(liste);
   const s = 1000 / massstab; // mm Papier je m
   const rand = 18;
   const w = (gr.x1 - gr.x0) * s + 2 * rand;
   const h = (gr.y1 - gr.y0) * s + 2 * rand + 12;
   const abb = ([x, y]) => [rand + (x - gr.x0) * s, rand + (y - gr.y0) * s];
-  const els = planElemente(raum, abb, { wand: 0.6, duenn: 0.18, schrift: 2.6, massAbstand: 6 });
+  const o = { wand: 0.6, duenn: 0.18, schrift: 2.6, massAbstand: 6 };
+  const els = liste.length > 1 ? gruppeElemente(liste, abb, o) : planElemente(liste[0], abb, o);
+  const titel = liste.length > 1 ? `Grundriss gesamt (${liste.map((r) => r.name || 'Raum').join(', ')})` : (liste[0].name || 'Raum');
   const r = (n) => Math.round(n * 100) / 100;
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${r(w)}mm" height="${r(h)}mm" viewBox="0 0 ${r(w)} ${r(h)}">
 <rect width="100%" height="100%" fill="#fff"/>
 ${elementeAlsSvg(els)}
-<text x="${rand}" y="${r(h - 5)}" font-size="2.6" font-family="Helvetica, Arial, sans-serif" fill="#3a4450">${escX(raum.name || 'Raum')} · Maßstab 1:${massstab} · Maße in m</text>
+<text x="${rand}" y="${r(h - 5)}" font-size="2.6" font-family="Helvetica, Arial, sans-serif" fill="#3a4450">${escX(titel)} · Maßstab 1:${massstab} · Maße in m</text>
 </svg>`;
 }
 
-// DXF (AutoCAD R12, Einheit mm, y nach oben) für CAD-Programme
+// DXF (AutoCAD R12, Einheit mm, y nach oben) für CAD-Programme; auch für eine Liste von Räumen
 export function alsDxf(raum) {
   const z = [];
+  for (const r of Array.isArray(raum) ? raum : [raum]) dxfRaum(r, z);
+  return ['0', 'SECTION', '2', 'ENTITIES', ...z.map(String), '0', 'ENDSEC', '0', 'EOF', ''].join('\n');
+}
+
+function dxfRaum(raum, z) {
   const pt = ([x, y], c = 10) => [c, (x * 1000).toFixed(1), c + 10, (-y * 1000).toFixed(1), c + 20, '0.0'];
   const linie = (a, b, layer) => z.push(0, 'LINE', 8, layer, ...pt(a, 10), ...pt(b, 11));
   const text = (p, t, hoehe, layer) => z.push(0, 'TEXT', 8, layer, ...pt(p, 10), 40, hoehe.toFixed(1), 1, t.replace(/[^\x20-\x7e]/g, (c) => ({ ä: 'ae', ö: 'oe', ü: 'ue', Ä: 'Ae', Ö: 'Oe', Ü: 'Ue', ß: 'ss', '²': '2', '×': 'x' }[c] || '?')));
@@ -1573,6 +1876,5 @@ export function alsDxf(raum) {
     const c = innenPunkt(punkteVon(raum), schwerpunkt(punkteVon(raum)));
     text(c, `${raum.name || 'Raum'} ${fmt2(b.bodenflaeche)} m2`, 150, 'TEXT');
   }
-  return ['0', 'SECTION', '2', 'ENTITIES', ...z.map(String), '0', 'ENDSEC', '0', 'EOF', ''].join('\n');
 }
 
