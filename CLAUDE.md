@@ -22,6 +22,8 @@ Veröffentlicht über GitHub Pages aus `main` (Root): https://thomaswesolowski-w
 | `media.js` | Fotos verkleinern (1600 px), Anhänge vorbereiten |
 | `markup.js` | Fotos markieren |
 | `fotoaufmass.js` | Foto-Aufmaß (Rahmen/Homografie, Formen, VOB/C-Abzüge, Laibungen) |
+| `raumgeometrie.js` | Raumaufmaß: Erkennung, Maße, Flächen, SVG/DXF (ohne Oberfläche, mit Node testbar) |
+| `raumaufmass.js` | Raumaufmaß-Editor (Grundriss zeichnen) |
 | `i18n.js` | Oberflächen-Sprachen DE/PL/RO/MK/SQ |
 | `translate.js` | Freitexte beim Hochladen ins Deutsche übersetzen (MyMemory) |
 | `handbuch.js`, `handbuch.md` | Handbuch in der App (Kopie des Claude Docs) |
@@ -51,4 +53,6 @@ Veröffentlicht über GitHub Pages aus `main` (Root): https://thomaswesolowski-w
 ```sh
 for f in *.js; do node --check "$f"; done   # Syntax
 python3 -m http.server 8000                 # dann http://localhost:8000 im Browser
+node --test tests/*.test.mjs                # Raumaufmaß-Rechnung
+node tests/raumaufmass.e2e.mjs              # Raumaufmaß im Browser (Server auf 8000 muss laufen)
 ```

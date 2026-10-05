@@ -18,8 +18,10 @@ import { startI18n, SPRACHEN } from './i18n.js';
 import { openMarkup } from './markup.js';
 import { planReportId, planTauglich, istPdf, pdfSeiten, planQuelle, formenSkalieren, pinNummern } from './plaene.js';
 import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from './fotoaufmass.js';
+import { openRaumAufmass } from './raumaufmass.js';
+import { neuerRaum, alsPositionen as raumPositionen, raumKurz } from './raumgeometrie.js';
 
-const APP_VERSION = '1.42.0';
+const APP_VERSION = '1.43.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -462,6 +464,9 @@ async function renderEditor(id) {
         <label class="btn ghost block fa-start">${ICON.camera} Foto-Aufmaß
           <input class="file-input" type="file" accept="image/*" id="fa-foto"></label>
         <p class="hint">Foto-Aufmaß: zwei bekannte Maße im Foto markieren, dann Flächen, Öffnungen und Strecken antippen. Die Maße sind nur ungefähr.</p>
+        <div id="ra-karten" class="ra-karten"></div>
+        <button type="button" class="btn ghost block fa-start" id="ra-neu">${ICON.plan} Raum zeichnen</button>
+        <p class="hint">Raumaufmaß: Raum grob skizzieren, eine Wand messen, Türen und Fenster setzen. Boden, Decke, Wände und Umfang kommen als Positionen ins Aufmaß.</p>
         <div id="am-summen" class="crew-sum"></div>
       </section>
 
@@ -905,7 +910,7 @@ async function renderEditor(id) {
   });
 
   const drawThumbs = async () => {
-    const files = (await db.filesFor(report.id)).filter((f) => !pendingRemovals.has(f.id) && !f.fotoAufmass && !f.planMarkierung);
+    const files = (await db.filesFor(report.id)).filter((f) => !pendingRemovals.has(f.id) && !f.fotoAufmass && !f.planMarkierung && !f.raumAufmass);
     $('#file-sum').textContent = files.length ? `${files.length} · ${formatBytes(files.reduce((s, f) => s + f.size, 0))}` : '';
     const bildtext = (f) => (pendingTexte.has(f.id) ? pendingTexte.get(f.id) : f.text || '');
     $('#thumbs').innerHTML = files.map((f) => {
@@ -1126,6 +1131,88 @@ async function renderEditor(id) {
     drawFa();
   }
 
+  // Raumaufmaß: der Grundriss steht als Geometrie in report.raeume, der maßstäbliche Grundriss als
+  // SVG-Datei daneben. Übernommene Positionen tragen raum = id.
+  const raPositionen = (raum) => {
+    const neu = raumPositionen(raum).map(normPosition);
+    const alte = report.positionen.filter((p) => p.raum === raum.id);
+    const nummern = alte.map((p) => p.pos);
+    let max = Math.max(0, ...report.positionen.filter((p) => p.raum !== raum.id && !positionLeer(p)).map((p) => parseInt(p.pos, 10) || 0));
+    for (const p of neu) p.pos = nummern.length ? nummern.shift() : String(++max);
+    const liste = [];
+    let eingefuegt = false;
+    for (const p of report.positionen) {
+      if (p.raum === raum.id) {
+        if (!eingefuegt) { liste.push(...neu); eingefuegt = true; }
+      } else if (!positionLeer(p)) liste.push(p);
+    }
+    if (!eingefuegt) liste.push(...neu);
+    report.positionen = liste.length ? liste : [newPosition(1)];
+  };
+  const raDateien = async (id) => (await db.filesFor(report.id)).filter((f) => f.raumAufmass?.id === id && !pendingRemovals.has(f.id));
+  const raOeffnen = async (vorlage) => {
+    let erg;
+    try {
+      erg = await openRaumAufmass(vorlage);
+    } catch (err) {
+      toast(`Das Raumaufmaß konnte nicht geöffnet werden (${err.message}).`, 5000);
+      return;
+    }
+    if (!erg) return;
+    const raum = erg.daten;
+    for (const f of await raDateien(raum.id)) await faDateiWeg(f);
+    const blob = new Blob([erg.svg], { type: 'image/svg+xml' });
+    const fid = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+    pendingAdds.add(fid);
+    await db.putFile({ id: fid, reportId: report.id, name: `grundriss-${slug(raum.name) || 'raum'}.svg`, type: 'image/svg+xml', size: blob.size, blob, addedAt: Date.now(), raumAufmass: { id: raum.id, rolle: 'plan' }, text: `Grundriss ${raum.name}` });
+    const i = report.raeume.findIndex((x) => x.id === raum.id);
+    if (i >= 0) report.raeume[i] = raum; else report.raeume.push(raum);
+    raPositionen(raum);
+    aufmassNeu();
+    changed();
+    drawRa();
+    toast('Raumaufmaß als Positionen übernommen.');
+  };
+  const drawRa = async () => {
+    const box = $('#ra-karten');
+    if (!box) return;
+    const files = await db.filesFor(report.id);
+    const planVon = (r) => files.find((f) => f.raumAufmass?.id === r.id && !pendingRemovals.has(f.id));
+    box.innerHTML = report.raeume.map((r) => {
+      const plan = planVon(r);
+      return `<div class="fa-karte" data-id="${r.id}">
+        <button type="button" class="fa-karte-bild ra-karte-bild" aria-label="Grundriss ansehen">${plan ? `<img src="${objectUrl(plan.blob)}" alt="">` : ICON.plan}</button>
+        <div class="fa-karte-text"><b>${esc(r.name)}</b><small>${esc(raumKurz(r))}</small></div>
+        <button type="button" class="btn soft ra-bearbeiten" aria-label="Raum bearbeiten">${ICON.pencil}</button>
+        <button type="button" class="icon-btn fa-weg ra-weg" aria-label="Raum entfernen">${ICON.trash}</button>
+      </div>`;
+    }).join('');
+    $$('.fa-karte', box).forEach((el) => {
+      const r = report.raeume.find((x) => x.id === el.dataset.id);
+      const plan = planVon(r);
+      $('.ra-karte-bild', el).onclick = () => { if (plan) openFile(plan); else raOeffnen(r); };
+      $('.ra-bearbeiten', el).onclick = () => raOeffnen(r);
+      $('.ra-weg', el).onclick = async () => {
+        if (!confirm(`„${r.name}“ und die daraus übernommenen Positionen entfernen?`)) return;
+        for (const f of await raDateien(r.id)) await faDateiWeg(f);
+        report.raeume = report.raeume.filter((x) => x !== r);
+        report.positionen = report.positionen.filter((p) => p.raum !== r.id);
+        if (!report.positionen.length) report.positionen.push(newPosition(1));
+        aufmassNeu();
+        changed();
+        drawRa();
+      };
+    });
+  };
+  if (report.art === 'aufmass') {
+    report.raeume = report.raeume || [];
+    $('#ra-neu').onclick = () => {
+      const nr = Math.max(0, ...report.raeume.map((x) => parseInt(String(x.name).replace(/\D+/g, ''), 10) || 0), report.raeume.length) + 1;
+      raOeffnen(neuerRaum(nr));
+    };
+    drawRa();
+  }
+
   function updateState() {
     const el = $('#sync-state');
     if (!el) return;
@@ -1165,7 +1252,7 @@ async function renderEditor(id) {
   const planDateien = async () => (await db.filesFor(report.id)).filter((f) => f.planMarkierung && !pendingRemovals.has(f.id));
   // Fotos bekommen eine feste Nummer, sobald sie einem Plan zugeordnet werden können
   const fotosNummerieren = async () => {
-    const fotos = (await db.filesFor(report.id)).filter((f) => f.type.startsWith('image/') && !f.fotoAufmass && !f.planMarkierung && !pendingRemovals.has(f.id));
+    const fotos = (await db.filesFor(report.id)).filter((f) => f.type.startsWith('image/') && !f.fotoAufmass && !f.planMarkierung && !f.raumAufmass && !pendingRemovals.has(f.id));
     let max = Math.max(0, ...fotos.map((f) => f.fotoNr || 0));
     let neu = false;
     for (const f of fotos) {

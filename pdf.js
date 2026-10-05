@@ -6,6 +6,7 @@ import {
   workedHours, maschinenStunden, formatHours, formatDate, weekday, gewerkeText,
 } from './report.js';
 import { slug } from './media.js';
+import { planElemente, massstabFuer, grenzen, berechne as raumBerechne, fmt2 as raumZahl } from './raumgeometrie.js';
 import { sortStunden, summe, kw, hatZeiten, stundenOf, typLabel, monatLabel, tage } from './stunden.js';
 
 let loading;
@@ -369,6 +370,83 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
     );
   }
 
+  // Grundrisse aus dem Raumaufmaß: als Vektorzeichnung im üblichen Maßstab (1:20 … 1:200)
+  const raeume = isAufmass ? (r.raeume || []).filter((x) => x.ecken?.length >= 3 && x.massstabGesetzt) : [];
+  for (const raum of raeume) {
+    const gr = grenzen(raum);
+    const rand = 14; // Platz für Maßketten
+    const mst = massstabFuer(raum, CW - 2 * rand, 150);
+    const s = 1000 / mst;
+    const bw = (gr.x1 - gr.x0) * s;
+    const bh = (gr.y1 - gr.y0) * s;
+    heading(`Grundriss ${raum.name || 'Raum'}`, bh + 2 * rand + 30);
+    const x0 = M + (CW - bw) / 2;
+    const y0 = y + rand;
+    const abb = ([x, yy]) => [x0 + (x - gr.x0) * s, y0 + (yy - gr.y0) * s];
+    const rgb = (hex) => [1, 3, 5].map((k) => parseInt(hex.slice(k, k + 2), 16));
+    for (const e of planElemente(raum, abb, { wand: 0.6, duenn: 0.2, schrift: 2.6, massAbstand: 7 })) {
+      if (e.art === 'flaeche') {
+        doc.setFillColor(...rgb('#f3f5f8'));
+        const rel = e.punkte.slice(1).map((q, k) => [q[0] - e.punkte[k][0], q[1] - e.punkte[k][1]]);
+        doc.lines(rel, e.punkte[0][0], e.punkte[0][1], [1, 1], 'F', true);
+      } else if (e.art === 'linie' || e.art === 'bogen') {
+        doc.setDrawColor(...rgb(e.farbe));
+        doc.setLineWidth(e.breite);
+        doc.setLineDashPattern(e.gestrichelt ? [0.8, 0.6] : [], 0);
+        if (e.art === 'linie') doc.line(e.a[0], e.a[1], e.b[0], e.b[1]);
+        else {
+          let d = e.bis - e.von;
+          while (d <= -Math.PI) d += 2 * Math.PI;
+          while (d > Math.PI) d -= 2 * Math.PI;
+          const n = 24;
+          for (let k = 0; k < n; k++) {
+            const w1 = e.von + (d * k) / n;
+            const w2 = e.von + (d * (k + 1)) / n;
+            doc.line(e.m[0] + e.r * Math.cos(w1), e.m[1] + e.r * Math.sin(w1), e.m[0] + e.r * Math.cos(w2), e.m[1] + e.r * Math.sin(w2));
+          }
+        }
+      } else if (e.art === 'text') {
+        font(e.fett ? 'bold' : 'normal', e.groesse * 2.835);
+        doc.setTextColor(...rgb(e.farbe));
+        const w = doc.getTextWidth(e.text);
+        const a = ((e.winkel || 0) * Math.PI) / 180;
+        // Mitte des Textes auf den Punkt legen (jsPDF dreht gegen den Uhrzeigersinn)
+        const hoch = e.groesse * 0.35;
+        const sx = e.p[0] - Math.cos(a) * (w / 2) - Math.sin(a) * hoch;
+        const sy = e.p[1] - Math.sin(a) * (w / 2) + Math.cos(a) * hoch;
+        doc.text(e.text, sx, sy, { angle: -(e.winkel || 0) });
+      }
+    }
+    doc.setLineDashPattern([], 0);
+    doc.setLineWidth(0.2);
+    y = y0 + bh + rand + 2;
+    // Maßstabsleiste 1 m zum Nachprüfen
+    doc.setDrawColor(...INK);
+    doc.setLineWidth(0.4);
+    doc.line(M, y, M + s, y);
+    doc.line(M, y - 1.2, M, y + 1.2);
+    doc.line(M + s, y - 1.2, M + s, y + 1.2);
+    doc.setLineWidth(0.2);
+    font('normal', 8.5); color(MUTED);
+    doc.text(`1 m · Maßstab 1:${mst} (A4 ohne Anpassen drucken) · Maße in m, blau = gemessen`, M + s + 3, y + 1);
+    y += 7;
+    const b = raumBerechne(raum);
+    table(
+      [{ label: 'Wert', w: CW - 40 }, { label: 'Menge', w: 26, align: 'right' }, { label: '', w: 14 }],
+      [
+        ['Raumhöhe', raumZahl(b.hoehe), 'm'],
+        ['Bodenfläche', raumZahl(b.bodenflaeche), 'm²'],
+        ['Deckenfläche', raumZahl(b.deckenflaeche), 'm²'],
+        ['Wandumfang', raumZahl(b.umfang), 'lfm'],
+        ['Wandfläche brutto (Umfang × Höhe)', raumZahl(b.wandBrutto), 'm²'],
+        ['Türflächen', raumZahl(b.tuerFlaeche), 'm²'],
+        ['Fensterflächen', raumZahl(b.fensterFlaeche), 'm²'],
+        [`Wandfläche netto${raum.einstellungen?.abzug === 'vob' ? ' (Öffnungen bis 2,5 m² übermessen)' : ''}`, raumZahl(b.wandNetto), 'm²'],
+      ],
+      { boldLast: true },
+    );
+  }
+
   // Personal
   const crew = sortCrew([...crewOf(r)]);
   if (crew.length) {
@@ -492,7 +570,7 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
   }
 
   // Fotos: zwei pro Zeile
-  const images = files.filter((f) => f.type?.startsWith('image/') && f.fotoAufmass?.rolle !== 'original' && !f.planMarkierung);
+  const images = files.filter((f) => f.type?.startsWith('image/') && f.fotoAufmass?.rolle !== 'original' && !f.planMarkierung && !f.raumAufmass);
   const others = files.filter((f) => !f.type?.startsWith('image/'));
   if (images.length) {
     const gap = 6;

@@ -33,6 +33,11 @@ In diesem Repo liegt nur der App-Code. Es enthält keine Berichte und keine Zuga
   oder bekannte Länge und Höhe im Foto markieren, daraus den Maßstab
   berechnen, Flächen, Öffnungen und Strecken antippen; Öffnungen nach VOB/C übermessen oder abziehen,
   Laibungen gesondert. Läuft komplett im Browser, Maße sind nur ungefähr (`fotoaufmass.js`)
+- Raumaufmaß im Reiter Aufmaß: Raum frei skizzieren (Finger, Stift, Maus), daraus gerade Wände
+  (Douglas-Peucker, Ecken, Ausrichten 0/90/45°, Schließen); Maßstab über ein echtes Maß, weitere Maße
+  mit Ausgleich und Widerspruchsprüfung; Wände/Ecken bearbeiten, Türen und Fenster, Raumhöhe;
+  Boden, Decke, Wand netto und Umfang als Positionen, Grundriss maßstäblich im PDF, Export SVG/DXF
+  (`raumgeometrie.js` rechnet, `raumaufmass.js` ist der Editor; Tests in `tests/`)
 
 ## Einrichten
 

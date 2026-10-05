@@ -1,5 +1,7 @@
 // Datenmodell eines Tagesberichts und die Markdown-Fassung fürs Repo.
 
+import { raumJson, berechne as raumBerechne, fmt2 as raumZahl } from './raumgeometrie.js';
+
 export const WETTER = [
   { id: 'sonnig', label: 'Sonnig', icon: '☀️' },
   { id: 'bewoelkt', label: 'Bewölkt', icon: '⛅' },
@@ -332,7 +334,12 @@ export function toMarkdown(r, files, author, options = {}) {
         md += `![${m.planName}](${encodeURI(f.remoteName)})\n\n_${m.planName}${m.seite > 1 ? `, Seite ${m.seite}` : ''}${nr.length ? ` · Fotos: ${nr.join(', ')}` : ''}_\n\n`;
       }
     }
-    const rest = files.filter((f) => !f.planMarkierung);
+    const grundrisse = files.filter((f) => f.raumAufmass);
+    if (grundrisse.length) {
+      md += '\n## Grundrisse\n\n';
+      for (const f of grundrisse) md += `![${f.name}](${encodeURI(f.remoteName)})\n\n_${(f.text || f.name).replace(/\s*\n\s*/g, ' ')}_\n\n`;
+    }
+    const rest = files.filter((f) => !f.planMarkierung && !f.raumAufmass);
     if (rest.length) md += '\n## Fotos und Dokumente\n\n';
     for (const f of rest) {
       const link = encodeURI(f.remoteName);
@@ -362,6 +369,14 @@ function aufmassMarkdown(r) {
     });
   }
   for (const s of aufmassSummen(r)) md += `| | **Summe ${s.label}** | | | | | | | **${formatMenge(s.menge)} ${s.label}** |\n`;
+  const raeume = (r.raeume || []).filter((x) => x.ecken?.length >= 3);
+  if (raeume.length) {
+    md += '\n### Räume (aus dem Grundriss berechnet)\n\n| Raum | Höhe | Boden | Decke | Umfang | Wand brutto | Türen | Fenster | Wand netto |\n|---|---|---|---|---|---|---|---|---|\n';
+    for (const x of raeume) {
+      const b = raumBerechne(x);
+      md += `| ${esc(x.name)} | ${raumZahl(b.hoehe)} m | ${raumZahl(b.bodenflaeche)} m² | ${raumZahl(b.deckenflaeche)} m² | ${raumZahl(b.umfang)} m | ${raumZahl(b.wandBrutto)} m² | ${raumZahl(b.tuerFlaeche)} m² | ${raumZahl(b.fensterFlaeche)} m² | ${raumZahl(b.wandNetto)} m² |\n`;
+    }
+  }
   return md;
 }
 
@@ -373,6 +388,7 @@ export function toJson(r, files, author) {
         positionen: (positionen || []).filter((p) => !positionLeer(p)).map(normPosition)
           .map((p) => ({ ...p, einheit: p.einheit || 'm2', zeilen: p.zeilen.filter((z) => !zeileLeer(z)).map((z) => ({ ...z, menge: zeileMenge(z, p.einheit) })), ...positionSumme(p) })),
         summen: Object.fromEntries(aufmassSummen(r).map((s) => [s.label, s.menge])),
+        ...(r.raeume?.length ? { raeume: r.raeume.map(raumJson) } : {}),
       }
     : {};
   const rapport = r.art === 'rapport'
@@ -395,7 +411,7 @@ export function toJson(r, files, author) {
       ...rapport,
       ...aufmass,
       erstelltVon: author || undefined,
-      anhaenge: files.map((f) => ({ name: f.name, datei: f.remoteName, typ: f.type, groesse: f.size, ...(f.text ? { text: f.text } : {}), ...(f.textOriginal ? { textOriginal: f.textOriginal } : {}), ...(f.fotoAufmass ? { fotoAufmass: f.fotoAufmass } : {}), ...(f.fotoNr ? { fotoNr: f.fotoNr } : {}), ...(f.planMarkierung ? { planMarkierung: f.planMarkierung } : {}) })),
+      anhaenge: files.map((f) => ({ name: f.name, datei: f.remoteName, typ: f.type, groesse: f.size, ...(f.text ? { text: f.text } : {}), ...(f.textOriginal ? { textOriginal: f.textOriginal } : {}), ...(f.fotoAufmass ? { fotoAufmass: f.fotoAufmass } : {}), ...(f.fotoNr ? { fotoNr: f.fotoNr } : {}), ...(f.planMarkierung ? { planMarkierung: f.planMarkierung } : {}), ...(f.raumAufmass ? { raumAufmass: f.raumAufmass } : {}) })),
     },
     null,
     2,
