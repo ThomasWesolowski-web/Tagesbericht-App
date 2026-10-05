@@ -12,7 +12,7 @@ import {
   neueOeffnung, aendereOeffnung, loescheOeffnung, planElemente, elementeAlsSvg, richtungsText, richtungAusrichten,
   Verlauf, laengeLesen, wandName, fmt2, alsSvg, alsDxf, winkelVon, punkteVon, massstabFuer,
   schraegeWerte, setzeSchraege, SCHRAEGE_STANDARD, neuesDachfenster, aendereDachfenster, loescheDachfenster,
-  dachfensterEcken, punktInnen, teileRaum, raumAnbauen, andocken, verschiebeRaum, raumMitte, pruefeGruppe,
+  dachfensterEcken, punktInnen, raumAnbauen, andocken, verschiebeRaum, raumMitte, pruefeGruppe,
   naechsterName, neuerRaum,
 } from './raumgeometrie.js';
 
@@ -430,7 +430,6 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
         <button type="button" class="chip" data-tun="schraege">${w.schraege ? 'Dachschräge ändern' : 'Dachschräge'}</button>
         ${schraegeWerte(d, i)?.gueltig ? '<button type="button" class="chip" data-tun="dachfenster">Dachfenster einsetzen</button>' : ''}
         <button type="button" class="chip" data-tun="anbauen">Raum anbauen</button>
-        <button type="button" class="chip" data-tun="raumteilen">Raum teilen</button>
         <button type="button" class="chip ra-gefahr" data-tun="loeschen">Wand löschen</button>
       </div>
       ${w.schraege ? `<p class="fa-klein">${schraegeText(i)}</p>` : ''}`, () => {
@@ -470,10 +469,9 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
             if (uebernehme(loescheWand(d, id))) { auswahl = null; panelZu(); zeichne(); return; }
           }
           if (tun === 'schraege') await schraegeFragen(id);
-          if (tun === 'anbauen' || tun === 'raumteilen') {
-            if (!d.massstabGesetzt) { hinweis('Zuerst ein echtes Maß eingeben, dann lassen sich Räume anbauen oder teilen.'); return; }
-            if (tun === 'anbauen') { await anbauenFragen(id); return; }
-            await teilenFragen(id);
+          if (tun === 'anbauen') {
+            if (!d.massstabGesetzt) { hinweis('Zuerst ein echtes Maß eingeben, dann lassen sich Räume anbauen.'); return; }
+            await anbauenFragen(id);
             return;
           }
           if (tun === 'dachfenster') {
@@ -626,46 +624,6 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     hinweis(`${d.name} angebaut${o.tiefeGemessen ? '' : ' (Tiefe vorläufig 3,00 m)'}. Jetzt Maße eingeben oder Wände ziehen.`);
   };
 
-  const teilenFragen = async (wandId) => {
-    const i = wandIndex(d, wandId);
-    const g = wandGeo(d, i);
-    const t = d.einstellungen.wandstaerke ?? 0.115;
-    const tipp = auswahl?.t != null ? Math.round(auswahl.t * g.l * 100) / 100 : Math.round((g.l / 2) * 100) / 100;
-    const wert = await dialog(`
-      <b>Raum teilen</b>
-      <p class="fa-klein">Eine Trennwand quer zu Wand ${wandName(i)} teilt den Raum in zwei Räume. So wird aus dem Umriss von Haus oder Wohnung Raum für Raum.</p>
-      <label class="fa-feld"><span>Name des neuen Raums (ab Ecke ${i + 1})</span><input type="text" class="ra-n" value="${escH(neuerName())}"></label>
-      <div class="ra-raster2">
-        <label class="fa-feld"><span>Breite des neuen Raums in m</span><input type="text" inputmode="decimal" autocomplete="off" class="ra-breite" value="${zahlText(Math.max(0.1, tipp - t / 2), 3)}"></label>
-        <label class="fa-feld"><span>Wandstärke in cm</span><input type="text" inputmode="decimal" autocomplete="off" class="ra-t" value="${cm(t)}"></label>
-      </div>
-      <p class="fa-klein">Wand ${wandName(i)} ist ${fmt2(g.l)} m lang. Gemessen wird innen ab Ecke ${i + 1} bis zur Trennwand.</p>
-      <p class="fa-klein fa-warn ra-fehler"></p>
-      <div class="fa-panel-knoepfe"><button type="button" class="btn ghost" data-wert="">Abbrechen</button><button type="button" class="btn primary ra-ok">Teilen</button></div>`, (fertig) => {
-      const q = (k) => dialogBox.querySelector(k);
-      q('.ra-ok').onclick = () => {
-        const breite = laengeLesen(q('.ra-breite').value);
-        const st = staerkeLesen(q('.ra-t').value);
-        if (!breite || st == null) { q('.ra-fehler').textContent = 'Bitte Zahlen eingeben, z. B. 2,10.'; return; }
-        const probe = teileRaum(d, wandId, breite + st / 2, { staerke: st });
-        if (probe.fehler) { q('.ra-fehler').textContent = probe.fehler; return; }
-        fertig(JSON.stringify({ name: q('.ra-n').value.trim() || neuerName(), breite, staerke: st }));
-      };
-    });
-    if (!wert) return;
-    const o = JSON.parse(wert);
-    const erg = teileRaum(d, wandId, o.breite + o.staerke / 2, { staerke: o.staerke, name: o.name });
-    if (erg.fehler) { hinweis(erg.fehler); return; }
-    d = erg.raum;
-    staerkeMerken(o.staerke);
-    andere = [...andere, erg.neu];
-    auswahl = null;
-    panelZu();
-    merken();
-    zeichne();
-    hinweis(`Geteilt: ${d.name} und ${erg.neu.name}. Den grauen Raum antippen, um ihn zu bearbeiten.`);
-  };
-
   const weitererRaum = () => {
     if (!geschlossen(d)) { hinweis('Zuerst diesen Raum fertig zeichnen.'); return; }
     if (!d.massstabGesetzt) { hinweis('Zuerst ein echtes Maß eingeben, dann lassen sich weitere Räume zeichnen.'); return; }
@@ -686,7 +644,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
       <p class="fa-klein">Am blauen Punkt ziehen, um den ganzen Raum zu verschieben. Nah an einem anderen Raum rastet er mit der Wandstärke ein.</p>
       <label class="fa-feld"><span>Raumname</span><input type="text" data-name value="${escH(d.name)}"></label>
       <div class="fa-vorschlaege"><button type="button" class="chip" data-tun="weiter">Weiteren Raum zeichnen</button></div>
-      <p class="fa-klein">Zum Anbauen oder Teilen eine Wand antippen.</p>`, () => {
+      <p class="fa-klein">Zum Anbauen eine Wand antippen.</p>`, () => {
       panel.querySelector('[data-name]').onchange = (e) => { const r = kopie(d); r.name = e.target.value.trim() || d.name; uebernehme({ raum: r }); raumPanel(); };
       panel.querySelector('[data-tun="weiter"]').onclick = weitererRaum;
     });

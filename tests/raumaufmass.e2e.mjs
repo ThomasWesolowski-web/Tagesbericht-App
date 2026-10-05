@@ -272,7 +272,7 @@ async function ablauf(b, { touch }) {
   assert.equal(pdf3.df, 1);
   if (SHOTS) writeFileSync(`${SHOTS}/${art}-aufmass-dachschraege.pdf`, Buffer.from(pdf3.b64, 'base64'));
 
-  // Mehrere Räume: Wohnzimmer teilen (links 2,00 m als „Raum 2“), oben „Raum 3“ anbauen, Raum wechseln
+  // Mehrere Räume: oben an Wand A (6,00 m) „Raum 2“ anbauen, 3,00 m tief, dann Raum wechseln
   await p.locator('.rcard, .card, a[href^="#/bericht/"]').first().click();
   await p.waitForSelector('#ra-karten .ra-bearbeiten');
   await p.click('#ra-karten .ra-bearbeiten');
@@ -290,36 +290,28 @@ async function ablauf(b, { touch }) {
     return [b.x + b.width / 2 - r.x, b.y + b.height / 2 - r.y];
   }, inhalt);
   await tippe3(await wandPunkt(p, 'A'));
-  await p.waitForSelector('.ra-panel [data-tun="raumteilen"]');
-  await p.click('.ra-panel [data-tun="raumteilen"]');
-  await p.waitForSelector('.ra-dialog:not([hidden]) .ra-breite');
-  await p.waitForTimeout(120); // Dialog fokussiert nach 50 ms das erste Feld
-  assert.equal(await p.inputValue('.ra-dialog .ra-n'), 'Raum 2');
-  assert.equal(await p.inputValue('.ra-dialog .ra-t'), '11,5');
-  await p.fill('.ra-dialog .ra-breite', '2');
-  await shot(p, `${art}-11-teilen`);
-  await p.click('.ra-dialog .ra-ok');
-  // 21 − 2,00 × 4,00 − 0,115 × 4,00 = 12,54
-  w = await werte(p);
-  assert.match(w, /^12,54 m²/, `nach Teilen: ${w}`);
-  assert.match(await p.locator('.ra-titel').innerText(), /Wohnzimmer · 2 Räume/);
-  await shot(p, `${art}-12-geteilt`);
-  // oben anbauen, 3,00 m tief → 3,885 × 3 = 11,66 m²
-  await tippe3(await wandPunkt(p, 'A'));
   await p.waitForSelector('.ra-panel [data-tun="anbauen"]');
   await p.click('.ra-panel [data-tun="anbauen"]');
   await p.waitForSelector('.ra-dialog:not([hidden]) .ra-tiefe');
   await p.waitForTimeout(120); // Dialog fokussiert nach 50 ms das erste Feld
+  assert.equal(await p.inputValue('.ra-dialog .ra-n'), 'Raum 2');
+  assert.equal(await p.inputValue('.ra-dialog .ra-t'), '11,5');
   await p.fill('.ra-dialog .ra-tiefe', '3');
+  await shot(p, `${art}-11-anbauen`);
   await p.click('.ra-dialog .ra-ok');
   w = await werte(p);
-  assert.match(w, /^11,66 m²/, `angebaut: ${w}`);
-  assert.match(await p.locator('.ra-titel').innerText(), /Raum 3 · 3 Räume/);
+  assert.match(w, /^18,00 m²/, `angebaut: ${w}`);
+  assert.match(await p.locator('.ra-titel').innerText(), /Raum 2 · 2 Räume/);
   await shot(p, `${art}-13-angebaut`);
+  // grauen Wohnzimmer antippen → wird bearbeitet
+  await tippe3(await textPunkt('Wohnzimmer'));
+  await p.waitForFunction(() => document.querySelector('.ra-titel')?.textContent.startsWith('Wohnzimmer'));
+  assert.match(await werte(p), /^21,00 m²/);
+  // zurück zu Raum 2
   // grauen Raum 2 antippen → wird bearbeitet
   await tippe3(await textPunkt('Raum 2'));
   await p.waitForFunction(() => document.querySelector('.ra-titel')?.textContent.startsWith('Raum 2'));
-  assert.match(await werte(p), /^8,00 m²/);
+  assert.match(await werte(p), /^18,00 m²/);
   // im eigenen Raum antippen: Raum-Panel mit Schiebepunkt
   await tippe3(await textPunkt('Raum 2'));
   await p.waitForSelector('.ra-panel [data-tun="weiter"]');
@@ -330,9 +322,9 @@ async function ablauf(b, { touch }) {
   await p.waitForSelector('.ra-view', { state: 'detached' });
   await p.waitForFunction(() => document.querySelector('#ra-karten')?.innerText.includes('Grundriss gesamt'), null, { timeout: 5000 });
   const karten = await p.locator('#ra-karten').innerText();
-  assert.match(karten, /Grundriss gesamt[\s\S]*3 Räume · 32,20 m² Boden/, karten);
+  assert.match(karten, /Grundriss gesamt[\s\S]*2 Räume · 39,00 m² Boden/, karten);
   const pos3 = await p.evaluate(() => [...document.querySelectorAll('#positionen input, #positionen textarea')].map((x) => x.value).join(' | '));
-  for (const n of ['Wohnzimmer', 'Raum 2', 'Raum 3']) assert.match(pos3, new RegExp(`${n}: Bodenfläche`));
+  for (const n of ['Wohnzimmer', 'Raum 2']) assert.match(pos3, new RegExp(`${n}: Bodenfläche`));
   await shot(p, `${art}-15-karten`);
   await p.click('#save-btn');
   await p.waitForURL(/#\/aufmass$/);
@@ -347,7 +339,7 @@ async function ablauf(b, { touch }) {
     for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000));
     return { b64: btoa(s), raeume: r.raeume.length, gruppen: new Set(r.raeume.map((x) => x.gruppe)).size, dateien: files.map((f) => f.name) };
   });
-  assert.equal(pdf4.raeume, 3);
+  assert.equal(pdf4.raeume, 2);
   assert.equal(pdf4.gruppen, 1);
   assert.equal(pdf4.dateien.filter((n) => n === 'grundriss-gesamt.svg').length, 1);
   if (SHOTS) writeFileSync(`${SHOTS}/${art}-aufmass-mehrere-raeume.pdf`, Buffer.from(pdf4.b64, 'base64'));
