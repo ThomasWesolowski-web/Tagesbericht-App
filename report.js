@@ -374,7 +374,12 @@ function aufmassMarkdown(r) {
     md += '\n### Räume (aus dem Grundriss berechnet)\n\n| Raum | Höhe | Boden | Decke | Umfang | Wand brutto | Türen | Fenster | Wand netto |\n|---|---|---|---|---|---|---|---|---|\n';
     for (const x of raeume) {
       const b = raumBerechne(x);
-      md += `| ${esc(x.name)} | ${raumZahl(b.hoehe)} m | ${raumZahl(b.bodenflaeche)} m² | ${raumZahl(b.deckenflaeche)} m² | ${raumZahl(b.umfang)} m | ${raumZahl(b.wandBrutto)} m² | ${raumZahl(b.tuerFlaeche)} m² | ${raumZahl(b.fensterFlaeche)} m² | ${raumZahl(b.wandNetto)} m² |\n`;
+      md += `| ${esc(x.name)} | ${raumZahl(b.hoehe)} m | ${raumZahl(b.bodenflaeche)} m² | ${raumZahl(b.deckenflaeche)} m²${b.mitSchraege ? ' (waagerecht)' : ''} | ${raumZahl(b.umfang)} m | ${raumZahl(b.wandBrutto)} m² | ${raumZahl(b.tuerFlaeche)} m² | ${raumZahl(b.fensterFlaeche)} m² | ${raumZahl(b.wandNetto)} m² |\n`;
+    }
+    for (const x of raeume) {
+      const b = raumBerechne(x);
+      if (!b.mitSchraege) continue;
+      md += `\nDachschrägen ${esc(x.name)}: ${b.schraegen.map((e) => `Wand ${e.wandName} ${raumZahl(e.flaeche)} m² (Kniestock ${raumZahl(e.kniestock)} m, ${raumZahl(e.winkel)}°)`).join(', ')}${b.dachfenster.length ? `, abzüglich Dachfenster ${raumZahl(b.dachfensterFlaeche)} m²` : ''}; netto ${raumZahl(b.dachNetto)} m².\n`;
     }
   }
   return md;

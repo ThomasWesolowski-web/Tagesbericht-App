@@ -21,7 +21,7 @@ import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from '.
 import { openRaumAufmass } from './raumaufmass.js';
 import { neuerRaum, alsPositionen as raumPositionen, raumKurz } from './raumgeometrie.js';
 
-const APP_VERSION = '1.43.0';
+const APP_VERSION = '1.44.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];

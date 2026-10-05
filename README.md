@@ -37,6 +37,8 @@ In diesem Repo liegt nur der App-Code. Es enthält keine Berichte und keine Zuga
   (Douglas-Peucker, Ecken, Ausrichten 0/90/45°, Schließen); Maßstab über ein echtes Maß, weitere Maße
   mit Ausgleich und Widerspruchsprüfung; Wände/Ecken bearbeiten, Türen und Fenster, Raumhöhe;
   Boden, Decke, Wand netto und Umfang als Positionen, Grundriss maßstäblich im PDF, Export SVG/DXF
+  Kniestock und Dachschräge je Wand (Dachflächen als Ebenen: Satteldach, Walmdach, Giebelwände),
+  Dachfenster, Decke waagerecht und Schrägflächen als eigene Positionen
   (`raumgeometrie.js` rechnet, `raumaufmass.js` ist der Editor; Tests in `tests/`)
 
 ## Einrichten
