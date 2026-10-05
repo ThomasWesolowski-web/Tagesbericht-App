@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.42.0**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.43.0**.
 
 | Was | Wo |
 | --- | --- |
@@ -87,6 +87,16 @@ Zoom und Verschieben: Die Knöpfe + und − rechts unten vergrößern und verkle
 
 Gespeichert werden das verkleinerte Original-Foto und ein Foto mit allen Maßen; das Foto mit Maßen kommt ins PDF. Über den Stift auf der Karte lässt sich das Foto-Aufmaß später ändern, die Positionen werden dann neu übernommen. **Fotomaße sind nur ungefähr**; wichtige Maße am Bau nachmessen.
 
+**Raumaufmaß (Grundriss zeichnen):** Unter den Positionen „Raum zeichnen“ antippen. Es öffnet sich ein Raster.
+
+1. **Zeichnen:** den Raum grob mit dem Finger, Stift oder der Maus nachfahren, gern in einem Zug. Die App macht daraus gerade Wände; fast waagerechte und senkrechte Wände werden ausgerichtet, echte Schrägen bleiben schräg. Kommt das Ende nah an den Anfang, fragt die App „Raum schließen?“. Man kann auch in mehreren Zügen zeichnen: am blauen Punkt weiterzeichnen, dann „Schließen“.
+2. **Maß:** eine Wand (oder ihre Maßzahl) antippen und die echte Länge eingeben, z. B. 5,42. Das erste Maß legt den Maßstab fest, vorher stehen die Längen mit „≈“. Jedes weitere Maß ändert nur diese Wand, die nächste Wand ohne Maß gleicht aus. Passen Maße nicht zusammen, fragt die App: Maß 1 verwenden, Maß 2 verwenden, Geometrie anpassen (eine Wand ohne Maß wird schräg) oder Maße überprüfen. Gemessene Maße stehen blau. Unter „Maße“ stehen alle Wände mit Länge und Maß.
+3. **Auswahl:** Wand, Ecke, Tür oder Fenster antippen. Wände und Ecken lassen sich ziehen; eine Wand bekommt dort auch Länge, „Waagerecht“, „Senkrecht“, Winkel, „Ecke einfügen“ (so entsteht eine weitere Wand) und „Löschen“.
+4. **Tür und Fenster:** auf eine Wand tippen. Tür: Breite (76, 88,5 oder 101 cm oder frei), Höhe, Anschlag links/rechts, öffnet nach innen/außen. Fenster: Breite, Höhe, Brüstung. Standard Tür 88,5 × 201 cm, Fenster 120 × 120 cm mit 90 cm Brüstung.
+5. **Einstellungen:** Raumname, Raumhöhe (Standard 2,50 m), Raster 10/20/50 cm oder 1 m, Türen und Fenster bei der Wandfläche alle abziehen (Standard) oder bis 2,5 m² übermessen, Toleranzen fürs Ausrichten, Grundriss als SVG oder DXF (CAD) teilen. Hier stehen auch alle Werte: Boden, Decke, Umfang, Wandfläche brutto, Tür- und Fensterflächen, Wandfläche netto.
+
+Zoomen mit zwei Fingern oder dem Mausrad, Verschieben mit zwei Fingern (am Computer: mit rechter Maustaste ziehen oder in „Auswahl“ auf leerer Fläche). „Alles zeigen“ holt den ganzen Raum ins Bild. Rückgängig und Wiederholen gehen für alle Schritte. „Übernehmen“ prüft vorher den Raum (geschlossen, keine sich kreuzenden Wände, Maßstab gesetzt, Türen und Fenster passen in ihre Wand). Danach stehen Bodenfläche, Deckenfläche, Wandfläche (Umfang × Höhe minus Türen und Fenster) und Umfang als Positionen im Aufmaß, und der Grundriss kommt maßstäblich (z. B. 1:50) mit allen Werten ins PDF. Über den Stift auf der Karte lässt sich der Raum später ändern.
+
 ## Stunden, Baustellen und Personal
 
 **Stunden:** Jeder führt seinen eigenen Stundennachweis pro Monat. Ein neuer Eintrag startet mit dem heutigen Datum, Beginn 7:00 und Ende 16:00; Art, Baustelle und Art der Arbeit werden selbst gewählt. Beginn und Ende werden mit der Uhr des Handys gewählt; die Minuten werden auf 5-Minuten-Schritte gerundet. Gespeichert werden kann erst, wenn Arbeit, Urlaub, Krank, Feiertag oder Berufsschule gewählt ist; bei Arbeit zusätzlich Baustelle (auch Freitext) und Art der Arbeit, bei Arbeit und Berufsschule Beginn und Ende. Die Pause ist erst Pflicht, wenn zwischen Beginn und Ende mehr als 6 Stunden liegen; bis 6 Stunden darf sie leer bleiben und zählt als 0 Minuten. Der Monat wird als Stundennachweis-PDF geteilt und im Repo unter stunden/ gespeichert. Das PDF passt immer auf eine Seite (bei vielen Einträgen wird die Schrift kleiner) und hat keine Unterschriftszeilen und keine Fußzeile. Mitarbeiter sehen nur ihre eigenen Stunden, der Admin kann jeden Mitarbeiter auswählen. Wer auf mehreren Geräten angemeldet ist (z. B. Handy und PC), sieht und bearbeitet seine Stunden auf allen; der Admin kann die Stunden aller Mitarbeiter ändern und löschen. Ist ein Eintrag auf zwei Geräten verschieden, gilt die letzte Änderung; gelöschte Einträge kommen nicht zurück.
@@ -136,6 +146,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 05.10.2026 | 1.43.0 | Raumaufmaß: Raum frei skizzieren, die App erkennt gerade Wände; Maßstab über ein echtes Maß, Wände und Ecken bearbeiten, Türen und Fenster, Raumhöhe; Boden, Decke, Wände und Umfang als Positionen, Grundriss maßstäblich im PDF, Export SVG und DXF |
 | 05.10.2026 | 1.42.0 | Foto-Aufmaß: Ecken-Magnet (Ecken rasten an Ecken im Foto ein) und Öffnung erkennen per Antippen, beides auf dem Handy ohne Internet |
 | 04.10.2026 | 1.41.2 | Uhrzeit wieder mit der Uhr des Handys (Stunden- und Minuten-Rad); Minuten werden auf 5er-Schritte gerundet |
 | 04.10.2026 | 1.41.1 | Uhrzeit-Felder sehen wieder aus wie vorher (ein Feld), Minuten weiter in 5er-Schritten |

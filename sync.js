@@ -689,6 +689,7 @@ export async function pullReports(settings, { alle = false } = {}) {
         reportId: data.id, name: a.name || a.datei, type: a.typ || blob.type, size: blob.size, blob,
         remoteName: a.datei, uploadedPath: p, addedAt: Date.now(), text, ...(a.fotoAufmass ? { fotoAufmass: a.fotoAufmass } : {}),
         ...(a.fotoNr ? { fotoNr: a.fotoNr } : {}), ...(a.planMarkierung ? { planMarkierung: a.planMarkierung } : {}),
+        ...(a.raumAufmass ? { raumAufmass: a.raumAufmass } : {}),
       });
     }
     for (const f of files) if (!wanted.has(f.remoteName)) await db.deleteFile(f.id);
