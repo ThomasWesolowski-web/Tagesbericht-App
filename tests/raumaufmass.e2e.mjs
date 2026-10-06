@@ -292,6 +292,23 @@ async function ablauf(b, { touch }) {
   assert.match(await werte(p), /Schräge 4,81 m²/);
   await shot(p, `${art}-10-dachschraege`);
   await p.click('.ra-panel .ra-p-ok');
+  // Ansicht drehen: Wand A (oben) steht danach senkrecht, Antippen trifft weiter die richtige Wand
+  const vorDrehen = await wandPunkt(p, 'A');
+  await p.click('.ra-drehen');
+  const nachDrehen = await wandPunkt(p, 'A');
+  assert.ok(Math.abs(nachDrehen[0] - vorDrehen[0]) > 40, 'Wand A ist nach dem Drehen woanders');
+  const winkelA = await p.evaluate(() => [...document.querySelectorAll('.ra-svg text')].find((x) => x.textContent.startsWith('A: ')).getAttribute('transform') || '');
+  assert.match(winkelA, /rotate\((-?90|270)/, `Maß A steht senkrecht: ${winkelA}`);
+  await (touch ? p.touchscreen.tap(box.x + nachDrehen[0], box.y + nachDrehen[1]) : p.mouse.click(box.x + nachDrehen[0], box.y + nachDrehen[1]));
+  await p.waitForSelector('.ra-panel:not([hidden])');
+  assert.match(await p.locator('.ra-panel .fa-panel-kopf b').innerText(), /^Wand A/, 'gedreht wird die richtige Wand getroffen');
+  assert.match(await werte(p), /Schräge 4,81 m²/, 'Drehen ändert nichts an den Werten');
+  assert.match(await p.locator('.ra-panel [data-tun="winkel"]').innerText(), /Winkel 90°/, 'Winkel wie am Bildschirm');
+  await shot(p, `${art}-10b-gedreht`);
+  await p.click('.ra-panel .ra-p-ok');
+  for (let i = 0; i < 3; i++) await p.click('.ra-drehen');
+  const zurueck = await wandPunkt(p, 'A');
+  assert.ok(Math.abs(zurueck[1] - vorDrehen[1]) < 2, 'vier Mal drehen ergibt wieder die Ausgangslage');
   await p.click('.ra-fertig');
   await p.waitForSelector('.ra-view', { state: 'detached' });
   await p.waitForFunction(() => document.querySelector('#karten')?.innerText.includes('Schräge'), null, { timeout: 5000 });

@@ -32,6 +32,7 @@ const WERKZEUGE = [
   { id: 'koerper', label: 'Körper', svg: '<path d="M6 6h12v12H6z M6 6l12 12 M18 6L6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>' },
 ];
 const IC = {
+  drehen: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   rueck: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4L4 9l5 5M4 9h10a6 6 0 0 1 0 12h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   vor: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4l5 5-5 5M20 9H10a6 6 0 0 0 0 12h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   ansicht: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -65,7 +66,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
   let auswahl = null; // { art: 'wand'|'ecke'|'oeffnung', id }
   let geaendert = false;
   const verlauf = new Verlauf({ raum: d, andere, entwurf });
-  let ansicht = { s: 60, ox: 0, oy: 0 }; // Bildschirmpunkte je Meter, Verschiebung
+  let ansicht = { s: 60, ox: 0, oy: 0, w: 0 }; // Bildschirmpunkte je Meter, Verschiebung, Drehung (Bogenmaß)
   let strich = null; // Freihandstrich in Arbeit: { punkte, modus }
   let vorschau = null; // vorübergehender Raum beim Ziehen
   let meldung = '';
@@ -83,7 +84,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     <div class="mk-flaeche ra-flaeche">
       <svg class="ra-svg" xmlns="${NS}"></svg>
       <button type="button" class="ra-werte" hidden></button>
-      <div class="fa-zoomknoepfe"><button type="button" data-zoom="-" aria-label="Verkleinern">−</button><button type="button" data-zoom="+" aria-label="Vergrößern">+</button></div>
+      <div class="fa-zoomknoepfe"><button type="button" class="ra-drehen" aria-label="Ansicht drehen">${IC.drehen}</button><button type="button" data-zoom="-" aria-label="Verkleinern">−</button><button type="button" data-zoom="+" aria-label="Vergrößern">+</button></div>
       <div class="fa-panel ra-panel" hidden></div>
     </div>
     <div class="mk-leiste">
@@ -105,8 +106,21 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
   const dialogBox = $('.ra-dialog-box');
 
   // ---------- Ansicht ----------
-  const abb = ([x, y]) => [ansicht.ox + x * ansicht.s, ansicht.oy + y * ansicht.s];
-  const welt = ([sx, sy]) => [(sx - ansicht.ox) / ansicht.s, (sy - ansicht.oy) / ansicht.s];
+  // Meter → Bildschirm: drehen, skalieren, verschieben (die Daten bleiben ungedreht)
+  const dreh = ([x, y], w = ansicht.w) => [x * Math.cos(w) - y * Math.sin(w), x * Math.sin(w) + y * Math.cos(w)];
+  const abb = (p) => { const [x, y] = dreh(p); return [ansicht.ox + x * ansicht.s, ansicht.oy + y * ansicht.s]; };
+  const welt = ([sx, sy]) => dreh([(sx - ansicht.ox) / ansicht.s, (sy - ansicht.oy) / ansicht.s], -ansicht.w);
+  // Ansicht so legen, dass der Meterpunkt p am Bildschirmpunkt sp liegt
+  const festhalten = (p, [sx, sy]) => { const [x, y] = dreh(p); ansicht.ox = sx - x * ansicht.s; ansicht.oy = sy - y * ansicht.s; };
+  // um 90° drehen (Mitte bleibt stehen); fast gerade Winkel rasten ein
+  const drehenUm = (winkel, sp) => {
+    const p = welt(sp);
+    const viertel = Math.PI / 2;
+    let w = ansicht.w + winkel;
+    if (Math.abs(w / viertel - Math.round(w / viertel)) * 90 < 8) w = Math.round(w / viertel) * viertel;
+    ansicht.w = ((w % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+    festhalten(p, sp);
+  };
   const lokal = (e) => {
     const r = svg.getBoundingClientRect();
     return [e.clientX - r.left, e.clientY - r.top];
@@ -126,8 +140,9 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
       ansicht.oy = h * 0.15;
       return;
     }
-    const xs = pts.map((q) => q[0]);
-    const ys = pts.map((q) => q[1]);
+    const gedreht = pts.map((q) => dreh(q));
+    const xs = gedreht.map((q) => q[0]);
+    const ys = gedreht.map((q) => q[1]);
     const bw = Math.max(...xs) - Math.min(...xs) || 1;
     const bh = Math.max(...ys) - Math.min(...ys) || 1;
     ansicht.s = Math.min((w - 110) / bw, (h - 130) / bh);
@@ -152,16 +167,21 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     let k = 0;
     while (g * ansicht.s < 12 && k < 30) { g = (g / stufen[k % 3]) * stufen[(k + 1) % 3] * (k % 3 === 2 ? 2 : 1); k++; }
     const gross = g < 1 / einheit ? 1 / einheit : g * 5;
-    const [x0, y0] = welt([0, 0]);
-    const [x1, y1] = welt([w, h]);
+    // sichtbarer Bereich in Metern (bei gedrehter Ansicht alle vier Ecken)
+    const ecken = [[0, 0], [w, 0], [0, h], [w, h]].map(welt);
+    const x0 = Math.min(...ecken.map((q) => q[0]));
+    const x1 = Math.max(...ecken.map((q) => q[0]));
+    const y0 = Math.min(...ecken.map((q) => q[1]));
+    const y1 = Math.max(...ecken.map((q) => q[1]));
+    const strecke = (a, b) => { const [p, q] = [abb(a), abb(b)]; return `M${p[0].toFixed(1)} ${p[1].toFixed(1)}L${q[0].toFixed(1)} ${q[1].toFixed(1)}`; };
     let fein = '';
     let stark = '';
     const linien = (von, bis, schritt, fn) => {
       for (let v = Math.floor(von / schritt) * schritt; v <= bis; v += schritt) fn(v);
     };
     const istGross = (v) => Math.abs(v / gross - Math.round(v / gross)) < 1e-6;
-    linien(x0, x1, g, (x) => { const s = ansicht.ox + x * ansicht.s; (istGross(x) ? (stark += `M${s.toFixed(1)} 0V${h}`) : (fein += `M${s.toFixed(1)} 0V${h}`)); });
-    linien(y0, y1, g, (y) => { const s = ansicht.oy + y * ansicht.s; (istGross(y) ? (stark += `M0 ${s.toFixed(1)}H${w}`) : (fein += `M0 ${s.toFixed(1)}H${w}`)); });
+    linien(x0, x1, g, (x) => { const l = strecke([x, y0], [x, y1]); if (istGross(x)) stark += l; else fein += l; });
+    linien(y0, y1, g, (y) => { const l = strecke([x0, y], [x1, y]); if (istGross(y)) stark += l; else fein += l; });
     return `<path d="${fein}" stroke="#e3e7ec" stroke-width="1"/><path d="${stark}" stroke="#c9d0d8" stroke-width="1"/>`;
   };
 
@@ -441,7 +461,10 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     if (i < 0) { panelZu(); return; }
     const g = wandGeo(d, i);
     const w = d.waende[i];
-    const richtung = winkelVon(g.r);
+    // Waagerecht, senkrecht und Winkel so, wie die Wand am Bildschirm steht (auch bei gedrehter Ansicht)
+    const drehGrad = (ansicht.w * 180) / Math.PI;
+    const richtung = (winkelVon(g.r) + drehGrad) % 360;
+    const quer = Math.round(ansicht.w / (Math.PI / 2)) % 2 === 1;
     panelAuf(`
       <div class="fa-panel-kopf"><b>Wand ${wandName(i)} · ${d.massstabGesetzt ? '' : '≈ '}${fmt2(g.l)} m${w.mass != null ? ' (gemessen)' : ''}</b><button type="button" class="btn primary ra-p-ok">Fertig</button></div>
       <div class="ra-reihe"><label class="fa-feld"><span>Länge in m</span><input type="text" inputmode="decimal" class="ra-laenge" value="${w.mass != null ? zahlText(w.mass, 3) : ''}" placeholder="${zahlText(g.l)}"></label><button type="button" class="btn soft ra-laenge-ok">Setzen</button></div>
@@ -468,7 +491,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
       panel.querySelectorAll('[data-tun]').forEach((b) => {
         b.onclick = async () => {
           const tun = b.dataset.tun;
-          if (tun === 'waagerecht' || tun === 'senkrecht') uebernehme(richtenAus(d, id, tun));
+          if (tun === 'waagerecht' || tun === 'senkrecht') uebernehme(richtenAus(d, id, quer ? (tun === 'waagerecht' ? 'senkrecht' : 'waagerecht') : tun));
           if (tun === 'winkel') {
             const wert = await dialog(`<b>Winkel von Wand ${wandName(i)}</b>
               <p class="fa-klein">0° = waagerecht, 90° = senkrecht. Die Wand dreht um ihre Mitte, die Nachbarwände behalten ihre Richtung.</p>
@@ -481,7 +504,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
               // Richtung so wählen, dass die Wand ihre Laufrichtung behält
               const alt = richtung;
               const kandidat = [grad, grad + 180].map((x) => ((x % 360) + 360) % 360).reduce((a, c) => (Math.abs(((c - alt + 540) % 360) - 180) < Math.abs(((a - alt + 540) % 360) - 180) ? c : a));
-              uebernehme(setzeRichtung(d, id, kandidat));
+              uebernehme(setzeRichtung(d, id, (((kandidat - drehGrad) % 360) + 360) % 360));
             }
           }
           if (tun === 'teilen') {
@@ -1053,14 +1076,15 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
 
   // ---------- Zeiger (Finger, Stift, Maus) ----------
   const zeiger = new Map();
-  let geste = null; // Zwei-Finger-Zoom/Verschieben: { abstand, mitte, s, ox, oy }
+  let geste = null; // zwei Finger: Zoomen, Verschieben, Drehen { abstand, winkel, punkt, s, w, dreht }
   let zug = null; // Ziehen mit einem Zeiger: { art, start, … }
   let rafId = 0;
   const spaeter = () => { if (!rafId) rafId = requestAnimationFrame(() => { rafId = 0; zeichne(); }); };
 
   const gesteStart = () => {
     const [p1, p2] = [...zeiger.values()];
-    geste = { abstand: Math.hypot(p1[0] - p2[0], p1[1] - p2[1]) || 1, mitte: [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2], s: ansicht.s, ox: ansicht.ox, oy: ansicht.oy };
+    const mitte = [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2];
+    geste = { abstand: Math.hypot(p1[0] - p2[0], p1[1] - p2[1]) || 1, winkel: Math.atan2(p2[1] - p1[1], p2[0] - p1[0]), punkt: welt(mitte), s: ansicht.s, w: ansicht.w, dreht: false };
   };
 
   const strichNeu = (p) => {
@@ -1284,10 +1308,14 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
       const [p1, p2] = [...zeiger.values()];
       const ab = Math.hypot(p1[0] - p2[0], p1[1] - p2[1]) || 1;
       const m = [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2];
-      const s = Math.max(4, Math.min(4000, geste.s * (ab / geste.abstand)));
-      ansicht.s = s;
-      ansicht.ox = m[0] - (geste.mitte[0] - geste.ox) * (s / geste.s);
-      ansicht.oy = m[1] - (geste.mitte[1] - geste.oy) * (s / geste.s);
+      ansicht.s = Math.max(4, Math.min(4000, geste.s * (ab / geste.abstand)));
+      // Drehen mit zwei Fingern erst ab 15°, damit beim Zoomen nichts verdreht
+      let dw = Math.atan2(p2[1] - p1[1], p2[0] - p1[0]) - geste.winkel;
+      dw = Math.atan2(Math.sin(dw), Math.cos(dw));
+      if (Math.abs(dw) > (15 * Math.PI) / 180) geste.dreht = true;
+      ansicht.w = geste.w;
+      if (geste.dreht) drehenUm(dw, m);
+      festhalten(geste.punkt, m);
       spaeter();
       return;
     }
@@ -1420,6 +1448,11 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
       zeichne();
     };
   });
+  $('.ra-drehen').onclick = () => {
+    const [w, h] = groesse();
+    drehenUm(Math.PI / 2, [w / 2, h / 2]);
+    zeichne();
+  };
   view.querySelectorAll('[data-zoom]').forEach((b) => {
     b.onclick = () => {
       const [w, h] = groesse();
