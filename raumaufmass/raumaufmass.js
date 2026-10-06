@@ -170,6 +170,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
   const griffPunkt = (r) => { const m = abb(raumMitte(r)); return [m[0], m[1] + 44]; };
   // Schloss neben dem Schiebepunkt; ein festgemachter Raum zeigt nur das geschlossene Schloss
   const schlossPunkt = (r) => { const [x, y] = griffPunkt(r); return r.fest ? [x, y] : [x + 44, y]; };
+  // nur am ausgewählten Raum sichtbar (Tomek: sonst stören die Schlösser im Plan)
   const schlossSvg = ([x, y], zu, klein) => {
     const k = klein ? 0.7 : 1;
     const f = zu ? '#1d232a' : '#fff';
@@ -200,7 +201,6 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     for (const x of andere) {
       if (!geschlossen(x)) continue;
       html += elementeAlsSvg(planElemente(x, abb, { namen: false, schrift: 12, wand: 3, duenn: 1, massAbstand: 20, masse: d.einstellungen.masseZeigen ? 'innen' : false, ungefaehr: !x.massstabGesetzt, farbe: '#9aa3ad', mass: '#8a939d', fest: '#8a939d', flaeche: '#f4f6f8', schraege: '#e9edf1' }));
-      if (x.fest) html += schlossSvg(griffPunkt(x), true, true);
     }
     if (geschlossen(r)) {
       html += elementeAlsSvg(planElemente(r, abb, optionen));
@@ -247,7 +247,6 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
         if (q) html += `<polygon points="${q.map(abb).map((x) => x.join(',')).join(' ')}" fill="var(--accent)" fill-opacity=".25" stroke="var(--accent)" stroke-width="4"/>`;
       }
     }
-    if (geschlossen(r) && r.fest && auswahl?.art !== 'raum') html += schlossSvg(griffPunkt(r), true, true);
     // Ecken als Griffe
     if (geschlossen(r)) {
       const gross = werkzeug === 'auswahl';
@@ -1384,7 +1383,8 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
         if (!d.massstabGesetzt) { hinweis('Zuerst ein echtes Maß eingeben, dann lassen sich Körper setzen.'); zeichne(); return; }
         if (!unter) { hinweis('Bitte in den Raum tippen.'); zeichne(); return; }
         const erg = neuerKoerper(d, welt(sp));
-        if (uebernehme(erg)) auswaehlen({ art: 'koerper', id: erg.koerper });
+        // danach auf „Auswahl“, damit nicht aus Versehen weitere Körper entstehen
+        if (uebernehme(erg)) { werkzeug = 'auswahl'; auswaehlen({ art: 'koerper', id: erg.koerper }); }
         return;
       }
       const w = trefferWand(sp, d, werkzeug === 'mass' ? 26 : 34);
@@ -1396,7 +1396,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
         if (!d.massstabGesetzt) hinweis('Tipp: zuerst ein echtes Maß eingeben, dann stimmen Lage und Größe.');
         const g = wandGeo(d, w.i);
         const erg = neueOeffnung(d, werkzeug, w.id, g.l * w.t);
-        if (uebernehme(erg)) auswaehlen({ art: 'oeffnung', id: erg.oeffnung });
+        if (uebernehme(erg)) { werkzeug = 'auswahl'; auswaehlen({ art: 'oeffnung', id: erg.oeffnung }); }
       }
     }
   };

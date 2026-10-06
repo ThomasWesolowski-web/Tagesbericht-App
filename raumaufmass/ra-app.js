@@ -8,7 +8,7 @@ import {
   naechsterName, fmt2,
 } from './raumgeometrie.js';
 
-const RA_VERSION = '1.3';
+const RA_VERSION = '1.3.1';
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];

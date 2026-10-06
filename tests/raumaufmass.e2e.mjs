@@ -197,6 +197,7 @@ async function ablauf(b, { touch }) {
   });
   await tippe(innen);
   await p.waitForSelector('.ra-panel [data-feld="breite"]');
+  assert.equal(await p.locator('.mk-wz[data-wz="auswahl"]').getAttribute('aria-pressed'), 'true', 'nach dem Einfügen ist „Auswahl“ aktiv');
   await p.click('.ra-panel [data-name-wahl="Kamin"]');
   await p.fill('.ra-panel [data-feld="breite"]', '0,5');
   await p.press('.ra-panel [data-feld="breite"]', 'Tab');
