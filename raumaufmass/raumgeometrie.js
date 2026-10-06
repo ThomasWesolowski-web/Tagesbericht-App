@@ -1085,6 +1085,14 @@ export function berechne(raum) {
   const koerperDecke = koerper.filter((k) => k.bisDecke !== false).reduce((s, k) => s + k.flaeche, 0);
   const deckeBrutto = mitSchraege ? bereiche.flachFlaeche : flaeche;
   const abzug = summe('tuer', true) + summe('fenster', true);
+  // Rauminhalt: flache Decke × Raumhöhe, unter jeder Schräge Fläche × Höhe im Schwerpunkt (die Höhe
+  // ist dort linear, das ist also genau). Körper bis zur Decke werden abgezogen, niedrigere nicht
+  // (ihre Höhe ist nicht erfasst).
+  const volumenBrutto = mitSchraege
+    ? bereiche.flachFlaeche * hoehe + schraegen.reduce((s, e) => s + e.grundriss * E.find((x) => x.wand === e.wand).h(schwerpunkt(e.poly)), 0)
+    : flaeche * hoehe;
+  const koerperVolumen = koerper.filter((k) => k.bisDecke !== false)
+    .reduce((s, k) => s + k.flaeche * (mitSchraege ? hoeheBei(raum, [k.x, k.y], E) : hoehe), 0);
   // Innenwinkel an jeder Ecke (für die Anzeige)
   const winkel = zu ? raum.ecken.map((_, i) => {
     const n = p.length;
@@ -1100,6 +1108,9 @@ export function berechne(raum) {
     bodenBrutto: flaeche,
     deckenflaeche: Math.max(0, deckeBrutto - koerperDecke), // waagerechter Teil der Decke, netto
     deckeBrutto,
+    volumen: Math.max(0, volumenBrutto - koerperVolumen), // netto, Körper bis zur Decke abgezogen
+    volumenBrutto,
+    koerperVolumen,
     koerper,
     koerperFlaeche,
     koerperDecke,
