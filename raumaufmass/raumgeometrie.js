@@ -931,6 +931,85 @@ function wandHoehen(raum, i, E) {
   return { flaeche, min: Math.min(...hs), max: Math.max(...hs), punkte, h };
 }
 
+// ---------- Dachfläche vom Nachbarraum ----------
+// Liegen zwei Räume unter derselben Dachfläche, bekommt die Schräge des einen Raums schraege.von =
+// { raum, wand }: Kniestock und Neigung werden aus der Ebene des Nachbarraums gerechnet, die
+// Raumhöhe wird übernommen. So laufen die Schrägen in einer Ebene und der Knick zur flachen Decke
+// (bzw. der First) in einer Flucht durch beide Räume.
+
+// Schräge für Wand i von raum aus der Dachfläche an Wand j von quelle
+export function dachflaecheAn(raum, i, quelle, j) {
+  const v = schraegeWerte(quelle, j);
+  if (!v?.gueltig) return { fehler: 'Der Nachbarraum hat dort keine gültige Dachschräge.' };
+  const g = wandGeo(raum, i);
+  const h = wandGeo(quelle, j);
+  if (dot(g.innen, h.innen) < 0.9995) return { fehler: 'Die Wände laufen nicht in dieselbe Richtung.' };
+  const H = Number(quelle.hoehe) || 0;
+  const k = v.kniestock + v.steigung * dot(sub(g.a, h.a), h.innen);
+  if (k < -0.005) return { fehler: 'Die Wand liegt außerhalb dieser Dachfläche.' };
+  if (k > H - 0.005) return { fehler: `Die Dachfläche ist an dieser Wand schon höher als die Raumhöhe (${fmt2(H)} m).` };
+  return { kniestock: Math.max(0, k), art: 'winkel', wert: v.winkel, hoehe: H, von: { raum: quelle.id, wand: quelle.waende[j].id } };
+}
+
+// Dachschrägen der anderen Räume des Grundrisses, die zu Wand i passen (gleiche Richtung)
+export function dachflaechenVonNachbarn(raum, i, nachbarn) {
+  const g = wandGeo(raum, i);
+  const out = [];
+  for (const q of nachbarn) {
+    if (q.id === raum.id || !raum.gruppe || q.gruppe !== raum.gruppe || !geschlossen(q)) continue;
+    q.waende.forEach((w, j) => {
+      if (!w.schraege || dot(g.innen, wandGeo(q, j).innen) < 0.9995) return;
+      out.push({ raum: q.id, raumName: q.name || 'Raum', wand: w.id, wandName: wandName(j), ...dachflaecheAn(raum, i, q, j) });
+    });
+  }
+  return out;
+}
+
+// Schräge an Wand wandId aus der Dachfläche des Nachbarraums übernehmen (mit Raumhöhe)
+export function schraegeWieNachbar(raum, wandId, quelle, quellWandId) {
+  const i = wandIndex(raum, wandId);
+  const j = wandIndex(quelle, quellWandId);
+  if (i < 0 || j < 0) return { fehler: 'Wand nicht gefunden.' };
+  const s = dachflaecheAn(raum, i, quelle, j);
+  if (s.fehler) return s;
+  const r = kopie(raum);
+  r.hoehe = s.hoehe;
+  r.waende[i].schraege = { kniestock: rund(s.kniestock, 1e6), art: 'winkel', wert: rund(s.wert, 1e6), von: s.von };
+  return { raum: r };
+}
+
+// Alle übernommenen Schrägen nachrechnen (nach jeder Änderung). Fehlt die Quelle oder passt sie
+// nicht mehr, bleiben die Werte stehen und die Verbindung fällt weg.
+export function schraegenAbgleichen(raeume) {
+  let rs = raeume;
+  for (let runde = 0; runde < 4; runde++) {
+    let anders = false;
+    rs = rs.map((r) => {
+      if (!geschlossen(r) || !r.waende.some((w) => w.schraege?.von)) return r;
+      let neu = r;
+      r.waende.forEach((w, i) => {
+        const von = w.schraege?.von;
+        if (!von) return;
+        const q = rs.find((x) => x.id === von.raum && x.id !== r.id && r.gruppe && x.gruppe === r.gruppe && geschlossen(x));
+        const j = q ? wandIndex(q, von.wand) : -1;
+        const s = j >= 0 ? dachflaecheAn(neu, i, q, j) : { fehler: true };
+        const ziel = s.fehler
+          ? { kniestock: w.schraege.kniestock, art: w.schraege.art, wert: w.schraege.wert }
+          : { kniestock: rund(s.kniestock, 1e6), art: 'winkel', wert: rund(s.wert, 1e6), von };
+        const hoehe = s.fehler ? neu.hoehe : s.hoehe;
+        if (JSON.stringify(ziel) === JSON.stringify(w.schraege) && hoehe === neu.hoehe) return;
+        if (neu === r) neu = kopie(r);
+        neu.waende[i].schraege = ziel;
+        neu.hoehe = hoehe;
+        anders = true;
+      });
+      return neu;
+    });
+    if (!anders) break;
+  }
+  return rs;
+}
+
 // ---------- Dachfenster ----------
 // raum.dachfenster = [{ id, name, wand, abstand, breite, laenge, unten }]: liegt in der Schräge
 // der Wand; abstand entlang der Wand, unten = Abstand der Unterkante vom Kniestock in der Schräge.
@@ -1372,6 +1451,9 @@ export function tuerenAbgleichen(raeume) {
     return JSON.stringify(neu.oeffnungen) === JSON.stringify(r.oeffnungen || []) ? r : neu;
   });
 }
+
+// Alles, was Räume eines Grundrisses voneinander übernehmen: Dachflächen und Türen
+export const grundrissAbgleichen = (raeume) => tuerenAbgleichen(schraegenAbgleichen(raeume));
 
 // Nächster freier Name „Raum n“
 export function naechsterName(namen) {

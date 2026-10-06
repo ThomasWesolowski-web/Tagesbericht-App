@@ -6,10 +6,10 @@ import { openRaumAufmass } from './raumaufmass.js';
 import { zeige3d } from './ansicht3d.js';
 import {
   neuerRaum, berechne, raumKurz, alsSvg, massstabFuer, grenzen, planElemente, gruppeElemente, geschlossen,
-  naechsterName, fmt2, verschiebeRaum, tuerenAbgleichen,
+  naechsterName, fmt2, verschiebeRaum, grundrissAbgleichen,
 } from './raumgeometrie.js';
 
-const RA_VERSION = '1.7.1';
+const RA_VERSION = '1.8.0';
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -120,8 +120,8 @@ async function projekt(id) {
   let p = await projektLaden(id);
   if (!p) { location.hash = '#/'; return; }
   const speichern = async () => { await projektSpeichern(p); p = await projektLaden(id); };
-  // Türen in gemeinsamen Wänden gehören zu beiden Räumen (auch in älteren Aufmaßen nachtragen)
-  const abgeglichen = tuerenAbgleichen(p.raeume);
+  // Türen in gemeinsamen Wänden und übernommene Dachflächen nachziehen (auch in älteren Aufmaßen)
+  const abgeglichen = grundrissAbgleichen(p.raeume);
   if (abgeglichen.some((r, k) => r !== p.raeume[k])) { p.raeume = abgeglichen; await speichern(); }
   appbar.innerHTML = `<button type="button" class="icon-btn" id="back" aria-label="Zurück">${ICON.zurueck}</button><h1 class="small">${esc(p.name)}<span class="sub">${esc(p.datum)}</span></h1>`;
   $('#back').onclick = () => { location.hash = '#/'; };
@@ -194,14 +194,14 @@ async function projekt(id) {
         const neu = prompt('Neuer Name für den Raum:', r.name)?.trim();
         if (!neu || neu === r.name) return;
         r.name = neu;
-        p.raeume = tuerenAbgleichen(p.raeume);
+        p.raeume = grundrissAbgleichen(p.raeume);
         await speichern();
         zeichnen();
         toast('Raum umbenannt.');
       };
       $('.ra-weg', el).onclick = async () => {
         if (!confirm(`„${r.name}“ entfernen?`)) return;
-        p.raeume = tuerenAbgleichen(p.raeume.filter((x) => x.id !== r.id));
+        p.raeume = grundrissAbgleichen(p.raeume.filter((x) => x.id !== r.id));
         await speichern();
         zeichnen();
       };

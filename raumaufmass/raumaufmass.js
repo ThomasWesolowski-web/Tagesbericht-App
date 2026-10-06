@@ -11,8 +11,8 @@ import {
   konfliktLoesen, verschiebeWand, verschiebeEcke, setzeRichtung, richtenAus, teileWand, loescheWand, loescheEcke,
   neueOeffnung, aendereOeffnung, loescheOeffnung, planElemente, elementeAlsSvg, richtungsText, richtungAusrichten,
   Verlauf, laengeLesen, wandName, fmt2, alsSvg, alsDxf, winkelVon, punkteVon, massstabFuer,
-  schraegeWerte, setzeSchraege, SCHRAEGE_STANDARD, neuesDachfenster, aendereDachfenster, loescheDachfenster,
-  dachfensterEcken, punktInnen, raumAnbauen, andocken, verschiebeRaum, raumMitte, pruefeGruppe, tuerenAbgleichen,
+  schraegeWerte, setzeSchraege, SCHRAEGE_STANDARD, dachflaechenVonNachbarn, schraegeWieNachbar, neuesDachfenster, aendereDachfenster, loescheDachfenster,
+  dachfensterEcken, punktInnen, raumAnbauen, andocken, verschiebeRaum, raumMitte, pruefeGruppe, grundrissAbgleichen,
   naechsterName, neuerRaum, neuerKoerper, neueTreppe, istTreppe, aendereKoerper, loescheKoerper, koerperEcken, KOERPER_NAMEN, grenzen,
 } from './raumgeometrie.js';
 
@@ -73,7 +73,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
   let werkzeug = geschlossen(d) ? (d.massstabGesetzt ? 'auswahl' : 'mass') : 'zeichnen';
   let auswahl = null; // { art: 'wand'|'ecke'|'oeffnung', id }
   let geaendert = false;
-  if (andere.length) [d, ...andere] = tuerenAbgleichen([d, ...andere]);
+  if (andere.length) [d, ...andere] = grundrissAbgleichen([d, ...andere]);
   const verlauf = new Verlauf({ raum: d, andere, entwurf });
   let ansicht = { s: 60, ox: 0, oy: 0, w: 0 }; // Bildschirmpunkte je Meter, Verschiebung, Drehung (Bogenmaß)
   let strich = null; // Freihandstrich in Arbeit: { punkte, modus }
@@ -347,13 +347,13 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     t.textContent = werkzeug === 'auswahl' && andere.length ? HINWEIS.gruppe : HINWEIS[werkzeug];
   };
 
-  // Türen in gemeinsamen Wänden auch im Nachbarraum zeigen
-  const tuerenNachziehen = () => {
+  // Türen in gemeinsamen Wänden und übernommene Dachflächen in den Nachbarräumen nachziehen
+  const nachbarnNachziehen = () => {
     if (!andere.length) return;
-    [d, ...andere] = tuerenAbgleichen([d, ...andere]);
+    [d, ...andere] = grundrissAbgleichen([d, ...andere]);
   };
   const merken = () => {
-    tuerenNachziehen();
+    nachbarnNachziehen();
     verlauf.merken({ raum: d, andere, entwurf });
     geaendert = true;
   };
@@ -557,7 +557,8 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     const v = schraegeWerte(d, i);
     if (!v) return '';
     if (!v.gueltig) return `Dachschräge: ${v.grund}`;
-    return `Dachschräge: Kniestock ${fmt2(v.kniestock)} m, Neigung ${zahlText(v.winkel, 1)}°, ${fmt2(v.tiefe)} m tief, Schräge ${fmt2(v.laenge)} m lang.`;
+    const von = d.waende[i].schraege.von && andere.find((x) => x.id === d.waende[i].schraege.von.raum);
+    return `Dachschräge${von ? ` (gleiche Dachfläche wie ${von.name || 'Raum'})` : ''}: Kniestock ${fmt2(v.kniestock)} m, Neigung ${zahlText(v.winkel, 1)}°, ${fmt2(v.tiefe)} m tief, Schräge ${fmt2(v.laenge)} m lang.`;
   };
 
   const schraegeFragen = async (wandId) => {
@@ -570,8 +571,12 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
       { id: 'tiefe', label: 'Tiefe', feld: 'Tiefe in m (waagerecht von der Wand)', tipp: 'z. B. 1,80' },
       { id: 'laenge', label: 'Länge der Schräge', feld: 'Länge der Schräge in m', tipp: 'z. B. 2,30' },
     ];
+    const nachbarFlaechen = dachflaechenVonNachbarn(d, i, andere);
+    const quelleVon = alt?.von && andere.find((x) => x.id === alt.von.raum);
     const wert = await dialog(`
       <b>Dachschräge an Wand ${wandName(i)}</b>
+      ${quelleVon ? `<p class="fa-klein">Läuft in einer Dachfläche mit ${escH(quelleVon.name || 'Raum')}. Kniestock und Neigung werden von dort gerechnet; eigene Werte unten lösen die Verbindung.</p>` : ''}
+      ${nachbarFlaechen.length ? `<div class="fa-feld"><span>Gleiche Dachfläche wie</span><div class="fa-vorschlaege">${nachbarFlaechen.map((f, k) => `<button type="button" class="chip" data-nachbar="${k}" aria-pressed="${alt?.von?.raum === f.raum && alt?.von?.wand === f.wand}"${f.fehler ? ' disabled' : ''}>${escH(f.raumName)}, Wand ${f.wandName}${f.fehler ? '' : ` (Kniestock hier ${fmt2(f.kniestock)} m)`}</button>`).join('')}</div>${nachbarFlaechen.filter((f) => f.fehler).map((f) => `<p class="fa-klein">${escH(f.raumName)}, Wand ${f.wandName}: ${escH(f.fehler)}</p>`).join('')}<p class="fa-klein">Die Schräge läuft dann in derselben Ebene weiter, mit derselben Raumhöhe; der Knick zur flachen Decke liegt in einer Flucht.</p></div>` : ''}
       <p class="fa-klein">Kniestock = Wandhöhe bis dort, wo die Schräge beginnt. Die Schräge steigt nach innen bis zur Raumhöhe (flache Decke oder First). Gegenüberliegende Schrägen ergeben ein Satteldach, die Giebelwände rechnet die App selbst.</p>
       <label class="fa-feld"><span>Kniestock in m</span><input type="text" inputmode="decimal" autocomplete="off" class="ra-kn" value="${zahlText(s.kniestock, 3)}"></label>
       <div class="fa-feld"><span>Schräge gemessen als</span><div class="seg ra-art">${ARTEN.map((a) => `<button type="button" data-art="${a.id}" aria-pressed="${s.art === a.id}">${a.label}</button>`).join('')}</div></div>
@@ -605,6 +610,9 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
       });
       kn.oninput = zeigen;
       ein.oninput = zeigen;
+      dialogBox.querySelectorAll('[data-nachbar]').forEach((b) => {
+        b.onclick = () => { const f = nachbarFlaechen[Number(b.dataset.nachbar)]; fertig(JSON.stringify({ nachbar: { raum: f.raum, wand: f.wand } })); };
+      });
       dialogBox.querySelector('.ra-ok').onclick = () => {
         const x = lesen();
         const probe = { ...d, waende: d.waende.map((w, k) => (k === i ? { ...w, schraege: x } : w)) };
@@ -615,7 +623,15 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
       zeigen();
     });
     if (!wert) return;
-    const erg = setzeSchraege(d, wandId, wert === 'weg' ? null : JSON.parse(wert));
+    const gewaehlt = wert === 'weg' ? null : JSON.parse(wert);
+    if (gewaehlt?.nachbar) {
+      const q = andere.find((x) => x.id === gewaehlt.nachbar.raum);
+      const hoeheVorher = d.hoehe;
+      const erg = q ? schraegeWieNachbar(d, wandId, q, gewaehlt.nachbar.wand) : { fehler: 'Nachbarraum nicht gefunden.' };
+      if (uebernehme(erg)) hinweis(`Dachschräge an Wand ${wandName(i)} läuft jetzt in einer Dachfläche mit ${q.name || 'dem Nachbarraum'}${Math.abs(hoeheVorher - d.hoehe) > 1e-9 ? `; Raumhöhe ${fmt2(d.hoehe)} m übernommen` : ''}. ${schraegeText(i)}`);
+      return;
+    }
+    const erg = setzeSchraege(d, wandId, gewaehlt);
     if (uebernehme(erg)) hinweis(wert === 'weg' ? `Dachschräge an Wand ${wandName(i)} entfernt.` : `Dachschräge an Wand ${wandName(i)} gesetzt. ${schraegeText(i)}`);
   };
 
@@ -976,11 +992,14 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     const b = geschlossen(d) ? berechne(d) : null;
     const u = d.massstabGesetzt ? '' : '≈ ';
     const zeile = (t, v) => `<div class="ra-wert"><span>${t}</span><b>${v}</b></div>`;
+    const vonId = d.waende.find((w) => w.schraege?.von)?.schraege.von.raum;
+    const dachQuelle = vonId ? andere.find((x) => x.id === vonId) : null;
     panelAuf(`
       <div class="fa-panel-kopf"><b>Raum und Einstellungen</b><button type="button" class="btn primary ra-p-ok">Fertig</button></div>
       <div class="ra-raster2">
         <label class="fa-feld"><span>Raumname</span><input type="text" data-raum="name" value="${escH(d.name)}"></label>
-        <label class="fa-feld"><span>${b?.mitSchraege ? 'Raumhöhe (flache Decke) in m' : 'Raumhöhe in m'}</span><input type="text" inputmode="decimal" data-raum="hoehe" value="${zahlText(d.hoehe, 3)}"></label>
+        <label class="fa-feld"><span>${b?.mitSchraege ? 'Raumhöhe (flache Decke) in m' : 'Raumhöhe in m'}</span><input type="text" inputmode="decimal" data-raum="hoehe" value="${zahlText(d.hoehe, 3)}"${dachQuelle ? ' disabled' : ''}></label>
+        ${dachQuelle ? `<p class="fa-klein">Die Raumhöhe kommt von ${escH(dachQuelle.name || 'Raum')} (gleiche Dachfläche). Ändern dort oder an der Dachschräge eigene Werte eingeben.</p>` : ''}
       </div>
       ${b ? `<div class="ra-werteliste">
         ${b.koerper.length ? zeile('Bodenfläche brutto', `${u}${fmt2(b.bodenBrutto)} m²`) : ''}
