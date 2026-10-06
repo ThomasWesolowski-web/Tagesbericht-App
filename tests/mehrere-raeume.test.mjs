@@ -43,6 +43,22 @@ test('Raum anbauen und andocken', () => {
   nah(Math.min(...punkteVon(mitLuecke).map((p) => p[0])), 5.115, 1e-9, 'Abstand 11,5 cm');
 });
 
+test('Ecke an Ecke einrasten, sonst frei', () => {
+  const a = raum([[0, 0], [4, 0], [4, 3], [0, 3]], { name: 'Flur' });
+  // schräg unten rechts, Ecke 12 cm neben der Ecke von Flur: rastet Ecke an Ecke ein
+  const b = raum([[4.1, 3.05], [6.1, 3.05], [6.1, 5.05], [4.1, 5.05]], { name: 'Bad' });
+  const d = andocken(b, [a], { fang: 0.3 });
+  assert.equal(d.an, 'Flur');
+  assert.equal(d.ecke, true);
+  nah(punkteVon(d.raum)[0][0], 4, 1e-9);
+  nah(punkteVon(d.raum)[0][1], 3, 1e-9);
+  assert.equal(ueberschneiden(a, d.raum), false);
+  // weit weg: bleibt frei liegen
+  const frei = andocken(verschiebeRaum(b, [2, 2]).raum, [a], { fang: 0.3 });
+  assert.equal(frei.an, null);
+  nah(punkteVon(frei.raum)[0][0], 6.1, 1e-9);
+});
+
 test('Überschneidung wird gemeldet', () => {
   const a = raum([[0, 0], [4, 0], [4, 4], [0, 4]], { name: 'Flur' });
   const b = raum([[3, 1], [6, 1], [6, 3], [3, 3]], { name: 'Bad' });

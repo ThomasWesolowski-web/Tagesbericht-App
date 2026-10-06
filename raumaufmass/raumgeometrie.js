@@ -1201,7 +1201,21 @@ export function andocken(raum, nachbarn, o = {}) {
       });
     }
   });
-  if (!kand.length) return { raum, an: null };
+  if (!kand.length) {
+    // keine Wand in der Nähe: Ecke auf Ecke einrasten (z. B. Räume, die sich nur an einer Ecke treffen)
+    let best = null;
+    for (const p of punkteVon(raum)) {
+      for (const nb of nachbarn) {
+        if (!geschlossen(nb) || nb.id === raum.id) continue;
+        for (const q of punkteVon(nb)) {
+          const ab = Math.hypot(q[0] - p[0], q[1] - p[1]);
+          if (ab <= fang && (!best || ab < best.ab)) best = { ab, schub: sub(q, p), nb };
+        }
+      }
+    }
+    if (!best) return { raum, an: null };
+    return { raum: verschiebeRaum(raum, best.schub).raum, an: best.nb.name || 'Raum', schub: best.schub, ecke: true };
+  }
   kand.sort((x, y) => Math.abs(x.v) - Math.abs(y.v));
   const erst = kand[0];
   let schub = mul(erst.n, erst.v);
