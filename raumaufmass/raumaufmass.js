@@ -12,7 +12,7 @@ import {
   neueOeffnung, aendereOeffnung, loescheOeffnung, planElemente, elementeAlsSvg, richtungsText, richtungAusrichten,
   Verlauf, laengeLesen, wandName, fmt2, alsSvg, alsDxf, winkelVon, punkteVon, massstabFuer,
   schraegeWerte, setzeSchraege, SCHRAEGE_STANDARD, neuesDachfenster, aendereDachfenster, loescheDachfenster,
-  dachfensterEcken, punktInnen, raumAnbauen, andocken, verschiebeRaum, raumMitte, pruefeGruppe,
+  dachfensterEcken, punktInnen, raumAnbauen, andocken, verschiebeRaum, raumMitte, pruefeGruppe, tuerenAbgleichen,
   naechsterName, neuerRaum, neuerKoerper, neueTreppe, istTreppe, aendereKoerper, loescheKoerper, koerperEcken, KOERPER_NAMEN, grenzen,
 } from './raumgeometrie.js';
 
@@ -73,6 +73,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
   let werkzeug = geschlossen(d) ? (d.massstabGesetzt ? 'auswahl' : 'mass') : 'zeichnen';
   let auswahl = null; // { art: 'wand'|'ecke'|'oeffnung', id }
   let geaendert = false;
+  if (andere.length) [d, ...andere] = tuerenAbgleichen([d, ...andere]);
   const verlauf = new Verlauf({ raum: d, andere, entwurf });
   let ansicht = { s: 60, ox: 0, oy: 0, w: 0 }; // Bildschirmpunkte je Meter, Verschiebung, Drehung (Bogenmaß)
   let strich = null; // Freihandstrich in Arbeit: { punkte, modus }
@@ -228,7 +229,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     // andere Räume des Grundrisses grau, Maße innen
     for (const x of andere) {
       if (!geschlossen(x)) continue;
-      html += elementeAlsSvg(planElemente(x, abb, { namen: false, schrift: 12, wand: 3, duenn: 1, massAbstand: 20, masse: d.einstellungen.masseZeigen ? 'innen' : false, ungefaehr: !x.massstabGesetzt, farbe: '#9aa3ad', mass: '#8a939d', fest: '#8a939d', flaeche: '#f4f6f8', schraege: '#e9edf1' }));
+      html += elementeAlsSvg(planElemente(x, abb, { namen: false, ohneKopien: true, schrift: 12, wand: 3, duenn: 1, massAbstand: 20, masse: d.einstellungen.masseZeigen ? 'innen' : false, ungefaehr: !x.massstabGesetzt, farbe: '#9aa3ad', mass: '#8a939d', fest: '#8a939d', flaeche: '#f4f6f8', schraege: '#e9edf1' }));
     }
     if (geschlossen(r)) {
       html += elementeAlsSvg(planElemente(r, abb, optionen));
@@ -346,7 +347,13 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     t.textContent = werkzeug === 'auswahl' && andere.length ? HINWEIS.gruppe : HINWEIS[werkzeug];
   };
 
+  // Türen in gemeinsamen Wänden auch im Nachbarraum zeigen
+  const tuerenNachziehen = () => {
+    if (!andere.length) return;
+    [d, ...andere] = tuerenAbgleichen([d, ...andere]);
+  };
   const merken = () => {
+    tuerenNachziehen();
     verlauf.merken({ raum: d, andere, entwurf });
     geaendert = true;
   };
@@ -871,6 +878,17 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     if (!o) { panelZu(); return; }
     const i = wandIndex(d, o.wand);
     const tuer = o.typ === 'tuer';
+    if (o.von) {
+      const quelle = andere.find((x) => x.id === o.von.raum);
+      panelAuf(`
+        <div class="fa-panel-kopf"><b>${escH(o.name)} · Wand ${wandName(i)}</b><button type="button" class="btn primary ra-p-ok">Fertig</button></div>
+        <p class="fa-klein">Diese Tür sitzt in der gemeinsamen Wand mit ${escH(quelle?.name || 'dem Nachbarraum')} (${fmt2(o.breite)} × ${fmt2(o.hoehe)} m). Sie zählt hier automatisch mit. Ändern oder löschen lässt sie sich dort.</p>
+        ${quelle ? `<div class="fa-vorschlaege"><button type="button" class="chip" data-tun="quelle">Zu ${escH(quelle.name || 'Raum')} wechseln</button></div>` : ''}`, () => {
+        const b = panel.querySelector('[data-tun="quelle"]');
+        if (b) b.onclick = () => { wechseln(quelle.id); auswaehlen({ art: 'oeffnung', id: o.von.oeffnung }); };
+      });
+      return;
+    }
     const feld = (key, label, wert) => `<label class="fa-feld"><span>${label}</span><input type="text" inputmode="decimal" data-feld="${key}" value="${zahlText(wert, 3)}"></label>`;
     panelAuf(`
       <div class="fa-panel-kopf"><b>${escH(o.name)} · Wand ${wandName(i)}</b><button type="button" class="btn primary ra-p-ok">Fertig</button></div>
@@ -1349,6 +1367,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
       const ecke = trefferEcke(sp);
       if (ecke) { zug = { art: 'ecke', id: ecke.id, start: kopie(d), sp, bewegt: false }; return; }
       const oe = trefferOeffnung(sp);
+      if (oe?.von) { auswaehlen({ art: 'oeffnung', id: oe.id }); zug = { art: 'pan', sp, ox: ansicht.ox, oy: ansicht.oy }; return; }
       if (oe) { zug = { art: 'oeffnung', id: oe.id, start: kopie(d), sp, bewegt: false }; return; }
       const df = trefferDachfenster(sp);
       if (df) { zug = { art: 'dachfenster', id: df.id, start: kopie(d), sp, bewegt: false }; return; }

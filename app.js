@@ -24,7 +24,7 @@ import {
   urlaubLokal, urlaubLokalSpeichern, antragMerken, gehoertZu,
 } from './urlaub.js';
 
-const APP_VERSION = '1.51.0';
+const APP_VERSION = '1.51.1';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];

@@ -783,7 +783,7 @@ export function neueOeffnung(raum, typ, wandId, mitteAbstand) {
   const g = wandGeo(raum, i);
   const std = typ === 'tuer' ? TUER_STANDARD : FENSTER_STANDARD;
   const breite = Math.min(std.breite, g.l);
-  const nr = raum.oeffnungen.filter((o) => o.typ === typ).length + 1;
+  const nr = raum.oeffnungen.filter((o) => o.typ === typ && !o.von).length + 1;
   const o = {
     id: neueId(),
     typ,
@@ -1314,6 +1314,65 @@ export function pruefeGruppe(raeume) {
   return warnungen;
 }
 
+// ---------- Türen in gemeinsamen Wänden ----------
+// Eine Tür in einer Wand, die Wand an Wand an einem anderen Raum desselben Grundrisses liegt, gehört
+// zu beiden Räumen. Der Nachbarraum bekommt eine Kopie mit o.von = { raum, oeffnung }; sie wird bei
+// jedem Abgleich neu berechnet und nur im Raum der echten Tür geändert. Hat der Nachbarraum dort
+// schon eine eigene Tür, kommt keine Kopie dazu.
+const NACHBAR_ABSTAND = 0.6; // so dick darf die Wand zwischen zwei Räumen höchstens sein (m)
+
+export function tuerenAbgleichen(raeume) {
+  const ohne = raeume.map((r) => ({ ...r, oeffnungen: (r.oeffnungen || []).filter((o) => !o.von) }));
+  const dazu = new Map(ohne.map((r) => [r.id, []]));
+  for (const a of ohne) {
+    if (!a.gruppe || !geschlossen(a)) continue;
+    for (const o of a.oeffnungen) {
+      if (o.typ !== 'tuer') continue;
+      const i = wandIndex(a, o.wand);
+      if (i < 0) continue;
+      const g = wandGeo(a, i);
+      const aus = mul(g.innen, -1);
+      const p0 = add(g.a, mul(g.r, o.abstand));
+      const p1 = add(p0, mul(g.r, o.breite));
+      let best = null;
+      for (const b of ohne) {
+        if (b.id === a.id || b.gruppe !== a.gruppe || !geschlossen(b)) continue;
+        b.waende.forEach((w, j) => {
+          const h = wandGeo(b, j);
+          if (dot(g.r, h.r) > -0.9995) return; // nur gegenläufig parallele Wände
+          const v = dot(sub(h.a, g.a), aus);
+          if (v < -0.02 || v > NACHBAR_ABSTAND) return;
+          const s0 = dot(sub(p1, h.a), h.r); // die Wand des Nachbarn läuft andersherum
+          const mitte = s0 + o.breite / 2;
+          if (mitte < 0 || mitte > h.l || o.breite > h.l + 1e-6) return;
+          if (!best || v < best.v) best = { v, b, w, s0: Math.max(0, Math.min(h.l - o.breite, s0)) };
+        });
+      }
+      if (!best) continue;
+      const { b, w, s0 } = best;
+      const doppelt = b.oeffnungen.some((q) => q.typ === 'tuer' && q.wand === w.id
+        && Math.min(q.abstand + q.breite, s0 + o.breite) - Math.max(q.abstand, s0) > Math.min(q.breite, o.breite) / 2);
+      if (doppelt) continue;
+      dazu.get(b.id).push({
+        id: `n-${o.id}`,
+        typ: 'tuer',
+        name: `${o.name} (${a.name || 'Raum'})`,
+        wand: w.id,
+        abstand: rund(s0, 1e6),
+        breite: o.breite,
+        hoehe: o.hoehe,
+        anschlag: o.anschlag === 'rechts' ? 'links' : 'rechts',
+        richtung: o.richtung === 'aussen' ? 'innen' : 'aussen',
+        von: { raum: a.id, oeffnung: o.id },
+      });
+    }
+  }
+  return raeume.map((r, k) => {
+    const neu = { ...ohne[k], oeffnungen: [...ohne[k].oeffnungen, ...dazu.get(r.id)] };
+    return JSON.stringify(neu.oeffnungen) === JSON.stringify(r.oeffnungen || []) ? r : neu;
+  });
+}
+
 // Nächster freier Name „Raum n“
 export function naechsterName(namen) {
   const nr = Math.max(0, ...namen.map((x) => (/^Raum (\d+)$/.exec(String(x)) || [])[1] || 0).map(Number), namen.length) + 1;
@@ -1590,10 +1649,10 @@ export function planElemente(raum, abb, o = {}) {
     const unter = add(mul(add(q[2], q[3]), 0.5), [0, g.schrift * 0.75]);
     if (g.details) els.push({ art: 'text', p: unter, text: `${k.name} ${fmtPos(k.breite * 100)}/${fmtPos(k.tiefe * 100)}`, groesse: g.schrift * 0.72, farbe: g.mass, anker: 'mitte', winkel: 0 });
   }
-  // Türen und Fenster
+  // Türen und Fenster (im Grundriss gesamt die Kopie einer Tür aus dem Nachbarraum nicht doppelt)
   for (const x of raum.oeffnungen) {
     const i = wandIndex(raum, x.wand);
-    if (i < 0 || !zu) continue;
+    if (i < 0 || !zu || (x.von && g.ohneKopien)) continue;
     const ge = wandGeo(raum, i);
     const A = add(ge.a, mul(ge.r, x.abstand));
     const B = add(ge.a, mul(ge.r, x.abstand + x.breite));
@@ -1797,7 +1856,7 @@ export function massstabFuer(raum, breiteMm = 170, hoeheMm = 150) {
 
 // Zeichen-Elemente für mehrere Räume eines Grundrisses (Maße innen an den Wänden)
 export function gruppeElemente(raeume, abb, o = {}) {
-  return raeume.flatMap((r) => planElemente(r, abb, { namen: false, ...o, masse: o.masse === false ? false : 'innen' }));
+  return raeume.flatMap((r) => planElemente(r, abb, { namen: false, ohneKopien: true, ...o, masse: o.masse === false ? false : 'innen' }));
 }
 
 // Maßstäbliches SVG (Einheit mm auf dem Papier), z. B. 1:50. Mit einer Liste von Räumen: Grundriss gesamt.
