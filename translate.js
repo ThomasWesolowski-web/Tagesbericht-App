@@ -1,5 +1,8 @@
 // Automatische Übersetzung der Freitexte ins Deutsche (MyMemory, kostenlos, ohne Schlüssel).
 // Wird beim Hochladen auf dem Handy des Mitarbeiters ausgeführt.
+// Bekannte Baustellenwörter kommen aus der Fachwörterliste (fachwoerter.js).
+
+import { mitFachwoertern } from './fachwoerter.js';
 
 const API = 'https://api.mymemory.translated.net/get';
 export const FREITEXTE = ['taetigkeiten', 'material', 'bemerkungen'];
@@ -34,9 +37,15 @@ async function eins(text, von) {
 }
 
 export async function insDeutsche(text, von) {
-  const teile = stuecke(text || '');
   const fertig = [];
-  for (const s of teile) fertig.push(await eins(s, von));
+  for (const zeile of (text || '').split('\n')) {
+    // Zeile nur aus Fachwörtern: gleich aus der Liste, sonst Fachwörter vorab einsetzen
+    const f = mitFachwoertern(zeile, von);
+    if (f.ganz) { fertig.push(f.text); continue; }
+    const teile = [];
+    for (const s of stuecke(f.text)) teile.push(await eins(s, von));
+    fertig.push(teile.join(' '));
+  }
   return fertig.join('\n');
 }
 

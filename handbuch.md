@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.52.0**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.53.0**.
 
 | Was | Wo |
 | --- | --- |
@@ -123,7 +123,7 @@ Baustellen und Personal werden über das Repo auf allen Handys gleich gehalten. 
 
 **Zusammenfassung:** Das Dokument-Symbol oben in der Berichtsliste (oder der Knopf auf einer Baustelle) erstellt ein Sammel-PDF: Baustelle, Art (Tagesbericht, Rapport oder beide) und Zeitraum wählen. Es enthält eine Übersicht, Stunden nach Kategorie, Maschinenstunden, eine Materialliste und alle Berichte. Es zählt nur Berichte, die auf diesem Handy liegen; der Admin hat nach dem Abgleich alle.
 
-**Sprachen:** Die Oberfläche gibt es auf Deutsch, Polnisch, Rumänisch, Mazedonisch und Albanisch (umstellbar in den Einstellungen). Freitexte wie Arbeiten, Material, Bemerkungen und Bildtexte werden beim Hochladen automatisch ins Deutsche übersetzt. Repo, PDF und Admin bekommen Deutsch, der Verfasser sieht weiter sein Original. Die Übersetzungen der Oberfläche sind noch nicht von Muttersprachlern geprüft.
+**Sprachen:** Die Oberfläche gibt es auf Deutsch, Polnisch, Rumänisch, Mazedonisch und Albanisch (umstellbar in den Einstellungen). Freitexte wie Arbeiten, Material, Bemerkungen und Bildtexte werden beim Hochladen automatisch ins Deutsche übersetzt. Häufige Baustellenwörter (z. B. Spachtelmasse, Klebeband, Gipskarton, Gerüst, Grundierung) übersetzt die App selbst aus einer Fachwörterliste für Rumänisch, Polnisch, Mazedonisch und Albanisch; kurze Notizen nur aus solchen Wörtern gehen gar nicht erst an den Übersetzer. Fehlt ein Wort, kann es in die Liste aufgenommen werden. Repo, PDF und Admin bekommen Deutsch, der Verfasser sieht weiter sein Original. Die Übersetzungen der Oberfläche sind noch nicht von Muttersprachlern geprüft.
 
 **Ansicht:** In den Einstellungen unter Allgemein wählst du „Automatisch“ (wie das Handy oder der Computer eingestellt ist), „Hell“ oder „Dunkel“. Die Wahl gilt nur für dieses Gerät und gilt sofort, auch in der Desktop-Version im Browser.
 
@@ -158,6 +158,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 06.10.2026 | 1.53.0 | Übersetzung: Fachwörterliste für Rumänisch, Polnisch, Mazedonisch und Albanisch, damit Baustellenwörter wie Spachtelmasse oder Klebeband richtig ins Deutsche kommen |
 | 06.10.2026 | 1.52.0 | Raumaufmaß-App 1.8: Dachschräge „Gleiche Dachfläche wie“ Nachbarraum, Schrägen in einer Ebene, Knick und First in einer Flucht |
 | 06.10.2026 | 1.51.1 | Raumaufmaß-App 1.7.1: Türen in einer gemeinsamen Wand zählen auch im Nachbarraum (Wandfläche, Grundriss, PDF), auch in schon gespeicherten Aufmaßen |
 | 06.10.2026 | 1.51.0 | Raumaufmaß-App 1.7: Tür, Fenster und Körper unter einem Knopf „Einfügen“; neu: Treppe mit Laufrichtung |
