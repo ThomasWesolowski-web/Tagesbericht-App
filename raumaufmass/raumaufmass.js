@@ -1383,7 +1383,8 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
         if (!d.massstabGesetzt) { hinweis('Zuerst ein echtes Maß eingeben, dann lassen sich Körper setzen.'); zeichne(); return; }
         if (!unter) { hinweis('Bitte in den Raum tippen.'); zeichne(); return; }
         const erg = neuerKoerper(d, welt(sp));
-        if (uebernehme(erg)) auswaehlen({ art: 'koerper', id: erg.koerper });
+        // danach auf „Auswahl“, damit nicht aus Versehen weitere Körper entstehen
+        if (uebernehme(erg)) { werkzeug = 'auswahl'; auswaehlen({ art: 'koerper', id: erg.koerper }); }
         return;
       }
       const w = trefferWand(sp, d, werkzeug === 'mass' ? 26 : 34);
@@ -1395,7 +1396,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
         if (!d.massstabGesetzt) hinweis('Tipp: zuerst ein echtes Maß eingeben, dann stimmen Lage und Größe.');
         const g = wandGeo(d, w.i);
         const erg = neueOeffnung(d, werkzeug, w.id, g.l * w.t);
-        if (uebernehme(erg)) auswaehlen({ art: 'oeffnung', id: erg.oeffnung });
+        if (uebernehme(erg)) { werkzeug = 'auswahl'; auswaehlen({ art: 'oeffnung', id: erg.oeffnung }); }
       }
     }
   };
