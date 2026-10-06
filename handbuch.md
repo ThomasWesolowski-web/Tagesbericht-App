@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.46.2**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.46.3**.
 
 | Was | Wo |
 | --- | --- |
@@ -87,7 +87,7 @@ Zoom und Verschieben: Die Knöpfe + und − rechts unten vergrößern und verkle
 
 Gespeichert werden das verkleinerte Original-Foto und ein Foto mit allen Maßen; das Foto mit Maßen kommt ins PDF. Über den Stift auf der Karte lässt sich das Foto-Aufmaß später ändern, die Positionen werden dann neu übernommen. **Fotomaße sind nur ungefähr**; wichtige Maße am Bau nachmessen.
 
-**Raumaufmaß (Grundriss zeichnen):** Das Raumaufmaß ist vorübergehend eine **eigene App**, bis es zuverlässig funktioniert: https://thomaswesolowski-web.github.io/Tagesbericht-App/raumaufmass/ (auf dem Handy öffnen und wie die Berichte-App „Zum Home-Bildschirm“ hinzufügen). Dort „Neues Aufmaß“ antippen, einen Namen eingeben (z. B. die Baustelle) und „Raum zeichnen“. Die Aufmaße bleiben nur auf diesem Gerät, sie gehen nicht ins Repo; mit „PDF teilen oder speichern“ kommen alle Grundrisse mit ihren Werten in ein PDF. In der Berichte-App gibt es „Raum zeichnen“ nicht mehr; Räume aus älteren Aufmaßen bleiben dort mit Grundriss und Positionen sichtbar und lassen sich entfernen, aber nicht mehr bearbeiten.
+**Raumaufmaß (Grundriss zeichnen):** Das Raumaufmaß ist vorübergehend eine **eigene App**, bis es zuverlässig funktioniert: https://thomaswesolowski-web.github.io/Tagesbericht-App/raumaufmass/ (auf dem Handy öffnen und wie die Berichte-App „Zum Home-Bildschirm“ hinzufügen). Dort „Neues Aufmaß“ antippen, einen Namen eingeben (z. B. die Baustelle) und „Raum zeichnen“. Die Aufmaße bleiben auf diesem Gerät gespeichert, auch nach dem Schließen; die App bittet das Handy, sie nicht von selbst aufzuräumen. Sie gehen aber nicht ins Repo: wird die App vom Home-Bildschirm gelöscht oder werden die Website-Daten gelöscht, sind sie weg. Auf dem iPhone haben Safari und die App auf dem Home-Bildschirm getrennte Speicher. „PDF ansehen“ zeigt alle Grundrisse mit ihren Werten erst als Vorschau (+ und − zum Vergrößern), danach „Teilen oder speichern“. Einen Raum umbenennen: in der Liste auf seinen Namen mit dem kleinen Stift tippen. Die Flächen in der Liste sind Bodenflächen netto (Körper abgezogen); im PDF stehen bei Räumen mit Körpern brutto und netto. In der Berichte-App gibt es „Raum zeichnen“ nicht mehr; Räume aus älteren Aufmaßen bleiben dort mit Grundriss und Positionen sichtbar und lassen sich entfernen, aber nicht mehr bearbeiten.
 
 1. **Zeichnen:** den Raum grob mit dem Finger, Stift oder der Maus nachfahren, gern in einem Zug. Die App macht daraus gerade Wände; fast waagerechte und senkrechte Wände werden ausgerichtet, echte Schrägen bleiben schräg. Kommt das Ende nah an den Anfang, fragt die App „Raum schließen?“. Man kann auch in mehreren Zügen zeichnen: am blauen Punkt weiterzeichnen, dann „Schließen“.
 2. **Maß:** eine Wand (oder ihre Maßzahl) antippen und die echte Länge eingeben, z. B. 5,42. Das erste Maß legt den Maßstab fest, vorher stehen die Längen mit „≈“. Jedes weitere Maß ändert nur diese Wand, die nächste Wand ohne Maß gleicht aus. Passen Maße nicht zusammen, fragt die App: Maß 1 verwenden, Maß 2 verwenden, Geometrie anpassen (eine Wand ohne Maß wird schräg) oder Maße überprüfen. Gemessene Maße stehen blau. Unter „Maße“ stehen alle Wände mit Länge und Maß.
@@ -152,6 +152,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 06.10.2026 | 1.46.3 | Raumaufmaß-App 1.2: PDF-Vorschau vor dem Teilen, Räume in der Liste umbenennen, Boden netto beschriftet, Daten vor automatischem Löschen geschützt, Wand an Wand wurde fälschlich als Überschneidung gemeldet |
 | 06.10.2026 | 1.46.2 | Raumaufmaß-App 1.1: Räume Wand an Wand ohne Lücke anbauen, Wände mit Maß lassen sich nicht mehr verschieben, Körper (Kamin, Säule, Schacht, Vorsprung) als Abzug von Boden und Decke |
 | 05.10.2026 | 1.46.1 | Stunden: Admin findet die Stunden eines Mitarbeiters auch, wenn dessen Name in der App in anderer Reihenfolge oder mit Sonderzeichen geschrieben ist |
 | 05.10.2026 | 1.46.0 | Raumaufmaß vorübergehend als eigene App (…/Tagesbericht-App/raumaufmass/), in der Berichte-App kein „Raum zeichnen“ mehr; alte Räume bleiben sichtbar |

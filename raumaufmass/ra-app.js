@@ -8,7 +8,7 @@ import {
   naechsterName, fmt2,
 } from './raumgeometrie.js';
 
-const RA_VERSION = '1.1';
+const RA_VERSION = '1.2';
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -22,6 +22,7 @@ const ICON = {
   plan: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM12 5v6M12 14v5M12 11h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
   stift: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1-5L16 4l4 4L9 19z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
   weg: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
+  teilen: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M5 13v7h14v-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   pdf: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l5 5v13H7z M14 3v5h5 M10 13h6 M10 17h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
 };
 
@@ -78,10 +79,10 @@ async function liste() {
     <section class="section">
       <h2>Aufmaße</h2>
       <div class="knoepfe">
-        ${projekte.length ? projekte.map((p) => `<button type="button" class="proj" data-id="${p.id}"><span><b>${esc(p.name)}</b><small>${esc(p.datum)} · ${p.raeume.length} ${p.raeume.length === 1 ? 'Raum' : 'Räume'} · ${fmt2(bodenSumme(p.raeume))} m² Boden</small></span>${ICON.zurueck.replace('M15 5l-7 7 7 7', 'M9 5l7 7-7 7')}</button>`).join('') : '<p class="leer">Noch kein Aufmaß. Unten ein neues anlegen.</p>'}
+        ${projekte.length ? projekte.map((p) => `<button type="button" class="proj" data-id="${p.id}"><span><b>${esc(p.name)}</b><small>${esc(p.datum)} · ${p.raeume.length} ${p.raeume.length === 1 ? 'Raum' : 'Räume'} · ${fmt2(bodenSumme(p.raeume))} m² Boden netto</small></span>${ICON.zurueck.replace('M15 5l-7 7 7 7', 'M9 5l7 7-7 7')}</button>`).join('') : '<p class="leer">Noch kein Aufmaß. Unten ein neues anlegen.</p>'}
       </div>
       <div class="knoepfe"><button type="button" class="btn primary block" id="neu">${ICON.plus} Neues Aufmaß</button></div>
-      <p class="hint">Räume skizzieren, eine Wand messen, Türen, Fenster, Dachschrägen und Körper (Kamin, Säule) setzen, Räume Wand an Wand anbauen. Alles bleibt auf diesem Gerät; als PDF teilen oder speichern.</p>
+      <p class="hint">Räume skizzieren, eine Wand messen, Türen, Fenster, Dachschrägen und Körper (Kamin, Säule) setzen, Räume Wand an Wand anbauen. Alles bleibt auf diesem Gerät gespeichert; als PDF ansehen, teilen oder speichern.</p>
     </section>`;
   $$('.proj', view).forEach((b) => { b.onclick = () => { location.hash = `#/p/${b.dataset.id}`; }; });
   $('#neu').onclick = async () => {
@@ -124,16 +125,16 @@ async function projekt(id) {
         <label class="field"><span>Name des Aufmaßes (z. B. Baustelle)</span><input type="text" id="name" value="${esc(p.name)}"></label>
       </section>
       <section class="section">
-        <h2>Räume <span class="h-right">${fmt2(bodenSumme(p.raeume))} m² Boden</span></h2>
+        <h2>Räume <span class="h-right">${fmt2(bodenSumme(p.raeume))} m² Boden netto</span></h2>
         <div class="fa-karten" id="karten">
           ${gr.map((l, k) => `<div class="fa-karte" data-gruppe="${k}">
             <button type="button" class="fa-karte-bild ra-bild" aria-label="Grundriss ansehen"><img src="${svgBild(alsSvg(l, massstabFuer(l)))}" alt=""></button>
-            <div class="fa-karte-text"><b>Grundriss gesamt</b><small>${l.length} Räume · ${fmt2(bodenSumme(l))} m² Boden</small></div>
+            <div class="fa-karte-text"><b>Grundriss gesamt</b><small>${l.length} Räume · ${fmt2(bodenSumme(l))} m² Boden netto</small></div>
             <button type="button" class="btn soft ra-bearbeiten" aria-label="Grundriss bearbeiten">${ICON.stift}</button>
           </div>`).join('')}
           ${p.raeume.map((r) => `<div class="fa-karte" data-id="${r.id}">
             <button type="button" class="fa-karte-bild ra-bild" aria-label="Grundriss ansehen">${fertig(r) ? `<img src="${svgBild(alsSvg(r, massstabFuer(r)))}" alt="">` : ICON.plan}</button>
-            <div class="fa-karte-text"><b>${esc(r.name)}</b><small>${esc(raumKurz(r))}</small></div>
+            <button type="button" class="fa-karte-text ra-name" aria-label="Raum umbenennen"><b>${esc(r.name)} ${ICON.stift}</b><small>${esc(raumKurz(r))}</small></button>
             <button type="button" class="btn soft ra-bearbeiten" aria-label="Raum bearbeiten">${ICON.stift}</button>
             <button type="button" class="icon-btn fa-weg ra-weg" aria-label="Raum entfernen">${ICON.weg}</button>
           </div>`).join('')}
@@ -141,7 +142,7 @@ async function projekt(id) {
         ${p.raeume.length ? '' : '<p class="leer">Noch keine Räume.</p>'}
         <div class="knoepfe">
           <button type="button" class="btn primary block" id="raum-neu">${ICON.plan} Raum zeichnen</button>
-          <button type="button" class="btn ghost block" id="pdf" ${p.raeume.some(fertig) ? '' : 'disabled'}>${ICON.pdf} PDF teilen oder speichern</button>
+          <button type="button" class="btn ghost block" id="pdf" ${p.raeume.some(fertig) ? '' : 'disabled'}>${ICON.pdf} PDF ansehen</button>
         </div>
       </section>
       <section class="section">
@@ -161,6 +162,14 @@ async function projekt(id) {
       const r = p.raeume.find((x) => x.id === el.dataset.id);
       $('.ra-bild', el).onclick = () => (fertig(r) ? bildZeigen(alsSvg(r, massstabFuer(r))) : oeffnen(r));
       $('.ra-bearbeiten', el).onclick = () => oeffnen(r);
+      $('.ra-name', el).onclick = async () => {
+        const neu = prompt('Neuer Name für den Raum:', r.name)?.trim();
+        if (!neu || neu === r.name) return;
+        r.name = neu;
+        await speichern();
+        zeichnen();
+        toast('Raum umbenannt.');
+      };
       $('.ra-weg', el).onclick = async () => {
         if (!confirm(`„${r.name}“ entfernen?`)) return;
         p.raeume = p.raeume.filter((x) => x.id !== r.id);
@@ -172,7 +181,7 @@ async function projekt(id) {
     $('#pdf').onclick = async () => {
       try {
         const blob = await pdfBauen(p);
-        await teilen(blob, `${(p.name || 'raumaufmass').replace(/[^\wäöüÄÖÜß-]+/g, '_')}.pdf`);
+        await pdfZeigen(blob, `${(p.name || 'raumaufmass').replace(/[^\wäöüÄÖÜß-]+/g, '_')}.pdf`, p.name);
       } catch (err) {
         toast(`PDF ging nicht (${err.message}).`, 5000);
       }
@@ -193,6 +202,83 @@ function bildZeigen(svg) {
   el.innerHTML = `<img src="${svgBild(svg)}" alt="Grundriss" style="max-width:100%;max-height:100%;object-fit:contain"><button type="button" class="btn primary" style="position:absolute;top:calc(env(safe-area-inset-top) + 12px);right:12px">Schließen</button>`;
   el.onclick = () => el.remove();
   document.body.appendChild(el);
+}
+
+// PDF erst in der App ansehen (wie in der Berichte-App), Teilen/Speichern über den Knopf unten
+let pdfjs = null;
+async function pdfJsLaden() {
+  if (!pdfjs) {
+    pdfjs = await import('../vendor/pdf.min.js');
+    pdfjs.GlobalWorkerOptions.workerSrc = new URL('../vendor/pdf.worker.min.js', location.href).href;
+  }
+  return pdfjs;
+}
+
+async function pdfZeigen(blob, name, titel) {
+  const ansicht = document.createElement('div');
+  ansicht.className = 'pdf-view';
+  ansicht.innerHTML = `
+    <header><button type="button" class="icon-btn" id="pdfv-close" aria-label="Zurück">${ICON.zurueck}</button>
+      <div><b>${esc(titel || name)}</b><small id="pdfv-info">PDF</small></div>
+      <div class="pdfv-zoom"><button type="button" data-z="-1" aria-label="Verkleinern">−</button><button type="button" data-z="1" aria-label="Vergrößern">+</button></div></header>
+    <div class="pdf-pages" id="pdfv-pages"><p class="hint" style="text-align:center;margin-top:40px">PDF wird geladen …</p></div>
+    <footer><button type="button" class="btn primary block" id="pdfv-share">${ICON.teilen} Teilen oder speichern</button></footer>`;
+  document.body.appendChild(ansicht);
+  document.body.classList.add('no-scroll');
+  let zu = false;
+  let dok = null;
+  const schliessen = () => { zu = true; ansicht.remove(); document.body.classList.remove('no-scroll'); dok?.destroy(); };
+  $('#pdfv-close', ansicht).onclick = schliessen;
+  $('#pdfv-share', ansicht).onclick = () => teilen(blob, name);
+
+  const seiten = $('#pdfv-pages', ansicht);
+  // + und − zeichnen das PDF größer (die App selbst ist nicht zoombar)
+  const STUFEN = [1, 1.5, 2, 3];
+  let stufe = 0;
+  let nrZeichnen = 0;
+  const zeichnen = async () => {
+    const nr = ++nrZeichnen;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const breite = Math.min(seiten.clientWidth - 16, 900) * STUFEN[stufe];
+    const neu = [];
+    for (let i = 1; i <= dok.numPages; i++) {
+      const seite = await dok.getPage(i);
+      const basis = seite.getViewport({ scale: 1 });
+      const hoehe = (breite / basis.width) * basis.height;
+      const k = Math.min(dpr, Math.sqrt(4e6 / (breite * hoehe)));
+      const vp = seite.getViewport({ scale: (breite / basis.width) * k });
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.floor(vp.width);
+      canvas.height = Math.floor(vp.height);
+      canvas.style.width = `${breite}px`;
+      await seite.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+      seite.cleanup();
+      if (zu || nr !== nrZeichnen) { canvas.width = 0; return; }
+      neu.push(canvas);
+    }
+    seiten.querySelectorAll('canvas').forEach((c) => { c.width = 0; c.height = 0; });
+    seiten.replaceChildren(...neu);
+    seiten.classList.toggle('gezoomt', stufe > 0);
+  };
+  $$('.pdfv-zoom button', ansicht).forEach((b) => {
+    b.onclick = () => {
+      const s = Math.min(STUFEN.length - 1, Math.max(0, stufe + Number(b.dataset.z)));
+      if (s === stufe || !dok) return;
+      stufe = s;
+      zeichnen().catch(() => {});
+    };
+  });
+  try {
+    const lib = await pdfJsLaden();
+    dok = await lib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
+    if (zu) { dok.destroy(); return; }
+    seiten.innerHTML = '';
+    $('#pdfv-info', ansicht).textContent = `${dok.numPages} ${dok.numPages === 1 ? 'Seite' : 'Seiten'}`;
+    await zeichnen();
+  } catch (err) {
+    if (zu) return;
+    seiten.innerHTML = `<p class="hint" style="text-align:center;margin-top:40px">Vorschau nicht möglich (${esc(err.message)}).<br>Tippe unten auf „Teilen oder speichern“.</p>`;
+  }
 }
 
 async function teilen(blob, name) {
@@ -312,7 +398,7 @@ export async function pdfBauen(p) {
     neueSeite();
     titel('Grundriss gesamt');
     plan(l);
-    tabelle([...l.map((r) => { const b = berechne(r); return [r.name, fmt2(b.bodenflaeche), 'm²']; }), ['Bodenfläche gesamt', fmt2(bodenSumme(l)), 'm²']], true);
+    tabelle([...l.map((r) => { const b = berechne(r); return [r.name, fmt2(b.bodenflaeche), 'm²']; }), ['Bodenfläche gesamt (netto)', fmt2(bodenSumme(l)), 'm²']], true);
   }
   for (const r of raeume) {
     neueSeite();
@@ -348,6 +434,8 @@ function route() {
 }
 window.addEventListener('hashchange', route);
 route();
+// Daten auf dem Gerät vor automatischem Aufräumen des Browsers schützen
+if (navigator.storage?.persist) navigator.storage.persisted().then((ja) => ja || navigator.storage.persist()).catch(() => {});
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 // für Tests: PDF eines gespeicherten Aufmaßes bauen
 window.raumaufmassPdf = async (id) => pdfBauen(await projektLaden(id));

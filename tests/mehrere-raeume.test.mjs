@@ -52,6 +52,11 @@ test('Überschneidung wird gemeldet', () => {
   assert.equal(ueberschneiden(a, innen), true, 'ganz innen');
   const daneben = raum([[4, 0], [6, 0], [6, 4], [4, 4]]);
   assert.equal(ueberschneiden(a, daneben), false, 'nur berühren');
+  // Wand an Wand mit gerundeten Koordinaten (Bruchteile eines Millimeters) ist keine Überschneidung
+  const oben = raum([[0.1265416, -0.6361613], [6.1265416, -0.6361613], [6.1265416, 3.3638387], [0.1265416, 3.3638387]]);
+  const dran = raum([[6.126542, -0.636161], [0.126542, -0.636161], [0.126542, -3.636161], [6.126542, -3.636161]]);
+  assert.equal(ueberschneiden(oben, dran), false, 'gerundet Wand an Wand');
+  assert.equal(ueberschneiden(oben, verschiebeRaum(dran, [0.5, 0.01]).raum), true, '1 cm drin');
 });
 
 test('Grundriss gesamt als SVG und DXF, Namen', () => {

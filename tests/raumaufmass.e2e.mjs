@@ -252,6 +252,14 @@ async function ablauf(b, { touch }) {
   const pdf = await pdfHolen(p);
   assert.equal(pdf.raeume, 1);
   if (SHOTS) writeFileSync(`${SHOTS}/${art}-aufmass.pdf`, Buffer.from(pdf.b64, 'base64'));
+  // PDF-Vorschau in der App: Seiten erscheinen, Knopf zum Teilen, Zurück schließt
+  await p.click('#pdf');
+  await p.waitForSelector('.pdf-view .pdf-pages canvas', { timeout: 15000 });
+  assert.match(await p.locator('#pdfv-info').innerText(), /Seite/);
+  assert.ok(await p.locator('#pdfv-share').isVisible());
+  await shot(p, `${art}-8b-pdf-vorschau`);
+  await p.click('#pdfv-close');
+  assert.equal(await p.locator('.pdf-view').count(), 0);
   await p.click('#karten .ra-bearbeiten');
   await p.waitForSelector('.ra-view');
   w = await werte(p);
@@ -345,6 +353,13 @@ async function ablauf(b, { touch }) {
   assert.equal(pdf4.raeume, 2);
   assert.equal(pdf4.gruppen, 1);
   if (SHOTS) writeFileSync(`${SHOTS}/${art}-aufmass-mehrere-raeume.pdf`, Buffer.from(pdf4.b64, 'base64'));
+  // Raum nachträglich umbenennen (Name auf der Karte antippen)
+  p.once('dialog', (dlg) => dlg.accept('Küche'));
+  await p.locator('.fa-karte[data-id] .ra-name').nth(1).click();
+  await p.waitForFunction(() => document.querySelector('#karten')?.innerText.includes('Küche'));
+  const [umbenannt] = await p.evaluate(async () => (await window.raumaufmassProjekte()).map((x) => x.raeume.map((r) => r.name)));
+  assert.deepEqual(umbenannt, ['Wohnzimmer', 'Küche']);
+  await shot(p, `${art}-16-umbenannt`);
   assert.deepEqual(fehler, [], `Fehler in der Konsole: ${fehler.join(' | ')}`);
 }
 

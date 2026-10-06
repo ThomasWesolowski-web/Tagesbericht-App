@@ -1222,8 +1222,9 @@ export function ueberschneiden(r1, r2) {
   if (!geschlossen(r1) || !geschlossen(r2)) return false;
   const p = punkteVon(r1);
   const q = punkteVon(r2);
-  const e = 1e-6;
-  const o = (x, y, z) => kreuz(sub(y, x), sub(z, x));
+  // Abstand von z zur Geraden x–y; unter 0,1 mm zählt als „liegt drauf“ (Wand an Wand, gerundete Koordinaten)
+  const e = 1e-4;
+  const o = (x, y, z) => kreuz(sub(y, x), sub(z, x)) / (Math.hypot(...sub(y, x)) || 1);
   for (let i = 0; i < p.length; i++) {
     const a = p[i];
     const b = p[(i + 1) % p.length];
