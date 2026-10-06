@@ -368,6 +368,19 @@ async function ablauf(b, { touch }) {
   assert.match(w, /^18,00 m²/, `angebaut: ${w}`);
   assert.match(await p.locator('.ra-titel').innerText(), /Raum 2 · 2 Räume/);
   await shot(p, `${art}-13-angebaut`);
+  // Tür in der gemeinsamen Wand A von Raum 2: zählt auch im Wohnzimmer
+  await einfuegen('tuer');
+  await tippe3(await p.evaluate(() => {
+    const svg = document.querySelector('.ra-svg');
+    const r = svg.getBoundingClientRect();
+    const t = [...svg.querySelectorAll('text')].filter((x) => x.textContent.startsWith('A: ')).at(-1);
+    const b = t.getBoundingClientRect();
+    return [b.x + b.width / 2 - r.x, b.y + b.height / 2 - r.y];
+  }));
+  await p.waitForSelector('.ra-panel [data-feld="breite"]');
+  await p.fill('.ra-panel [data-feld="abstand"]', '0,2'); // neben das Fenster des Wohnzimmers
+  await p.press('.ra-panel [data-feld="abstand"]', 'Tab');
+  await p.click('.ra-panel .ra-p-ok');
   // grauen Wohnzimmer antippen → wird bearbeitet
   await tippe3(await textPunkt('Wohnzimmer'));
   await p.waitForFunction(() => document.querySelector('.ra-titel')?.textContent.startsWith('Wohnzimmer'));
@@ -397,12 +410,18 @@ async function ablauf(b, { touch }) {
   await p.waitForFunction(() => !document.querySelector('.ra-griff') && document.querySelector('.ra-schloss-knopf'));
   await p.click('.ra-panel .ra-p-ok');
   await p.click('.ra-fertig');
+  // die Tür reicht im Wohnzimmer in die Dachschräge an Wand A: Warnung, trotzdem übernehmen
+  await p.waitForSelector('.ra-dialog:not([hidden]) [data-wert="ja"]');
+  assert.match(await p.locator('.ra-dialog').innerText(), /Wohnzimmer: Tür 1 \(Raum 2\) reicht in die Dachschräge/);
+  await p.click('.ra-dialog [data-wert="ja"]');
   await p.waitForSelector('.ra-view', { state: 'detached' });
   await p.waitForFunction(() => document.querySelector('#karten')?.innerText.includes('Grundriss gesamt'), null, { timeout: 5000 });
   const karten = await p.locator('#karten').innerText();
   assert.match(karten, /Grundriss gesamt[\s\S]*2 Räume · 39,00 m² Boden/, karten);
   await shot(p, `${art}-15-karten`);
   const fest = await p.evaluate(async () => (await window.raumaufmassProjekte())[0].raeume.map((r) => !!r.fest));
+  const tueren = await p.evaluate(async () => (await window.raumaufmassProjekte())[0].raeume.map((r) => r.oeffnungen.filter((o) => o.typ === 'tuer').map((o) => o.name)));
+  assert.ok(tueren[0].includes('Tür 1 (Raum 2)') && tueren[1].includes('Tür 1'), `Tür in gemeinsamer Wand: ${JSON.stringify(tueren)}`);
   assert.deepEqual(fest, [false, true], 'Raum 2 bleibt festgemacht gespeichert');
   const pdf4 = await pdfHolen(p);
   assert.equal(pdf4.raeume, 2);
