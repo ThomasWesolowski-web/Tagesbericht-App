@@ -252,6 +252,7 @@ async function ablauf(b, { touch }) {
   // PDF bauen und prüfen, dass der Raum drin ist
   const pdf = await pdfHolen(p);
   assert.equal(pdf.raeume, 1);
+  assert.ok(pdf.text.includes('Raumvolumen'), 'PDF enthält das Raumvolumen');
   if (SHOTS) writeFileSync(`${SHOTS}/${art}-aufmass.pdf`, Buffer.from(pdf.b64, 'base64'));
   // PDF-Vorschau in der App: Seiten erscheinen, Knopf zum Teilen, Zurück schließt
   await p.click('#pdf');
@@ -385,6 +386,7 @@ async function ablauf(b, { touch }) {
   const pdf4 = await pdfHolen(p);
   assert.equal(pdf4.raeume, 2);
   assert.equal(pdf4.gruppen, 1);
+  assert.ok(pdf4.text.includes('Raumvolumen gesamt'), 'Grundriss gesamt mit Volumen-Summe');
   if (SHOTS) writeFileSync(`${SHOTS}/${art}-aufmass-mehrere-raeume.pdf`, Buffer.from(pdf4.b64, 'base64'));
   // 3-D-Ansicht: Canvas ist gezeichnet, Drehen geht, Zurück schließt
   await p.click('#drei-d');

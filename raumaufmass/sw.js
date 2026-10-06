@@ -1,5 +1,5 @@
 // Raumaufmaß (eigene Test-App): Dateien offline aus dem Cache, im Hintergrund aktualisieren.
-const CACHE = 'raumaufmass-v8';
+const CACHE = 'raumaufmass-v9';
 const SHELL = [
   './',
   'index.html',

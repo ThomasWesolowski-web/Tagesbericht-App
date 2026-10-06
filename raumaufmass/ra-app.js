@@ -9,7 +9,7 @@ import {
   naechsterName, fmt2, verschiebeRaum,
 } from './raumgeometrie.js';
 
-const RA_VERSION = '1.5.0';
+const RA_VERSION = '1.6.0';
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -425,6 +425,8 @@ export async function pdfBauen(p) {
     titel('Grundriss gesamt');
     plan(l);
     tabelle([...l.map((r) => { const b = berechne(r); return [r.name, fmt2(b.bodenflaeche), 'm²']; }), ['Bodenfläche gesamt (netto)', fmt2(bodenSumme(l)), 'm²']], true);
+    y += 4;
+    tabelle([...l.map((r) => [`${r.name}, Raumvolumen`, fmt2(berechne(r).volumen), 'm³']), ['Raumvolumen gesamt', fmt2(l.reduce((s, r) => s + berechne(r).volumen, 0)), 'm³']], true);
   }
   for (const r of raeume) {
     neueSeite();
@@ -439,6 +441,7 @@ export async function pdfBauen(p) {
         ['Bodenfläche netto', fmt2(b.bodenflaeche), 'm²'],
       ] : [['Bodenfläche', fmt2(b.bodenflaeche), 'm²']]),
       [`${b.mitSchraege ? 'Deckenfläche waagerecht' : 'Deckenfläche'}${b.koerperDecke ? ' netto' : ''}`, fmt2(b.deckenflaeche), 'm²'],
+      [`Raumvolumen${b.mitSchraege ? ' (mit Dachschrägen)' : ''}${b.koerperVolumen ? ', Körper bis zur Decke abgezogen' : ''}`, fmt2(b.volumen), 'm³'],
       ...b.schraegen.map((e) => [`Dachschräge an Wand ${e.wandName} (Kniestock ${fmt2(e.kniestock)} m, ${fmt2(e.winkel)}°)`, fmt2(e.flaeche), 'm²']),
       ...b.dachfenster.map((o) => [`${o.name} (${fmt2(o.breite)} × ${fmt2(o.laenge)} m), abgezogen`, fmt2(o.flaeche), 'm²']),
       ...(b.mitSchraege ? [['Dachschrägen netto', fmt2(b.dachNetto), 'm²']] : []),
