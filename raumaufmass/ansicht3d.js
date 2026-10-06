@@ -12,6 +12,7 @@ const FARBE = {
   dachfenster: [120, 184, 232],
   schraege: [214, 160, 130],
   koerper: [160, 166, 174],
+  treppe: [196, 170, 130],
 };
 
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];

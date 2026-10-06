@@ -188,7 +188,13 @@ async function ablauf(b, { touch }) {
   assert.match(await werte(p), /21,00 m²/);
 
   // Körper (Kamin 50 × 40 cm) in den Raum setzen: 21,00 − 0,20 = 20,80 m², danach rückgängig
-  await p.click('.mk-wz[data-wz="koerper"]');
+  // Tür, Fenster, Körper und Treppe stecken hinter „Einfügen“
+  const einfuegen = async (was) => {
+    await p.click('.mk-wz[data-wz="einfuegen"]');
+    await p.click(`.ra-einfuegen-wahl [data-wert="${was}"]`);
+    assert.equal(await p.locator('.mk-wz[data-wz="einfuegen"]').getAttribute('aria-pressed'), 'true');
+  };
+  await einfuegen('koerper');
   const innen = await p.evaluate(() => {
     const svg = document.querySelector('.ra-svg');
     const r = svg.getBoundingClientRect();
@@ -211,9 +217,24 @@ async function ablauf(b, { touch }) {
   for (let k = 0; k < 4; k++) await p.click('.ra-zurueck');
   assert.match(await werte(p), /^21,00 m²/, 'Kamin rückgängig');
 
+  // Treppe: nur eingezeichnet (keine Fläche weg), Laufrichtung umstellen, als Treppenloch abziehen
+  await einfuegen('treppe');
+  await tippe(innen);
+  await p.waitForSelector('.ra-panel [data-richtung]');
+  assert.match(await werte(p), /^21,00 m²/, 'Treppe ändert die Fläche nicht');
+  assert.equal(await p.locator('.ra-panel [data-richtung="oben"]').getAttribute('aria-pressed'), 'true');
+  await p.click('.ra-panel [data-richtung="rechts"]');
+  assert.match(await p.locator('.ra-panel .fa-panel-kopf b').innerText(), /Treppe · 3,00 × 1,00 m/, 'quer gelegt: Breite und Tiefe getauscht');
+  await p.click('.ra-panel [data-abzug]');
+  assert.match(await werte(p), /^18,00 m²/, 'Treppenloch 3 m² abgezogen');
+  await shot(p, `${art}-5c-treppe`);
+  await p.click('.ra-panel .ra-p-ok');
+  for (let k = 0; k < 3; k++) await p.click('.ra-zurueck');
+  assert.match(await werte(p), /^21,00 m²/, 'Treppe rückgängig');
+
   // Tür an Wand F (links), Fenster an Wand A (oben)
   for (const [wz, wand] of [['tuer', 'F'], ['fenster', 'A']]) {
-    await p.click(`.mk-wz[data-wz="${wz}"]`);
+    await einfuegen(wz);
     const q = await wandPunkt(p, wand);
     await tippe(q);
     await p.waitForSelector('.ra-panel:not([hidden])');
