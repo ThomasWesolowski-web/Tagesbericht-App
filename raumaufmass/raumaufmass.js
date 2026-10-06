@@ -168,6 +168,15 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
   const anzeigeRaum = () => vorschau || d;
   // Schiebepunkt eines Raums: unter dem Namen und der Fläche in der Mitte
   const griffPunkt = (r) => { const m = abb(raumMitte(r)); return [m[0], m[1] + 44]; };
+  // Schloss neben dem Schiebepunkt; ein festgemachter Raum zeigt nur das geschlossene Schloss
+  const schlossPunkt = (r) => { const [x, y] = griffPunkt(r); return r.fest ? [x, y] : [x + 44, y]; };
+  const schlossSvg = ([x, y], zu, klein) => {
+    const k = klein ? 0.7 : 1;
+    const f = zu ? '#1d232a' : '#fff';
+    const s = zu ? '#fff' : '#1d232a';
+    return `<g class="ra-schloss${klein ? '' : ' ra-schloss-knopf'}" transform="translate(${x} ${y}) scale(${k})"><circle r="17" fill="${f}" stroke="#1d232a" stroke-width="2"/><rect x="-7" y="-2" width="14" height="10" rx="2" fill="${s}"/><path d="M-4.5 -2V-6a4.5 4.5 0 0 1 9 0${zu ? 'V-2' : 'V-8'}" fill="none" stroke="${s}" stroke-width="2.2" stroke-linecap="round"/></g>`;
+  };
+  const festText = 'Der Raum ist mit dem Schloss festgemacht. Zum Ändern das Schloss antippen.';
   const gruppenMassstab = () => andere.some((x) => geschlossen(x) && x.massstabGesetzt);
   // offene Kontur als vorläufiger Raum (ohne letzte Wand)
   const offeneKontur = (punkte, schliessen) => {
@@ -191,6 +200,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     for (const x of andere) {
       if (!geschlossen(x)) continue;
       html += elementeAlsSvg(planElemente(x, abb, { namen: false, schrift: 12, wand: 3, duenn: 1, massAbstand: 20, masse: d.einstellungen.masseZeigen ? 'innen' : false, ungefaehr: !x.massstabGesetzt, farbe: '#9aa3ad', mass: '#8a939d', fest: '#8a939d', flaeche: '#f4f6f8', schraege: '#e9edf1' }));
+      if (x.fest) html += schlossSvg(griffPunkt(x), true, true);
     }
     if (geschlossen(r)) {
       html += elementeAlsSvg(planElemente(r, abb, optionen));
@@ -224,7 +234,8 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
       if (auswahl.art === 'raum') {
         html += `<polygon points="${punkteVon(r).map(abb).map((x) => x.join(',')).join(' ')}" fill="var(--accent)" fill-opacity=".08" stroke="var(--accent)" stroke-width="3" stroke-dasharray="8 6"/>`;
         const [x, y] = griffPunkt(r);
-        html += `<g class="ra-griff"><circle cx="${x}" cy="${y}" r="17" fill="#0b57d0"/><path d="M${x - 10} ${y}h20M${x} ${y - 10}v20M${x - 10} ${y}l4-4M${x - 10} ${y}l4 4M${x + 10} ${y}l-4-4M${x + 10} ${y}l-4 4M${x} ${y - 10}l-4 4M${x} ${y - 10}l4 4M${x} ${y + 10}l-4-4M${x} ${y + 10}l4-4" stroke="#fff" stroke-width="2" stroke-linecap="round" fill="none"/></g>`;
+        if (!r.fest) html += `<g class="ra-griff"><circle cx="${x}" cy="${y}" r="17" fill="#0b57d0"/><path d="M${x - 10} ${y}h20M${x} ${y - 10}v20M${x - 10} ${y}l4-4M${x - 10} ${y}l4 4M${x + 10} ${y}l-4-4M${x + 10} ${y}l-4 4M${x} ${y - 10}l-4 4M${x} ${y - 10}l4 4M${x} ${y + 10}l-4-4M${x} ${y + 10}l4-4" stroke="#fff" stroke-width="2" stroke-linecap="round" fill="none"/></g>`;
+        html += schlossSvg(schlossPunkt(r), !!r.fest);
       }
       if (auswahl.art === 'koerper') {
         const k = (r.koerper || []).find((x) => x.id === auswahl.id);
@@ -236,6 +247,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
         if (q) html += `<polygon points="${q.map(abb).map((x) => x.join(',')).join(' ')}" fill="var(--accent)" fill-opacity=".25" stroke="var(--accent)" stroke-width="4"/>`;
       }
     }
+    if (geschlossen(r) && r.fest && auswahl?.art !== 'raum') html += schlossSvg(griffPunkt(r), true, true);
     // Ecken als Griffe
     if (geschlossen(r)) {
       const gross = werkzeug === 'auswahl';
@@ -652,13 +664,27 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
   const raumPanel = () => {
     panelAuf(`
       <div class="fa-panel-kopf"><b>${escH(d.name)} · ${d.massstabGesetzt ? '' : '≈ '}${fmt2(berechne(d).bodenflaeche)} m²</b><button type="button" class="btn primary ra-p-ok">Fertig</button></div>
-      <p class="fa-klein">Am blauen Punkt ziehen, um den ganzen Raum zu verschieben. Nah an einem anderen Raum rastet er Wand an Wand ein.</p>
+      <p class="fa-klein">${d.fest ? 'Der Raum ist festgemacht: er lässt sich nicht verschieben, Ecken und Wände bleiben, wo sie sind. Maße lassen sich weiter eingeben.' : 'Am blauen Punkt ziehen: Raum frei verschieben, nah an einem anderen Raum rastet er Wand an Wand oder Ecke an Ecke ein. Schloss daneben: festmachen.'}</p>
       <label class="fa-feld"><span>Raumname</span><input type="text" data-name value="${escH(d.name)}"></label>
-      <div class="fa-vorschlaege"><button type="button" class="chip" data-tun="weiter">Weiteren Raum zeichnen</button></div>
+      <div class="fa-vorschlaege"><button type="button" class="chip" data-tun="schloss">${d.fest ? 'Schloss lösen' : 'Festmachen (Schloss)'}</button><button type="button" class="chip" data-tun="weiter">Weiteren Raum zeichnen</button></div>
       <p class="fa-klein">Zum Anbauen eine Wand antippen.</p>`, () => {
       panel.querySelector('[data-name]').onchange = (e) => { const r = kopie(d); r.name = e.target.value.trim() || d.name; uebernehme({ raum: r }); raumPanel(); };
       panel.querySelector('[data-tun="weiter"]').onclick = weitererRaum;
+      panel.querySelector('[data-tun="schloss"]').onclick = schlossUmschalten;
     });
+    // Schiebepunkt und Schloss nicht unter dem Fenster verstecken: Ansicht etwas nach oben schieben
+    if (geschlossen(d)) {
+      const [, gy] = griffPunkt(d);
+      const oben = panel.getBoundingClientRect().top - svg.getBoundingClientRect().top;
+      if (gy + 30 > oben && oben > 120) { ansicht.oy -= gy + 30 - oben; zeichne(); }
+    }
+  };
+  const schlossUmschalten = () => {
+    const r = kopie(d);
+    r.fest = !d.fest;
+    uebernehme({ raum: r });
+    hinweis(r.fest ? 'Raum festgemacht. Er lässt sich nicht mehr verschieben.' : 'Schloss gelöst. Der Raum lässt sich wieder verschieben.');
+    auswaehlen({ art: 'raum' });
   };
 
   const dachfensterPanel = (id) => {
@@ -1099,6 +1125,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
   };
 
   const eckeZiehen = (zg, sp) => {
+    if (zg.start.fest) { $('.ra-text').textContent = festText; meldung = ''; return; }
     const p = welt(sp);
     const k = zg.start.ecken.findIndex((e) => e.id === zg.id);
     const n = zg.start.ecken.length;
@@ -1129,6 +1156,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
   const wandZiehen = (zg, sp) => {
     const i = wandIndex(zg.start, zg.id);
     const g = wandGeo(zg.start, i);
+    if (zg.start.fest) { $('.ra-text').textContent = festText; meldung = ''; return; }
     if (zg.start.waende[i].mass != null) { $('.ra-text').textContent = festeWand(zg.start, null, zg.id); meldung = ''; return; }
     const p0 = welt(zg.sp);
     const p1 = welt(sp);
@@ -1177,7 +1205,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     const dock = andocken(raum, andere, { fang: Math.max(0.05, 16 / ansicht.s) });
     vorschau = dock.raum;
     zg.erg = { raum: dock.raum };
-    $('.ra-text').textContent = dock.an ? `An ${dock.an} angedockt` : 'Raum verschieben';
+    $('.ra-text').textContent = dock.an ? `An ${dock.an} ${dock.ecke ? 'Ecke an Ecke' : 'Wand an Wand'} eingerastet` : 'Raum frei verschieben';
     spaeter();
   };
   // Welcher Raum liegt unter dem Finger? (aktiver Raum zuerst)
@@ -1228,8 +1256,10 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     }
     if (werkzeug === 'auswahl') {
       if (auswahl?.art === 'raum' && geschlossen(d)) {
+        const [sx, sy] = schlossPunkt(d);
+        if (Math.hypot(sp[0] - sx, sp[1] - sy) <= 22) { zug = { art: 'schloss', sp }; return; }
         const [gx, gy] = griffPunkt(d);
-        if (Math.hypot(sp[0] - gx, sp[1] - gy) <= 26) { zug = { art: 'raum', start: kopie(d), sp, bewegt: false }; return; }
+        if (!d.fest && Math.hypot(sp[0] - gx, sp[1] - gy) <= 22) { zug = { art: 'raum', start: kopie(d), sp, bewegt: false }; return; }
       }
       const ecke = trefferEcke(sp);
       if (ecke) { zug = { art: 'ecke', id: ecke.id, start: kopie(d), sp, bewegt: false }; return; }
@@ -1326,6 +1356,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
       }
       return;
     }
+    if (zg.art === 'schloss') { schlossUmschalten(); return; }
     if (zg.art === 'raum') {
       vorschau = null;
       if (zg.bewegt && zg.erg) uebernehme(zg.erg);

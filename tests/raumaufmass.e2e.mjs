@@ -342,6 +342,19 @@ async function ablauf(b, { touch }) {
   await p.waitForSelector('.ra-panel [data-tun="weiter"]');
   assert.ok(await p.locator('.ra-griff').count());
   await shot(p, `${art}-14-gewechselt`);
+  // Festmachen (Schloss): kein Schiebepunkt mehr, geschlossenes Schloss; lösen und wieder festmachen
+  await p.click('.ra-panel [data-tun="schloss"]');
+  await p.waitForFunction(() => document.querySelector('.ra-panel [data-tun="schloss"]')?.textContent.includes('Schloss lösen'));
+  assert.equal(await p.locator('.ra-griff').count(), 0);
+  assert.equal(await p.locator('.ra-schloss-knopf').count(), 1);
+  await shot(p, `${art}-14b-schloss`);
+  // Schloss im Plan antippen löst es wieder (liegt über dem Fenster)
+  const sb = await p.locator('.ra-schloss-knopf').boundingBox();
+  await (touch ? p.touchscreen.tap(sb.x + sb.width / 2, sb.y + sb.height / 2) : p.mouse.click(sb.x + sb.width / 2, sb.y + sb.height / 2));
+  await p.waitForFunction(() => document.querySelector('.ra-griff'));
+  await shot(p, `${art}-14c-offen`);
+  await p.click('.ra-panel [data-tun="schloss"]');
+  await p.waitForFunction(() => !document.querySelector('.ra-griff') && document.querySelector('.ra-schloss-knopf'));
   await p.click('.ra-panel .ra-p-ok');
   await p.click('.ra-fertig');
   await p.waitForSelector('.ra-view', { state: 'detached' });
@@ -349,6 +362,8 @@ async function ablauf(b, { touch }) {
   const karten = await p.locator('#karten').innerText();
   assert.match(karten, /Grundriss gesamt[\s\S]*2 Räume · 39,00 m² Boden/, karten);
   await shot(p, `${art}-15-karten`);
+  const fest = await p.evaluate(async () => (await window.raumaufmassProjekte())[0].raeume.map((r) => !!r.fest));
+  assert.deepEqual(fest, [false, true], 'Raum 2 bleibt festgemacht gespeichert');
   const pdf4 = await pdfHolen(p);
   assert.equal(pdf4.raeume, 2);
   assert.equal(pdf4.gruppen, 1);
