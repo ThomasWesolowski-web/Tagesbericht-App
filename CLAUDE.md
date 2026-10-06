@@ -37,8 +37,9 @@ Veröffentlicht über GitHub Pages aus `main` (Root): https://thomaswesolowski-w
   Handys weiter die alte App.
 - **Neue Dateien**, die die App lädt, auch in `SHELL` in `sw.js` eintragen, sonst fehlen sie offline.
 - **Raumaufmaß-App** (`raumaufmass/`): bei Änderungen dort `CACHE` in `raumaufmass/sw.js` hochzählen.
-  `raumgeometrie.js` gibt es zweimal (Hauptordner für alte Berichte, `raumaufmass/` für die App);
-  Rechenänderungen in beiden nachziehen. Die Raumaufmaß-App ist nur Deutsch.
+  `raumgeometrie.js` gibt es zweimal: die Kopie im Hauptordner zeigt nur alte Räume in Berichten an
+  und bleibt auf dem Stand von 1.46.0; Neues (z. B. Körper, Wand an Wand) nur in `raumaufmass/`.
+  Die Raumaufmaß-App ist nur Deutsch; ihre Version steht in `RA_VERSION` (`raumaufmass/ra-app.js`).
 - **Neue Oberflächentexte** in `ROWS` in `i18n.js` in allen fünf Sprachen eintragen
   (Reihenfolge: Deutsch, Polnisch, Rumänisch, Mazedonisch, Albanisch). Der Code und alle PDFs und
   Berichte bleiben deutsch; Admin sieht die App immer auf Deutsch.

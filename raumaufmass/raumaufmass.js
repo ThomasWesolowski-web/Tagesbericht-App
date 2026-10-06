@@ -13,12 +13,14 @@ import {
   Verlauf, laengeLesen, wandName, fmt2, alsSvg, alsDxf, winkelVon, punkteVon, massstabFuer,
   schraegeWerte, setzeSchraege, SCHRAEGE_STANDARD, neuesDachfenster, aendereDachfenster, loescheDachfenster,
   dachfensterEcken, punktInnen, raumAnbauen, andocken, verschiebeRaum, raumMitte, pruefeGruppe,
-  naechsterName, neuerRaum,
+  naechsterName, neuerRaum, neuerKoerper, aendereKoerper, loescheKoerper, koerperEcken, KOERPER_NAMEN, grenzen,
 } from './raumgeometrie.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const escH = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const kopie = (x) => JSON.parse(JSON.stringify(x));
+const add2 = (a, b) => [a[0] + b[0], a[1] + b[1]];
+const mul2 = (a, f) => [a[0] * f, a[1] * f];
 const zahlText = (n, st = 2) => (Math.round(n * 10 ** st) / 10 ** st).toLocaleString('de-DE', { maximumFractionDigits: st, useGrouping: false });
 
 const WERKZEUGE = [
@@ -27,6 +29,7 @@ const WERKZEUGE = [
   { id: 'mass', label: 'Maß', svg: '<path d="M3 8h18v8H3z M7 8v3M11 8v4M15 8v3M19 8v4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>' },
   { id: 'tuer', label: 'Tür', svg: '<path d="M4 20h16 M6 20V5h9v15 M12 13h.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>' },
   { id: 'fenster', label: 'Fenster', svg: '<path d="M5 4h14v16H5z M12 4v16 M5 12h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>' },
+  { id: 'koerper', label: 'Körper', svg: '<path d="M6 6h12v12H6z M6 6l12 12 M18 6L6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>' },
 ];
 const IC = {
   rueck: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4L4 9l5 5M4 9h10a6 6 0 0 1 0 12h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -37,21 +40,26 @@ const IC = {
 };
 const HINWEIS = {
   zeichnen: 'Raum grob mit dem Finger nachfahren. Ecken müssen nicht genau sein, die App macht gerade Wände daraus.',
-  auswahl: 'Wand, Ecke, Tür oder Fenster antippen zum Ändern. Ziehen verschiebt. Auf leerer Fläche ziehen verschiebt die Ansicht.',
-  gruppe: 'Wand, Ecke, Tür oder Fenster antippen zum Ändern. Einen grauen Raum antippen, um ihn zu bearbeiten.',
+  auswahl: 'Wand, Ecke, Tür, Fenster oder Körper antippen zum Ändern. Ziehen verschiebt; Wände mit Maß bleiben fest. Auf leerer Fläche ziehen verschiebt die Ansicht.',
+  gruppe: 'Wand, Ecke, Tür, Fenster oder Körper antippen zum Ändern. Einen grauen Raum antippen, um ihn zu bearbeiten.',
   mass: 'Wand antippen und ihre echte Länge eingeben.',
   tuer: 'Auf eine Wand tippen, um dort eine Tür einzusetzen.',
   fenster: 'Auf eine Wand tippen, um dort ein Fenster einzusetzen.',
+  koerper: 'In den Raum tippen, wo ein Kamin, eine Säule oder ein Schacht steht. Seine Fläche wird vom Boden abgezogen.',
 };
+// frühere Voreinstellung: 11,5 cm Lücke zwischen angebauten Räumen; jetzt Wand an Wand
+const ALTE_WANDSTAERKE = 0.115;
+const ohneAlteLuecke = (r) => (r.einstellungen?.wandstaerke === ALTE_WANDSTAERKE ? { ...r, einstellungen: { ...r.einstellungen, wandstaerke: 0 } } : r);
 
 export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {}) {
-  let d = kopie(vorlage);
-  let andere = kopie(nachbarn); // die anderen Räume des Grundrisses (grau)
+  let d = ohneAlteLuecke(kopie(vorlage));
+  let andere = kopie(nachbarn).map(ohneAlteLuecke); // die anderen Räume des Grundrisses (grau)
   const anfangs = new Map([vorlage, ...nachbarn].map((r) => [r.id, JSON.stringify(r)]));
   d.einstellungen = { ...STANDARD, ...(d.einstellungen || {}) };
   d.skizze = d.skizze || { striche: [], faktor: 1 };
   d.oeffnungen = d.oeffnungen || [];
   d.dachfenster = d.dachfenster || [];
+  d.koerper = d.koerper || [];
   let entwurf = null; // offene Kontur: { punkte, offen } (offen = „offen lassen“ gewählt)
   let werkzeug = geschlossen(d) ? (d.massstabGesetzt ? 'auswahl' : 'mass') : 'zeichnen';
   let auswahl = null; // { art: 'wand'|'ecke'|'oeffnung', id }
@@ -217,6 +225,10 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
         html += `<polygon points="${punkteVon(r).map(abb).map((x) => x.join(',')).join(' ')}" fill="var(--accent)" fill-opacity=".08" stroke="var(--accent)" stroke-width="3" stroke-dasharray="8 6"/>`;
         const [x, y] = griffPunkt(r);
         html += `<g class="ra-griff"><circle cx="${x}" cy="${y}" r="17" fill="#0b57d0"/><path d="M${x - 10} ${y}h20M${x} ${y - 10}v20M${x - 10} ${y}l4-4M${x - 10} ${y}l4 4M${x + 10} ${y}l-4-4M${x + 10} ${y}l-4 4M${x} ${y - 10}l-4 4M${x} ${y - 10}l4 4M${x} ${y + 10}l-4-4M${x} ${y + 10}l4-4" stroke="#fff" stroke-width="2" stroke-linecap="round" fill="none"/></g>`;
+      }
+      if (auswahl.art === 'koerper') {
+        const k = (r.koerper || []).find((x) => x.id === auswahl.id);
+        if (k) html += `<polygon points="${koerperEcken(k).map(abb).map((x) => x.join(',')).join(' ')}" fill="var(--accent)" fill-opacity=".25" stroke="var(--accent)" stroke-width="4"/>`;
       }
       if (auswahl.art === 'dachfenster') {
         const o = (r.dachfenster || []).find((x) => x.id === auswahl.id);
@@ -559,7 +571,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     return Number.isFinite(x) && x >= 0 && x <= 100 ? x / 100 : null;
   };
   const staerkeMerken = (t) => {
-    if (Math.abs(t - (d.einstellungen.wandstaerke ?? 0.115)) > 1e-9) d.einstellungen = { ...d.einstellungen, wandstaerke: t };
+    if (Math.abs(t - (d.einstellungen.wandstaerke ?? 0)) > 1e-9) d.einstellungen = { ...d.einstellungen, wandstaerke: t };
   };
 
   // Aktiven Raum wechseln (der bisherige wird grau)
@@ -582,16 +594,15 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
   const anbauenFragen = async (wandId) => {
     const i = wandIndex(d, wandId);
     const g = wandGeo(d, i);
-    const t = d.einstellungen.wandstaerke ?? 0.115;
+    const t = d.einstellungen.wandstaerke ?? 0;
     const wert = await dialog(`
       <b>Raum an Wand ${wandName(i)} anbauen</b>
-      <p class="fa-klein">Auf der anderen Seite der Wand entsteht ein neuer Raum (Innenmaße). Danach wie gewohnt Maße eingeben, Wände ziehen, Türen und Fenster setzen.</p>
+      <p class="fa-klein">Auf der anderen Seite der Wand entsteht ein neuer Raum, Wand an Wand${t > 0 ? ` (${cm(t)} cm Abstand, siehe Einstellungen)` : ''}. Danach wie gewohnt Maße eingeben, Türen und Fenster setzen.</p>
       <label class="fa-feld"><span>Name</span><input type="text" class="ra-n" value="${escH(neuerName())}"></label>
       <div class="ra-raster2">
         <label class="fa-feld"><span>Tiefe in m</span><input type="text" inputmode="decimal" autocomplete="off" class="ra-tiefe" placeholder="z. B. 3,00"></label>
         <label class="fa-feld"><span>Breite in m</span><input type="text" inputmode="decimal" autocomplete="off" class="ra-breite" value="${zahlText(g.l, 3)}"></label>
         <label class="fa-feld"><span>Abstand von Ecke ${i + 1} in m</span><input type="text" inputmode="decimal" autocomplete="off" class="ra-ab" value="0"></label>
-        <label class="fa-feld"><span>Wandstärke dazwischen in cm</span><input type="text" inputmode="decimal" autocomplete="off" class="ra-t" value="${cm(t)}"></label>
       </div>
       <p class="fa-klein fa-warn ra-fehler"></p>
       <div class="fa-panel-knoepfe"><button type="button" class="btn ghost" data-wert="">Abbrechen</button><button type="button" class="btn primary ra-ok">Anbauen</button></div>`, (fertig) => {
@@ -601,8 +612,8 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
         const tiefe = tiefeText ? laengeLesen(tiefeText) : 3;
         const breite = laengeLesen(q('.ra-breite').value);
         const ab = Number(String(q('.ra-ab').value || '0').replace(',', '.'));
-        const st = staerkeLesen(q('.ra-t').value);
-        if (!tiefe || !breite || !Number.isFinite(ab) || st == null) { q('.ra-fehler').textContent = 'Bitte Zahlen eingeben, z. B. 3,00.'; return; }
+        const st = t;
+        if (!tiefe || !breite || !Number.isFinite(ab)) { q('.ra-fehler').textContent = 'Bitte Zahlen eingeben, z. B. 3,00.'; return; }
         fertig(JSON.stringify({ name: q('.ra-n').value.trim() || neuerName(), tiefe, tiefeGemessen: !!tiefeText, breite, breiteGemessen: Math.abs(breite - g.l) > 0.0005, abstand: ab, staerke: st }));
       };
     });
@@ -635,13 +646,13 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     panelZu();
     merken();
     zeichne();
-    hinweis('Neuen Raum daneben zeichnen. Nah an einem anderen Raum dockt er mit der Wandstärke an.');
+    hinweis('Neuen Raum daneben zeichnen. Nah an einem anderen Raum dockt er Wand an Wand an.');
   };
 
   const raumPanel = () => {
     panelAuf(`
       <div class="fa-panel-kopf"><b>${escH(d.name)} · ${d.massstabGesetzt ? '' : '≈ '}${fmt2(berechne(d).bodenflaeche)} m²</b><button type="button" class="btn primary ra-p-ok">Fertig</button></div>
-      <p class="fa-klein">Am blauen Punkt ziehen, um den ganzen Raum zu verschieben. Nah an einem anderen Raum rastet er mit der Wandstärke ein.</p>
+      <p class="fa-klein">Am blauen Punkt ziehen, um den ganzen Raum zu verschieben. Nah an einem anderen Raum rastet er Wand an Wand ein.</p>
       <label class="fa-feld"><span>Raumname</span><input type="text" data-name value="${escH(d.name)}"></label>
       <div class="fa-vorschlaege"><button type="button" class="chip" data-tun="weiter">Weiteren Raum zeichnen</button></div>
       <p class="fa-klein">Zum Anbauen eine Wand antippen.</p>`, () => {
@@ -681,6 +692,52 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
       panel.querySelector('[data-name]').onchange = (e) => setze({ name: e.target.value.trim() || o.name });
       panel.querySelector('[data-tun="loeschen"]').onclick = () => {
         if (uebernehme(loescheDachfenster(d, id))) { auswahl = null; panelZu(); zeichne(); }
+      };
+    });
+  };
+
+  const koerperPanel = (id) => {
+    const k = (d.koerper || []).find((x) => x.id === id);
+    if (!k) { panelZu(); return; }
+    const gr = grenzen(d);
+    const feld = (key, label, wert) => `<label class="fa-feld"><span>${label}</span><input type="text" inputmode="decimal" data-feld="${key}" value="${zahlText(wert, 3)}"></label>`;
+    const feldCm = (key, label, wert) => feld(key, label, Math.round(wert * 100) / 100);
+    panelAuf(`
+      <div class="fa-panel-kopf"><b>${escH(k.name)} · ${fmt2(k.breite * k.tiefe)} m² Abzug</b><button type="button" class="btn primary ra-p-ok">Fertig</button></div>
+      <div class="fa-vorschlaege">${KOERPER_NAMEN.map((n) => `<button type="button" class="chip" data-name-wahl="${n}" aria-pressed="${k.name.startsWith(n)}">${n}</button>`).join('')}</div>
+      <div class="ra-raster2">
+        ${feld('breite', 'Breite in m (waagerecht)', k.breite)}
+        ${feld('tiefe', 'Tiefe in m (senkrecht)', k.tiefe)}
+        ${feldCm('links', 'Abstand von links in m', k.x - k.breite / 2 - gr.x0)}
+        ${feldCm('oben', 'Abstand von oben in m', k.y - k.tiefe / 2 - gr.y0)}
+      </div>
+      <label class="fa-check"><input type="checkbox" data-decke ${k.bisDecke !== false ? 'checked' : ''}> Geht bis zur Decke (auch von der Decke abziehen)</label>
+      <label class="fa-feld"><span>Bezeichnung</span><input type="text" data-name value="${escH(k.name)}"></label>
+      <p class="fa-klein">Ziehen verschiebt den Körper. Seine Fläche wird von der Bodenfläche abgezogen.</p>
+      <div class="fa-vorschlaege"><button type="button" class="chip ra-gefahr" data-tun="loeschen">Körper löschen</button></div>`, () => {
+      const setze = (felder) => { if (uebernehme(aendereKoerper(d, id, felder))) koerperPanel(id); };
+      panel.querySelectorAll('[data-feld]').forEach((inp) => {
+        inp.onchange = () => {
+          const v = Number(String(inp.value).replace(',', '.'));
+          const f = inp.dataset.feld;
+          if (!Number.isFinite(v) || ((f === 'breite' || f === 'tiefe') && v <= 0)) { hinweis('Bitte eine Zahl eingeben, z. B. 0,50.'); koerperPanel(id); return; }
+          if (f === 'breite') setze({ breite: v, x: k.x - k.breite / 2 + v / 2 });
+          else if (f === 'tiefe') setze({ tiefe: v, y: k.y - k.tiefe / 2 + v / 2 });
+          else if (f === 'links') setze({ x: gr.x0 + v + k.breite / 2 });
+          else setze({ y: gr.y0 + v + k.tiefe / 2 });
+        };
+      });
+      panel.querySelectorAll('[data-name-wahl]').forEach((b) => {
+        b.onclick = () => {
+          const basis = b.dataset.nameWahl;
+          const nr = (d.koerper || []).filter((x) => x.id !== id && x.name.startsWith(basis)).length;
+          setze({ name: nr ? `${basis} ${nr + 1}` : basis });
+        };
+      });
+      panel.querySelector('[data-decke]').onchange = (e) => setze({ bisDecke: e.target.checked });
+      panel.querySelector('[data-name]').onchange = (e) => setze({ name: e.target.value.trim() || k.name });
+      panel.querySelector('[data-tun="loeschen"]').onclick = () => {
+        if (uebernehme(loescheKoerper(d, id))) { auswahl = null; panelZu(); zeichne(); }
       };
     });
   };
@@ -746,6 +803,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     else if (a.art === 'wand') wandPanel(a.id);
     else if (a.art === 'ecke') eckePanel(a.id);
     else if (a.art === 'dachfenster') dachfensterPanel(a.id);
+    else if (a.art === 'koerper') koerperPanel(a.id);
     else if (a.art === 'raum') raumPanel();
     else oeffnungPanel(a.id);
     zeichne();
@@ -797,7 +855,9 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
         <label class="fa-feld"><span>${b?.mitSchraege ? 'Raumhöhe (flache Decke) in m' : 'Raumhöhe in m'}</span><input type="text" inputmode="decimal" data-raum="hoehe" value="${zahlText(d.hoehe, 3)}"></label>
       </div>
       ${b ? `<div class="ra-werteliste">
-        ${zeile('Bodenfläche', `${u}${fmt2(b.bodenflaeche)} m²`)}
+        ${b.koerper.length ? zeile('Bodenfläche brutto', `${u}${fmt2(b.bodenBrutto)} m²`) : ''}
+        ${b.koerper.map((k) => zeile(`${escH(k.name)} (${fmt2(k.breite)} × ${fmt2(k.tiefe)} m)`, `− ${fmt2(k.flaeche)} m²`)).join('')}
+        ${zeile(b.koerper.length ? 'Bodenfläche netto' : 'Bodenfläche', `${u}${fmt2(b.bodenflaeche)} m²`)}
         ${zeile(b.mitSchraege ? 'Decke waagerecht' : 'Deckenfläche', `${u}${fmt2(b.deckenflaeche)} m²`)}
         ${b.mitSchraege ? zeile('Dachschrägen', `${u}${fmt2(b.dachFlaeche)} m²`) : ''}
         ${b.dachfenster.length ? zeile('Dachfenster', `${fmt2(b.dachfensterFlaeche)} m²`) : ''}
@@ -820,7 +880,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
         <label class="fa-feld"><span>Ecke ab Grad</span><input type="text" inputmode="decimal" data-zahl="eckWinkel" value="${zahlText(e.eckWinkel, 1)}"></label>
         <label class="fa-feld"><span>Schließen bis Punkte</span><input type="text" inputmode="decimal" data-zahl="schliessAbstand" value="${zahlText(e.schliessAbstand, 0)}"></label>
         <label class="fa-feld"><span>Glätten Punkte</span><input type="text" inputmode="decimal" data-zahl="vereinfachen" value="${zahlText(e.vereinfachen, 0)}"></label>
-        <label class="fa-feld"><span>Wandstärke zwischen Räumen in cm</span><input type="text" inputmode="decimal" data-staerke value="${cm(e.wandstaerke ?? 0.115)}"></label>
+        <label class="fa-feld"><span>Abstand zwischen Räumen in cm (0 = Wand an Wand)</span><input type="text" inputmode="decimal" data-staerke value="${cm(e.wandstaerke ?? 0)}"></label>
       </div>
       ${geschlossen(d) ? `<div class="fa-vorschlaege"><button type="button" class="chip" data-export="svg">Grundriss als SVG</button><button type="button" class="chip" data-export="dxf">Grundriss als DXF (CAD)</button>${andere.length ? '<button type="button" class="chip" data-export="svg" data-gesamt>Grundriss gesamt als SVG</button><button type="button" class="chip" data-export="dxf" data-gesamt>Grundriss gesamt als DXF</button>' : ''}<button type="button" class="chip" data-tun="weiter">Weiteren Raum zeichnen</button></div>` : ''}
       <div class="fa-vorschlaege"><button type="button" class="chip ra-gefahr" data-tun="neu">Neu zeichnen</button></div>`, () => {
@@ -853,10 +913,10 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
       st.onchange = () => { const t = staerkeLesen(st.value); if (t == null) { einstellungen(); return; } einst({ wandstaerke: t }); };
       panel.querySelector('[data-tun="weiter"]')?.addEventListener('click', weitererRaum);
       panel.querySelector('[data-tun="neu"]').onclick = async () => {
-        const ja = await dialog('<b>Den Raum neu zeichnen?</b><p class="fa-klein">Wände, Maße, Türen und Fenster werden entfernt. Mit „Rückgängig“ kommt alles zurück.</p><div class="fa-panel-knoepfe"><button type="button" class="btn ghost" data-wert="">Abbrechen</button><button type="button" class="btn primary" data-wert="ja">Neu zeichnen</button></div>');
+        const ja = await dialog('<b>Den Raum neu zeichnen?</b><p class="fa-klein">Wände, Maße, Türen, Fenster und Körper werden entfernt. Mit „Rückgängig“ kommt alles zurück.</p><div class="fa-panel-knoepfe"><button type="button" class="btn ghost" data-wert="">Abbrechen</button><button type="button" class="btn primary" data-wert="ja">Neu zeichnen</button></div>');
         if (!ja) return;
         const r = kopie(d);
-        Object.assign(r, { ecken: [], waende: [], oeffnungen: [], dachfenster: [], massstabGesetzt: gruppenMassstab(), skizze: { striche: [], faktor: 1 } });
+        Object.assign(r, { ecken: [], waende: [], oeffnungen: [], dachfenster: [], koerper: [], massstabGesetzt: gruppenMassstab(), skizze: { striche: [], faktor: 1 } });
         d = r;
         entwurf = null;
         entwurfErkannt = null;
@@ -946,6 +1006,14 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     return best;
   };
 
+  const trefferKoerper = (sp) => {
+    for (const k of [...(d.koerper || [])].reverse()) {
+      const q = koerperEcken(k).map(abb);
+      const m = mul2(add2(q[0], q[2]), 0.5);
+      if (punktInnen(sp, q) || Math.hypot(sp[0] - m[0], sp[1] - m[1]) < 16) return { id: k.id };
+    }
+    return null;
+  };
   const trefferDachfenster = (sp) => {
     for (const o of d.dachfenster || []) {
       const q = dachfensterEcken(d, o);
@@ -1044,19 +1112,31 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
       if (r.art === 'waagerecht' || Math.abs(y - q.y) < toleranz) { y = q.y; art.push('Waagerecht'); } else if (r.art === 'senkrecht' || Math.abs(x - q.x) < toleranz) { x = q.x; art.push('Senkrecht'); }
     }
     const erg = verschiebeEcke(zg.start, zg.id, [x, y]);
+    const fest = festeWand(zg.start, erg);
+    if (fest) { vorschau = null; zg.erg = null; meldung = ''; $('.ra-text').textContent = fest; spaeter(); return; }
     if (!erg.fehler) { vorschau = erg.raum; zg.erg = erg; }
     meldung = '';
     $('.ra-text').textContent = erg.fehler || (art.length ? `${[...new Set(art)].join(' · ')} eingerastet` : 'Ecke frei verschieben');
     spaeter();
   };
+  // Gemessene Wände bleiben fest: Ziehen, das ein Maß ändern würde, geht nicht
+  const festeWand = (start, erg, eigene) => {
+    const ids = [...(eigene ? [eigene] : []), ...(erg?.masseWeg || [])];
+    if (!ids.length) return '';
+    const namen = [...new Set(ids)].map((id) => wandName(wandIndex(start, id)));
+    return `${namen.length > 1 ? `Wände ${namen.join(', ')} haben` : `Wand ${namen[0]} hat`} ein Maß und ${namen.length > 1 ? 'bleiben' : 'bleibt'} fest. Länge über „Maß“ ändern.`;
+  };
   const wandZiehen = (zg, sp) => {
     const i = wandIndex(zg.start, zg.id);
     const g = wandGeo(zg.start, i);
+    if (zg.start.waende[i].mass != null) { $('.ra-text').textContent = festeWand(zg.start, null, zg.id); meldung = ''; return; }
     const p0 = welt(zg.sp);
     const p1 = welt(sp);
     let t = -((p1[0] - p0[0]) * g.innen[0] + (p1[1] - p0[1]) * g.innen[1]);
     if (d.massstabGesetzt) t = Math.round(t * 100) / 100; // auf cm
     const erg = verschiebeWand(zg.start, zg.id, t);
+    const fest = festeWand(zg.start, erg);
+    if (fest) { vorschau = null; zg.erg = null; meldung = ''; $('.ra-text').textContent = fest; spaeter(); return; }
     if (!erg.fehler) { vorschau = erg.raum; zg.erg = erg; }
     meldung = '';
     $('.ra-text').textContent = erg.fehler || `Wand ${wandName(i)} um ${fmt2(Math.abs(t))} m nach ${t >= 0 ? 'außen' : 'innen'}`;
@@ -1075,6 +1155,18 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     const erg = aendereDachfenster(zg.start, zg.id, { abstand: ab, unten });
     if (!erg.fehler) { vorschau = erg.raum; zg.erg = erg; }
     $('.ra-text').textContent = `Abstand ${fmt2(ab)} m · vom Kniestock ${fmt2(unten)} m`;
+    spaeter();
+  };
+  const koerperZiehen = (zg, sp) => {
+    const k = zg.start.koerper.find((x) => x.id === zg.id);
+    const p0 = welt(zg.sp);
+    const p1 = welt(sp);
+    const x = Math.round((k.x + p1[0] - p0[0]) * 100) / 100;
+    const y = Math.round((k.y + p1[1] - p0[1]) * 100) / 100;
+    const erg = aendereKoerper(zg.start, zg.id, { x, y });
+    if (!erg.fehler) { vorschau = erg.raum; zg.erg = erg; }
+    const gr = grenzen(zg.start);
+    $('.ra-text').textContent = `${k.name}: links ${fmt2(x - k.breite / 2 - gr.x0)} m · oben ${fmt2(y - k.tiefe / 2 - gr.y0)} m`;
     spaeter();
   };
   const raumZiehen = (zg, sp) => {
@@ -1145,6 +1237,8 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
       if (oe) { zug = { art: 'oeffnung', id: oe.id, start: kopie(d), sp, bewegt: false }; return; }
       const df = trefferDachfenster(sp);
       if (df) { zug = { art: 'dachfenster', id: df.id, start: kopie(d), sp, bewegt: false }; return; }
+      const ko = trefferKoerper(sp);
+      if (ko) { zug = { art: 'koerper', id: ko.id, start: kopie(d), sp, bewegt: false }; return; }
       const w = trefferWand(sp);
       if (w) { zug = { art: 'wand', id: w.id, start: kopie(d), sp, bewegt: false, t: w.t }; return; }
       zug = { art: 'pan', sp, ox: ansicht.ox, oy: ansicht.oy, leer: true };
@@ -1200,6 +1294,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     if (zug.art === 'oeffnung') oeffnungZiehen(zug, sp);
     if (zug.art === 'dachfenster') dachfensterZiehen(zug, sp);
     if (zug.art === 'raum') raumZiehen(zug, sp);
+    if (zug.art === 'koerper') koerperZiehen(zug, sp);
   });
 
   let letzterTipp = null; // Ort und Zeit des letzten Loslassens (gegen den nachfolgenden Klick)
@@ -1238,7 +1333,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
       return;
     }
     const sp = lokal(e);
-    if (zg.art === 'ecke' || zg.art === 'wand' || zg.art === 'oeffnung' || zg.art === 'dachfenster') {
+    if (zg.art === 'ecke' || zg.art === 'wand' || zg.art === 'oeffnung' || zg.art === 'dachfenster' || zg.art === 'koerper') {
       const art = zg.art;
       if (zg.bewegt && zg.erg) {
         vorschau = null;
@@ -1252,6 +1347,15 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     }
     if (zg.art === 'tipp') {
       if (!geschlossen(d)) { hinweis('Zuerst den Raum mit „Zeichnen“ skizzieren.'); zeichne(); return; }
+      if (werkzeug === 'koerper') {
+        const unter = raumUnter(sp);
+        if (unter && unter !== d) { wechseln(unter.id); return; }
+        if (!d.massstabGesetzt) { hinweis('Zuerst ein echtes Maß eingeben, dann lassen sich Körper setzen.'); zeichne(); return; }
+        if (!unter) { hinweis('Bitte in den Raum tippen.'); zeichne(); return; }
+        const erg = neuerKoerper(d, welt(sp));
+        if (uebernehme(erg)) auswaehlen({ art: 'koerper', id: erg.koerper });
+        return;
+      }
       const w = trefferWand(sp, d, werkzeug === 'mass' ? 26 : 34);
       const unter = w ? null : raumUnter(sp);
       if (unter && unter !== d) { wechseln(unter.id); return; }

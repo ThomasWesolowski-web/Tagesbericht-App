@@ -41,7 +41,8 @@ In diesem Repo liegt nur der App-Code. Es enthält keine Berichte und keine Zuga
   Boden, Decke, Wand netto und Umfang, Grundriss maßstäblich im PDF, Export SVG/DXF
   Kniestock und Dachschräge je Wand (Dachflächen als Ebenen: Satteldach, Walmdach, Giebelwände),
   Dachfenster, Decke waagerecht und Schrägflächen als eigene Positionen;
-  mehrere Räume in einem Grundriss (Raum anbauen, Räume verschieben und andocken), Grundriss gesamt
+  Körper in der Fläche (Kamin, Säule) als Abzug; gemessene Wände bleiben beim Ziehen fest;
+  mehrere Räume in einem Grundriss (Raum Wand an Wand anbauen, Räume verschieben und andocken), Grundriss gesamt
   im PDF
   (`raumaufmass/raumgeometrie.js` rechnet, `raumaufmass/raumaufmass.js` ist der Editor,
   `raumaufmass/ra-app.js` die Liste und das PDF; Tests in `tests/`)

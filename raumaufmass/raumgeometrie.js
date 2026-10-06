@@ -26,7 +26,7 @@ export const STANDARD = {
   minWand: 14, // kürzere gezeichnete Stücke zählen nicht als Wand (Bildschirmpunkte)
   abzug: 'alle', // 'alle' = Türen und Fenster immer abziehen, 'vob' = bis 2,5 m² übermessen
   masseZeigen: true,
-  wandstaerke: 0.115, // Trennwand zwischen zwei Räumen eines Grundrisses in m
+  wandstaerke: 0, // Abstand (Trennwand) zwischen zwei Räumen eines Grundrisses in m; 0 = Wand an Wand
 };
 export const VOB_GRENZE = 2.5;
 export const MIN_LAENGE = 0.01; // 1 cm: kürzere Wände sind ungültig
@@ -383,6 +383,7 @@ export function neuerRaum(nr = 1, einstellungen = {}) {
     waende: [],
     oeffnungen: [],
     dachfenster: [],
+    koerper: [],
     massstabGesetzt: false,
     skizze: { striche: [], faktor: 1 },
     einstellungen: { ...STANDARD, ...einstellungen },
@@ -619,6 +620,7 @@ export function skaliere(raum, faktor) {
   for (const e of r.ecken) { e.x *= faktor; e.y *= faktor; }
   for (const o of r.oeffnungen) o.abstand *= faktor;
   for (const o of r.dachfenster || []) o.abstand *= faktor;
+  for (const k of r.koerper || []) { k.x *= faktor; k.y *= faktor; k.breite *= faktor; k.tiefe *= faktor; }
   r.skizze = { ...(r.skizze || { striche: [] }), faktor: (r.skizze?.faktor || 1) * faktor };
   return r;
 }
@@ -1006,6 +1008,42 @@ export function setzeSchraege(raum, wandId, schraege) {
   return { raum: r, oeffnungenWeg: weg };
 }
 
+// ---------- Körper in der Fläche ----------
+// Kamin, Säule, Schacht, Vorsprung: Rechteck in Metern (achsparallel, x/y = Mitte), wird von der
+// Bodenfläche abgezogen; bisDecke (Standard) zieht es auch von der Decke ab.
+
+export const KOERPER_STANDARD = { breite: 0.5, tiefe: 0.5 };
+export const KOERPER_NAMEN = ['Kamin', 'Säule', 'Schacht', 'Vorsprung'];
+
+export function koerperEcken(k) {
+  const bx = k.breite / 2;
+  const ty = k.tiefe / 2;
+  return [[k.x - bx, k.y - ty], [k.x + bx, k.y - ty], [k.x + bx, k.y + ty], [k.x - bx, k.y + ty]];
+}
+
+export function neuerKoerper(raum, [x, y]) {
+  const r = kopie(raum);
+  r.koerper = r.koerper || [];
+  const k = { id: neueId(), name: `Körper ${r.koerper.length + 1}`, x: rund(x, 100), y: rund(y, 100), ...KOERPER_STANDARD, bisDecke: true };
+  r.koerper.push(k);
+  return { raum: r, koerper: k.id };
+}
+
+export function aendereKoerper(raum, id, felder) {
+  const r = kopie(raum);
+  const k = (r.koerper || []).find((x) => x.id === id);
+  if (!k) return { fehler: 'Körper nicht gefunden.' };
+  for (const f of ['breite', 'tiefe']) if (f in felder && !(Number(felder[f]) >= MIN_LAENGE)) return { fehler: 'Bitte Breite und Tiefe größer als 0 eingeben.' };
+  Object.assign(k, felder);
+  return { raum: r };
+}
+
+export function loescheKoerper(raum, id) {
+  const r = kopie(raum);
+  r.koerper = (r.koerper || []).filter((x) => x.id !== id);
+  return { raum: r };
+}
+
 // ---------- Berechnung ----------
 
 export function berechne(raum) {
@@ -1042,6 +1080,10 @@ export function berechne(raum) {
   const dachFlaeche = schraegen.reduce((s, e) => s + e.flaeche, 0);
   const dachfensterFlaeche = dachfenster.reduce((s, o) => s + o.flaeche, 0);
   const wandBrutto = mitSchraege ? waende.reduce((s, w) => s + w.flaeche, 0) : umfang * hoehe;
+  const koerper = (raum.koerper || []).map((k) => ({ ...k, flaeche: k.breite * k.tiefe }));
+  const koerperFlaeche = koerper.reduce((s, k) => s + k.flaeche, 0);
+  const koerperDecke = koerper.filter((k) => k.bisDecke !== false).reduce((s, k) => s + k.flaeche, 0);
+  const deckeBrutto = mitSchraege ? bereiche.flachFlaeche : flaeche;
   const abzug = summe('tuer', true) + summe('fenster', true);
   // Innenwinkel an jeder Ecke (für die Anzeige)
   const winkel = zu ? raum.ecken.map((_, i) => {
@@ -1054,8 +1096,13 @@ export function berechne(raum) {
   }) : [];
   return {
     geschlossen: zu,
-    bodenflaeche: flaeche,
-    deckenflaeche: mitSchraege ? bereiche.flachFlaeche : flaeche, // waagerechter Teil der Decke
+    bodenflaeche: Math.max(0, flaeche - koerperFlaeche), // netto, Körper abgezogen
+    bodenBrutto: flaeche,
+    deckenflaeche: Math.max(0, deckeBrutto - koerperDecke), // waagerechter Teil der Decke, netto
+    deckeBrutto,
+    koerper,
+    koerperFlaeche,
+    koerperDecke,
     mitSchraege,
     schraegen,
     dachFlaeche,
@@ -1101,6 +1148,7 @@ export function raumMitte(raum) {
 export function verschiebeRaum(raum, [dx, dy]) {
   const r = kopie(raum);
   for (const e of r.ecken) { e.x = rund(e.x + dx, 1e6); e.y = rund(e.y + dy, 1e6); }
+  for (const k of r.koerper || []) { k.x = rund(k.x + dx, 1e6); k.y = rund(k.y + dy, 1e6); }
   for (const s of r.skizze?.striche || []) for (const q of s) { q[0] += dx / (r.skizze.faktor || 1); q[1] += dy / (r.skizze.faktor || 1); }
   return { raum: r };
 }
@@ -1265,6 +1313,10 @@ export function pruefe(raum) {
     if (!(o.breite > 0) || !(o.laenge > 0)) fehler.push(`${o.name}: Breite und Länge fehlen.`);
     if (o.unten < 0 || o.unten + o.laenge > v.laenge + 1e-6) warnungen.push(`${o.name} passt nicht in die Schräge an Wand ${wandName(i)} (Schräge ${fmt2(v.laenge)} m lang).`);
   }
+  for (const k of raum.koerper || []) {
+    if (!(k.breite > 0) || !(k.tiefe > 0)) fehler.push(`${k.name}: Breite und Tiefe fehlen.`);
+    else if (!koerperEcken(k).every((q) => punktInnen(q, p) || p.some((a, i) => abstandZuStrecke(q, a, p[(i + 1) % n]).d < 0.005))) warnungen.push(`${k.name} liegt nicht ganz im Raum.`);
+  }
   // Öffnungen in derselben Wand dürfen sich nicht überlappen
   for (const w of raum.waende) {
     const liste = raum.oeffnungen.filter((o) => o.wand === w.id).sort((a, c) => a.abstand - c.abstand);
@@ -1287,7 +1339,8 @@ export function alsPositionen(raum) {
       const l1 = b.waende[1].laenge;
       return { ...newZeile(), laenge: fmtPos(Math.max(l0, l1)), breite: fmtPos(Math.min(l0, l1)) };
     })()
-    : { ...newZeile(), wert: fmtPos(b.bodenflaeche), text: `Fläche aus Grundriss (${b.waende.length} Wände)` };
+    : { ...newZeile(), wert: fmtPos(b.bodenBrutto), text: `Fläche aus Grundriss (${b.waende.length} Wände)` };
+  const koZeile = (k) => ({ ...newZeile(), stueck: '1', laenge: fmtPos(k.breite), breite: fmtPos(k.tiefe), abzug: true, text: k.name });
   const oeZeile = (o) => ({ ...newZeile(), stueck: '1', laenge: fmtPos(o.breite), hoehe: fmtPos(o.hoehe), abzug: true, text: `${o.name} (Wand ${o.wandName})` });
   const ueber = (o) => ({ ...newZeile(), text: `${o.name} (Wand ${o.wandName}): ${fmt2(o.breite)} × ${fmt2(o.hoehe)} m = ${fmt2(o.flaeche)} m², übermessen`, info: true });
   // Mit Dachschrägen: Wände einzeln (Kniestock- und Giebelwände sind nicht raumhoch)
@@ -1306,9 +1359,9 @@ export function alsPositionen(raum) {
           ...b.dachfenster.map((o) => ({ ...newZeile(), stueck: '1', laenge: fmtPos(o.breite), breite: fmtPos(o.laenge), abzug: true, text: `${o.name} (Wand ${o.wandName})` })),
         ],
       }]
-    : [{ bezeichnung: `${n}: Deckenfläche`, einheit: 'm2', zeilen: [{ ...boden }] }];
+    : [{ bezeichnung: `${n}: Deckenfläche`, einheit: 'm2', zeilen: [{ ...boden }, ...b.koerper.filter((k) => k.bisDecke !== false).map(koZeile)] }];
   const out = [
-    { bezeichnung: `${n}: Bodenfläche`, einheit: 'm2', zeilen: [boden] },
+    { bezeichnung: `${n}: Bodenfläche`, einheit: 'm2', zeilen: [boden, ...b.koerper.map(koZeile)] },
     ...decke,
     {
       bezeichnung: `${n}: Wandfläche`,
@@ -1342,6 +1395,7 @@ export function raumJson(raum) {
       tuerFlaeche: r3(b.tuerFlaeche),
       fensterFlaeche: r3(b.fensterFlaeche),
       wandNetto: r3(b.wandNetto),
+      ...(b.koerper.length ? { bodenBrutto: r3(b.bodenBrutto), koerperFlaeche: r3(b.koerperFlaeche), koerper: b.koerper.map((k) => ({ id: k.id, name: k.name, breite: r3(k.breite), tiefe: r3(k.tiefe), flaeche: r3(k.flaeche), bisDecke: k.bisDecke !== false })) } : {}),
       waende: b.waende.map((w) => ({ id: w.id, name: w.name, laenge: r3(w.laenge), richtung: rund(w.richtung, 100), mass: w.mass, flaeche: r3(w.flaeche), hoeheMin: r3(w.hoeheMin), hoeheMax: r3(w.hoeheMax) })),
       ...(b.mitSchraege ? {
         dachFlaeche: r3(b.dachFlaeche),
@@ -1435,6 +1489,16 @@ export function planElemente(raum, abb, o = {}) {
       if (von > t + 1e-6) els.push({ art: 'linie', a: abb(add(ge.a, mul(ge.r, t))), b: abb(add(ge.a, mul(ge.r, von))), breite: g.wand, farbe: g.farbe, rund: true });
       t = Math.max(t, bis);
     }
+  }
+  // Körper (Kamin, Säule …): grau mit Kreuz, Name und Maße in cm
+  for (const k of zu ? raum.koerper || [] : []) {
+    const q = koerperEcken(k).map(abb);
+    if (g.mitFlaeche) els.push({ art: 'flaeche', punkte: q, farbe: g.koerper || '#d7dde4' });
+    q.forEach((a, j) => els.push({ art: 'linie', a, b: q[(j + 1) % 4], breite: g.duenn * 1.4, farbe: g.farbe }));
+    els.push({ art: 'linie', a: q[0], b: q[2], breite: g.duenn * 0.7, farbe: g.mass });
+    els.push({ art: 'linie', a: q[1], b: q[3], breite: g.duenn * 0.7, farbe: g.mass });
+    const unter = add(mul(add(q[2], q[3]), 0.5), [0, g.schrift * 0.75]);
+    els.push({ art: 'text', p: unter, text: `${k.name} ${fmtPos(k.breite * 100)}/${fmtPos(k.tiefe * 100)}`, groesse: g.schrift * 0.72, farbe: g.mass, anker: 'mitte', winkel: 0 });
   }
   // Türen und Fenster
   for (const x of raum.oeffnungen) {
@@ -1724,6 +1788,12 @@ function dxfRaum(raum, z) {
       q.forEach((a, k) => linie(a, q[(k + 1) % 4], 'DACHFENSTER'));
       text(mul(add(q[0], q[2]), 0.5), `${o.name} ${fmt2(o.breite)}x${fmt2(o.laenge)}`, 80, 'DACHFENSTER');
     }
+  }
+  for (const k of n >= 3 ? raum.koerper || [] : []) {
+    const q = koerperEcken(k);
+    q.forEach((a, j) => linie(a, q[(j + 1) % 4], 'KOERPER'));
+    linie(q[0], q[2], 'KOERPER');
+    text(add(mul(add(q[2], q[3]), 0.5), [0, 0.15]), `${k.name} ${fmt2(k.breite)}x${fmt2(k.tiefe)}`, 80, 'KOERPER');
   }
   if (n >= 3) {
     const b = berechne(raum);

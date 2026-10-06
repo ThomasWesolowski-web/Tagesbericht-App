@@ -141,6 +141,23 @@ async function ablauf(b, { touch }) {
 
   // Wand D (rechts unten, senkrecht bei x = 4) um 1 m nach außen ziehen
   await p.click('.mk-wz[data-wz="auswahl"]');
+  const zieheD = async () => {
+    const st = await wandPunkt(p, 'D');
+    const pxM = await p.evaluate(() => {
+      const ls = [...document.querySelectorAll('.ra-svg line')].filter((l) => l.getAttribute('stroke-width') === '3.5');
+      return Math.max(...ls.map((l) => Math.hypot(l.x2.baseVal.value - l.x1.baseVal.value, l.y2.baseVal.value - l.y1.baseVal.value))) / 6;
+    });
+    const zug = [st, ...Array.from({ length: 10 }, (_, k) => [st[0] + (pxM * (k + 1)) / 10, st[1]])];
+    if (touch) await zeichneTouch(p, await ctx.newCDPSession(p), zug); else await zeichneMaus(p, zug);
+  };
+  // C hat ein Maß: D lässt sich nicht verschieben (C würde länger)
+  await zieheD();
+  assert.match(await werte(p), /21,00 m²/, 'gemessene Wand C darf sich nicht ändern');
+  await p.click('.ra-panel .ra-p-ok').catch(() => {});
+  // Maß an C entfernen, dann geht es
+  await p.click('.ra-massstab');
+  await p.locator('.ra-wandzeile').filter({ has: p.locator('b', { hasText: /^C$/ }) }).locator('[data-weg]').click();
+  await p.click('.ra-panel .ra-p-ok');
   const d1 = await wandPunkt(p, 'D');
   const s = await p.evaluate(() => {
     const t = [...document.querySelectorAll('.ra-svg text')].find((x) => x.textContent === 'A: 6,00');
@@ -169,6 +186,29 @@ async function ablauf(b, { touch }) {
   assert.match(await werte(p), /22,50 m²/);
   await p.click('.ra-zurueck');
   assert.match(await werte(p), /21,00 m²/);
+
+  // Körper (Kamin 50 × 40 cm) in den Raum setzen: 21,00 − 0,20 = 20,80 m², danach rückgängig
+  await p.click('.mk-wz[data-wz="koerper"]');
+  const innen = await p.evaluate(() => {
+    const svg = document.querySelector('.ra-svg');
+    const r = svg.getBoundingClientRect();
+    const b = svg.querySelector('polygon').getBoundingClientRect();
+    return [b.x + b.width * 0.2 - r.x, b.y + b.height * 0.25 - r.y];
+  });
+  await tippe(innen);
+  await p.waitForSelector('.ra-panel [data-feld="breite"]');
+  await p.click('.ra-panel [data-name-wahl="Kamin"]');
+  await p.fill('.ra-panel [data-feld="breite"]', '0,5');
+  await p.press('.ra-panel [data-feld="breite"]', 'Tab');
+  await p.fill('.ra-panel [data-feld="tiefe"]', '0,4');
+  await p.press('.ra-panel [data-feld="tiefe"]', 'Tab');
+  w = await werte(p);
+  assert.match(w, /^20,80 m²/, `mit Kamin: ${w}`);
+  assert.match(await p.locator('.ra-panel').innerText(), /Kamin · 0,20 m² Abzug/);
+  await shot(p, `${art}-5b-koerper`);
+  await p.click('.ra-panel .ra-p-ok');
+  for (let k = 0; k < 4; k++) await p.click('.ra-zurueck');
+  assert.match(await werte(p), /^21,00 m²/, 'Kamin rückgängig');
 
   // Tür an Wand F (links), Fenster an Wand A (oben)
   for (const [wz, wand] of [['tuer', 'F'], ['fenster', 'A']]) {
@@ -273,7 +313,6 @@ async function ablauf(b, { touch }) {
   await p.waitForSelector('.ra-dialog:not([hidden]) .ra-tiefe');
   await p.waitForTimeout(120); // Dialog fokussiert nach 50 ms das erste Feld
   assert.equal(await p.inputValue('.ra-dialog .ra-n'), 'Raum 2');
-  assert.equal(await p.inputValue('.ra-dialog .ra-t'), '11,5');
   await p.fill('.ra-dialog .ra-tiefe', '3');
   await shot(p, `${art}-11-anbauen`);
   await p.click('.ra-dialog .ra-ok');
