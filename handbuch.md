@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.49.0**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.49.1**.
 
 | Was | Wo |
 | --- | --- |
@@ -156,6 +156,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 06.10.2026 | 1.49.1 | iPhone: Reiterleiste und Speichern-Leiste bleiben fest am unteren Rand; beim Tippen ausgeblendet |
 | 06.10.2026 | 1.49.0 | Urlaubskalender unter Stunden: Urlaub beantragen, Admins genehmigen oder lehnen ab, genehmigter Urlaub steht im Stundennachweis; Feiertage Baden-Württemberg und Kalenderwochen |
 | 06.10.2026 | 1.48.0 | Raumaufmaß-App 1.5: Grundriss im Editor drehen (Knopf 90° oder zwei Finger) |
 | 06.10.2026 | 1.47.1 | Raumaufmaß-App 1.4.1: Dachfenster in der 3-D-Ansicht |
