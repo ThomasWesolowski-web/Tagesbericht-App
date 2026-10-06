@@ -20,7 +20,7 @@ import { planReportId, planTauglich, istPdf, pdfSeiten, planQuelle, formenSkalie
 import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from './fotoaufmass.js';
 import { raumKurz } from './raumgeometrie.js';
 
-const APP_VERSION = '1.47.1';
+const APP_VERSION = '1.48.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];

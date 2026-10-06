@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.47.1**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.48.0**.
 
 | Was | Wo |
 | --- | --- |
@@ -101,7 +101,7 @@ Gespeichert werden das verkleinerte Original-Foto und ein Foto mit allen Maßen;
 
 **Mehrere Räume in einem Grundriss:** Räume lassen sich Raum für Raum zu einer Wohnung oder einem Haus zusammensetzen. Dafür muss der erste Raum ein echtes Maß haben. Mit „Auswahl“ eine Wand antippen und „Raum anbauen“; auf der anderen Seite der Wand entsteht ein neuer Raum (Name, Tiefe, Breite, Abstand von der Ecke). Die Räume liegen **Wand an Wand ohne Lücke**; wer eine Trennwand mitzeichnen will, stellt in den Einstellungen einen Abstand zwischen Räumen in cm ein. Ein Raum lässt sich auch frei daneben zeichnen („Weiteren Raum zeichnen“ in den Einstellungen oder nach Antippen eines Raums); nah an einem anderen Raum dockt er Wand an Wand an. Der Raum, an dem man gerade arbeitet, ist schwarz, die anderen grau; einen grauen Raum antippen, um ihn zu bearbeiten. Tippt man in den eigenen Raum, erscheint ein blauer Punkt, mit dem sich der ganze Raum frei verschieben lässt; nah an einem Nachbarraum rastet er Wand an Wand oder Ecke an Ecke ein, weiter weg bleibt er, wo man ihn loslässt. Daneben sitzt ein **Schloss**: antippen (oder „Festmachen (Schloss)“) macht den Raum fest. Dann lässt er sich nicht mehr verschieben, und Ecken und Wände bleiben, wo sie sind; Maße lassen sich weiter eingeben. Das Schloss ist nur zu sehen, wenn der Raum ausgewählt ist (in den Raum tippen); bei einem festgemachten Raum ist es geschlossen, nochmals antippen oder „Schloss lösen“ gibt ihn wieder frei. Mit mehreren Räumen stehen die Maße innen an den Wänden. Jeder Raum bleibt ein eigener Raum. In der Liste erscheint zusätzlich die Karte „Grundriss gesamt“, im PDF eine Seite „Grundriss gesamt“ mit allen Räumen und einer Tabelle (Boden und Wand netto je Raum und gesamt). Überschneiden sich zwei Räume, warnt die App beim Übernehmen.
 
-Zoomen mit zwei Fingern oder dem Mausrad, Verschieben mit zwei Fingern (am Computer: mit rechter Maustaste ziehen oder in „Auswahl“ auf leerer Fläche). „Alles zeigen“ holt den ganzen Raum ins Bild. Rückgängig und Wiederholen gehen für alle Schritte. „Übernehmen“ prüft vorher den Raum (geschlossen, keine sich kreuzenden Wände, Maßstab gesetzt, Türen und Fenster passen in ihre Wand). Danach steht der Raum mit Bodenfläche, Deckenfläche, Wandfläche (Umfang × Höhe minus Türen und Fenster) und Umfang in der Liste, und der Grundriss kommt maßstäblich (z. B. 1:50) mit allen Werten ins PDF. Über den Stift auf der Karte lässt sich der Raum später ändern.
+Zoomen mit zwei Fingern oder dem Mausrad, Verschieben mit zwei Fingern (am Computer: mit rechter Maustaste ziehen oder in „Auswahl“ auf leerer Fläche). **Drehen:** Der runde Pfeil über + und − dreht den Grundriss um 90°, so lässt er sich von jeder Seite ansehen; zwei Finger drehen ihn auch frei (fast gerade Lagen rasten ein). Am Raum ändert sich dabei nichts, auch nicht im PDF. „Waagerecht“, „Senkrecht“ und „Winkel“ einer Wand gelten so, wie die Wand gerade am Bildschirm steht. „Alles zeigen“ holt den ganzen Raum ins Bild. Rückgängig und Wiederholen gehen für alle Schritte. „Übernehmen“ prüft vorher den Raum (geschlossen, keine sich kreuzenden Wände, Maßstab gesetzt, Türen und Fenster passen in ihre Wand). Danach steht der Raum mit Bodenfläche, Deckenfläche, Wandfläche (Umfang × Höhe minus Türen und Fenster) und Umfang in der Liste, und der Grundriss kommt maßstäblich (z. B. 1:50) mit allen Werten ins PDF. Über den Stift auf der Karte lässt sich der Raum später ändern.
 
 ## Stunden, Baustellen und Personal
 
@@ -152,6 +152,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 06.10.2026 | 1.48.0 | Raumaufmaß-App 1.5: Grundriss im Editor drehen (Knopf 90° oder zwei Finger) |
 | 06.10.2026 | 1.47.1 | Raumaufmaß-App 1.4.1: Dachfenster in der 3-D-Ansicht |
 | 06.10.2026 | 1.47.0 | Raumaufmaß-App 1.4: 3-D-Ansicht der Räume (drehen und zoomen) |
 | 06.10.2026 | 1.46.5 | Raumaufmaß-App 1.3.1: Schloss nur noch beim ausgewählten Raum sichtbar; nach dem Einsetzen von Tür, Fenster oder Körper ist wieder „Auswahl“ aktiv |
