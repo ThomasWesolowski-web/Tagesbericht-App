@@ -23,7 +23,7 @@ Veröffentlicht über GitHub Pages aus `main` (Root): https://thomaswesolowski-w
 | `markup.js` | Fotos markieren |
 | `fotoaufmass.js` | Foto-Aufmaß (Rahmen/Homografie, Formen, VOB/C-Abzüge, Laibungen) |
 | `raumgeometrie.js` | Raumaufmaß-Rechnung, nur noch zum Anzeigen alter Räume in Berichten und PDFs |
-| `raumaufmass/` | Raumaufmaß als eigene App (vorübergehend): `ra-app.js` Liste/PDF, `raumaufmass.js` Editor, `raumgeometrie.js` Rechnung (mit Node testbar), eigener `sw.js` (`CACHE` raumaufmass-vN) |
+| `raumaufmass/` | Raumaufmaß als eigene App (vorübergehend): `ra-app.js` Liste/PDF, `raumaufmass.js` Editor, `raumgeometrie.js` Rechnung (mit Node testbar), `ansicht3d.js` 3-D-Ansicht (Canvas, ohne Bibliothek), eigener `sw.js` (`CACHE` raumaufmass-vN) |
 | `i18n.js` | Oberflächen-Sprachen DE/PL/RO/MK/SQ |
 | `translate.js` | Freitexte beim Hochladen ins Deutsche übersetzen (MyMemory) |
 | `handbuch.js`, `handbuch.md` | Handbuch in der App (Kopie des Claude Docs) |
