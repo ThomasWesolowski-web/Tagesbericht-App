@@ -10,6 +10,7 @@ import { toJson, toMarkdown, formatDate, artLabel } from './report.js';
 import { berichtInsDeutsche, insDeutsche, FREITEXTE } from './translate.js';
 import { SPRACHEN } from './i18n.js';
 import { planReportId } from './plaene.js';
+import { urlaubLokal, urlaubLokalSpeichern } from './urlaub.js';
 
 const FELDNAMEN = { taetigkeiten: 'Ausgeführte Arbeiten', material: 'Material und Geräte', bemerkungen: 'Bemerkungen' };
 
@@ -599,6 +600,93 @@ export async function syncStunden(settings) {
   return n;
 }
 
+// ---------- Urlaub ----------
+// Pro Antrag eine Datei urlaub/<JJJJ>_<name>_<id>.json. So überschreiben sich Anträge
+// verschiedener Mitarbeiter nie gegenseitig. Mitarbeiter laden nur ihre eigenen Anträge,
+// der Administrator alle.
+
+const urlaubPfad = (a) => a.pfad || `urlaub/${a.von.slice(0, 4)}_${slug(a.name) || 'mitarbeiter'}_${a.id.slice(0, 8)}.json`;
+
+async function urlaubHochladen(gh, settings, a) {
+  const pfad = urlaubPfad(a);
+  const { pfad: _p, ...daten } = a;
+  const body = { message: `Urlaub ${a.status} – ${a.name} ${a.von} bis ${a.bis}`,
+    content: await blobToBase64(new Blob([`${JSON.stringify(daten, null, 2)}\n`])), branch: settings.branch };
+  const sha = await freshSha(gh, settings, pfad);
+  if (sha) body.sha = sha;
+  await gh(contentsPath(pfad), { method: 'PUT', body });
+  return pfad;
+}
+
+// Lädt Ausstehendes hoch und holt dann den Stand aus dem Repo.
+// Gibt { antraege, neuEntschieden } zurück; neuEntschieden: eigene Anträge, die seit dem
+// letzten Abgleich genehmigt oder abgelehnt wurden.
+export async function urlaubAbgleichen(settings, { alle = false, name = '' } = {}) {
+  const gh = client(settings);
+  let d = urlaubLokal();
+  const hinweise = [];
+  // 1. Ausstehendes hochladen
+  for (const [id, art] of Object.entries(d.ausstehend)) {
+    const lokal = d.antraege.find((a) => a.id === id);
+    if (art === 'loeschen') {
+      const pfad = d.pfade?.[id];
+      if (pfad) {
+        const remote = await getJson(gh, settings, pfad);
+        // Zurückziehen nur, solange der Antrag noch nicht entschieden ist (oder durch den Admin)
+        if (remote && (alle || remote.data.status === 'beantragt')) {
+          await gh(contentsPath(pfad), { method: 'DELETE', body: { message: `Urlaubsantrag gelöscht – ${remote.data.name}`, sha: remote.sha, branch: settings.branch } });
+        } else if (remote) {
+          hinweise.push(`Der Urlaub ${remote.data.von} bis ${remote.data.bis} war schon entschieden und bleibt.`);
+        }
+      }
+    } else if (lokal) {
+      if (art === 'aendern' && lokal.pfad && !(await freshSha(gh, settings, lokal.pfad))) {
+        // inzwischen zurückgezogen: nichts neu anlegen
+        hinweise.push(`Der Antrag von ${lokal.name} wurde inzwischen zurückgezogen.`);
+      } else {
+        lokal.pfad = await urlaubHochladen(gh, settings, lokal);
+      }
+    }
+    d = urlaubLokal();
+    delete d.ausstehend[id];
+    const i = d.antraege.findIndex((a) => a.id === id);
+    if (i >= 0 && lokal?.pfad) d.antraege[i].pfad = lokal.pfad;
+    urlaubLokalSpeichern(d);
+  }
+  // 2. Stand aus dem Repo holen
+  let liste = [];
+  try {
+    liste = await gh(`${contentsPath('urlaub')}?ref=${encodeURIComponent(settings.branch)}&t=${Date.now()}`);
+  } catch (err) {
+    if (err.status !== 404) throw err;
+  }
+  const gesucht = namensTeile(slug(name));
+  const dateien = (Array.isArray(liste) ? liste : []).filter((f) => f.type === 'file' && f.name.endsWith('.json')
+    && (alle || namensTeile(f.name.replace(/^\d{4}_/, '').replace(/_[^_]+\.json$/, '')) === gesucht));
+  const remote = (await Promise.all(dateien.map(async (f) => {
+    const r = await getJson(gh, settings, f.path);
+    return r ? { ...r.data, pfad: f.path } : null;
+  }))).filter(Boolean);
+  // 3. Zusammenführen: was noch auf das Hochladen wartet, bleibt wie auf dem Gerät
+  d = urlaubLokal();
+  const warten = new Set(Object.keys(d.ausstehend));
+  const ergebnis = new Map(remote.filter((a) => !warten.has(a.id)).map((a) => [a.id, a]));
+  for (const a of d.antraege) if (warten.has(a.id) && d.ausstehend[a.id] !== 'loeschen') ergebnis.set(a.id, a);
+  // Beim allerersten Abgleich auf diesem Gerät nichts melden, nur merken
+  const neuEntschieden = [];
+  for (const a of ergebnis.values()) {
+    if (a.status !== 'beantragt' && d.gemeldet[a.id] !== a.status && namensTeile(slug(a.name)) === gesucht) {
+      if (d.stand) neuEntschieden.push(a);
+      d.gemeldet[a.id] = a.status;
+    }
+  }
+  d.antraege = [...ergebnis.values()].sort((a, b) => a.von.localeCompare(b.von));
+  d.pfade = Object.fromEntries(d.antraege.filter((a) => a.pfad).map((a) => [a.id, a.pfad]));
+  d.stand = Date.now();
+  urlaubLokalSpeichern(d);
+  return { antraege: d.antraege, neuEntschieden, hinweise };
+}
+
 // ---------- Berichte anderer Handys herunterladen ----------
 // Holt neue und geänderte Berichte aus dem Repo auf dieses Handy (für den Administrator
 // alle, sonst nur die eigenen, z. B. nach Handywechsel). Lokale, noch nicht hochgeladene
@@ -774,6 +862,13 @@ export function syncAll(settings, onProgress, { alle = false } = {}) {
     } catch (err) {
       stundenError = err.message;
     }
+    let urlaub = null;
+    let urlaubError = null;
+    try {
+      urlaub = await urlaubAbgleichen(settings, { alle, name: settings.stundenPerson?.name || '' });
+    } catch (err) {
+      urlaubError = err.message;
+    }
     const pending = (await db.allReports()).filter((r) => r.dirty);
     for (const r of pending) {
       onProgress?.({ report: r, ok, failed, total: pending.length });
@@ -797,7 +892,7 @@ export function syncAll(settings, onProgress, { alle = false } = {}) {
     } catch (err) {
       ladeFehler = err.message;
     }
-    return { ok, failed, total: pending.length, stammdatenChanged, stammdatenError, stundenError, geladen, ladeFehler };
+    return { ok, failed, total: pending.length, stammdatenChanged, stammdatenError, stundenError, urlaub, urlaubError, geladen, ladeFehler };
   })().finally(() => {
     running = null;
   });

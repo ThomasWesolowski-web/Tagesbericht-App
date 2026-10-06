@@ -12,15 +12,19 @@ import {
   TYPEN, typLabel, hatZeiten, newStunde, stundenOf, personKey, kw, summe, sortStunden, monatLabel, shiftMonth,
 } from './stunden.js';
 import {
-  isConfigured, syncAll, syncReport, testConnection, deleteRemote, loadAdminConfig, saveAdminConfig, loadStundenRemote, meldeGeraet, ladeGeraete, setzeAdminFreigabe,
+  isConfigured, syncAll, syncReport, testConnection, deleteRemote, loadAdminConfig, saveAdminConfig, loadStundenRemote, meldeGeraet, ladeGeraete, setzeAdminFreigabe, urlaubAbgleichen, syncStunden,
 } from './sync.js';
 import { startI18n, SPRACHEN } from './i18n.js';
 import { openMarkup } from './markup.js';
 import { planReportId, planTauglich, istPdf, pdfSeiten, planQuelle, formenSkalieren, pinNummern } from './plaene.js';
 import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from './fotoaufmass.js';
 import { raumKurz } from './raumgeometrie.js';
+import {
+  STATUS, feiertageBW, feiertag, istWochenende, arbeitstage, monatsRaster, neuerAntrag, zeitraumText, plusTage,
+  urlaubLokal, urlaubLokalSpeichern, antragMerken, gehoertZu,
+} from './urlaub.js';
 
-const APP_VERSION = '1.48.0';
+const APP_VERSION = '1.49.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -169,7 +173,7 @@ async function route() {
   $$('.tabbar a[data-tab]').forEach((a) => a.classList.toggle('active',
     (a.dataset.tab === 'list' && hash === '#/')
     || (a.dataset.tab === 'sites' && hash.startsWith('#/baustelle'))
-    || (a.dataset.tab === 'hours' && hash === '#/stunden')
+    || (a.dataset.tab === 'hours' && (hash === '#/stunden' || hash === '#/urlaub'))
     || (a.dataset.tab === 'aufmass' && hash === '#/aufmass')
     || (a.dataset.tab === 'settings' && (hash === '#/einstellungen' || hash === '#/personal' || hash === '#/handbuch'))));
 
@@ -197,6 +201,7 @@ function seiteZeigen(hash) {
   if (site) return renderSiteEditor(decodeURIComponent(site[1]));
   if (hash === '#/baustellen') return renderSites();
   if (hash === '#/stunden') return renderStunden();
+  if (hash === '#/urlaub') return renderUrlaub();
   if (hash === '#/personal') return renderPeople();
   if (hash === '#/einstellungen') return renderSettings();
   if (hash === '#/handbuch') return renderHandbuch();
@@ -2407,10 +2412,11 @@ async function renderStunden() {
   appbar.innerHTML = '<h1>Stunden</h1>';
   const person = stundenPerson();
   if (!person) {
-    view.innerHTML = `<div class="empty">
+    view.innerHTML = `${ansichtUmschalter('stunden')}<div class="empty">
         <h2>Stundennachweis</h2>
         <p>Hier trägst du jeden Tag deine Arbeitsstunden ein. Wähle zuerst, für wen die Stunden gelten.</p>
         <button class="btn primary" id="who-btn">${ICON.people} Mitarbeiter wählen</button></div>`;
+    ansichtUmschalterBinden();
     $('#who-btn').onclick = () => chooseStundenPerson();
     return;
   }
@@ -2473,6 +2479,7 @@ async function renderStunden() {
   };
 
   view.innerHTML = `
+    ${ansichtUmschalter('stunden')}
     <button type="button" class="site-pick who" id="who-btn">
       <div class="avatar">${initials(person.name)}</div>
       <span><b>${esc(person.name)}</b><small>Stundennachweis für</small></span>${isAdmin() ? '<em>Ändern</em>' : ''}</button>
@@ -2493,6 +2500,7 @@ async function renderStunden() {
     ${list.length ? `<button class="btn soft block" id="stunden-pdf" style="margin-top:18px">${ICON.share} Monat als PDF teilen</button>` : ''}
     <button class="fab" id="stunde-neu">${ICON.plus}<span>Stunden eintragen</span></button>`;
 
+  ansichtUmschalterBinden();
   $('#who-btn').onclick = () => {
     if (isAdmin()) chooseStundenPerson();
     else toast('Du siehst nur deine eigenen Stunden. Wechseln kann nur der Administrator.', 3500);
@@ -2524,6 +2532,354 @@ async function renderStunden() {
   if (pdfBtn) pdfBtn.onclick = () => shareStundenPdf(person.name, stundenMonat, list);
 }
 
+// ---------- Urlaub ----------
+// Kalender mit Kalenderwochen und Feiertagen in Baden-Württemberg. Jeder beantragt hier seinen
+// Urlaub; der Administrator genehmigt oder lehnt ab. Abgeglichen wird über urlaub/ im Repo.
+
+let urlaubMonat = today().slice(0, 7);
+let urlaubAuswahl = null; // erster angetippter Tag eines neuen Zeitraums
+let urlaubGeholt = 0;
+let urlaubLaedt = false;
+let urlaubNochmal = false;
+
+const ansichtUmschalter = (aktiv) => `<div class="seg" id="st-ansicht" role="radiogroup" aria-label="Ansicht">
+    <button type="button" role="radio" data-ziel="#/stunden" aria-checked="${aktiv === 'stunden'}">Stunden</button>
+    <button type="button" role="radio" data-ziel="#/urlaub" aria-checked="${aktiv === 'urlaub'}">Urlaub${urlaubZahl() ? ` <span class="st-zahl">${urlaubZahl()}</span>` : ''}</button>
+  </div>`;
+function ansichtUmschalterBinden() {
+  $$('#st-ansicht [data-ziel]').forEach((b) => {
+    b.onclick = () => { if (location.hash !== b.dataset.ziel) location.replace(b.dataset.ziel); };
+  });
+}
+
+const sichtbareAntraege = () => {
+  const alle = urlaubLokal().antraege;
+  return isAdmin() ? alle : alle.filter((a) => gehoertZu(a, stundenPerson()));
+};
+
+// Zahl am Reiter: für den Administrator offene Anfragen, sonst neue Entscheidungen zum eigenen Urlaub
+function urlaubZahl() {
+  const d = urlaubLokal();
+  if (isAdmin()) return d.antraege.filter((a) => a.status === 'beantragt').length;
+  return d.antraege.filter((a) => gehoertZu(a, stundenPerson()) && a.status !== 'beantragt' && d.gesehen[a.id] !== a.status).length;
+}
+function urlaubBadge() {
+  const tab = $('.tabbar a[data-tab="hours"]');
+  if (!tab) return;
+  const n = urlaubZahl();
+  let b = $('.tab-zahl', tab);
+  if (!n) { b?.remove(); return; }
+  if (!b) { b = document.createElement('span'); b.className = 'tab-zahl'; tab.appendChild(b); }
+  b.textContent = n;
+}
+window.addEventListener('urlaub-geaendert', () => urlaubBadge());
+
+// Nach dem Abgleich: Mitarbeiter erfahren, ob ihr Urlaub genehmigt wurde; der Administrator
+// erfährt von neuen Anfragen.
+function urlaubMelden(res, vorher) {
+  if (!res) return;
+  for (const a of res.neuEntschieden) {
+    toast(a.status === 'genehmigt' ? `Dein Urlaub ${zeitraumText(a)} wurde genehmigt.` : `Dein Urlaub ${zeitraumText(a)} wurde abgelehnt.`, 4500);
+  }
+  if (isAdmin()) {
+    const neu = res.antraege.filter((a) => a.status === 'beantragt' && !vorher.has(a.id)).length;
+    if (neu) toast(neu === 1 ? 'Neue Urlaubsanfrage.' : `${neu} neue Urlaubsanfragen.`, 4000);
+  }
+  for (const h of res.hinweise) toast(h, 4500);
+}
+const offeneIds = () => new Set(urlaubLokal().antraege.filter((a) => a.status === 'beantragt').map((a) => a.id));
+
+async function urlaubHolen({ laut = false } = {}) {
+  if (!isConfigured(settings) || !navigator.onLine) {
+    if (laut && !navigator.onLine) toast('Kein Netz. Der Antrag geht raus, sobald du wieder online bist.', 3500);
+    return;
+  }
+  // Läuft schon ein Abgleich: danach gleich noch einmal (z. B. für einen eben gestellten Antrag)
+  if (urlaubLaedt) { urlaubNochmal = true; return; }
+  urlaubLaedt = true;
+  const vorher = offeneIds();
+  try {
+    const res = await urlaubAbgleichen(settings, { alle: isAdmin(), name: stundenPerson()?.name || '' });
+    urlaubGeholt = Date.now();
+    urlaubMelden(res, vorher);
+  } catch (err) {
+    if (laut) toast(`Urlaub abgleichen: ${err.message}`, 4000);
+  } finally {
+    urlaubLaedt = false;
+  }
+  if (urlaubNochmal) { urlaubNochmal = false; urlaubHolen({ laut }); return; }
+  urlaubBadge();
+  if (location.hash === '#/urlaub' && !document.querySelector('.sheet-backdrop.open')) renderUrlaub();
+}
+
+const STATUS_PILL = { beantragt: 'pending', genehmigt: 'ok', abgelehnt: 'error' };
+
+function renderUrlaub() {
+  appbar.innerHTML = '<h1>Stunden</h1>';
+  const person = stundenPerson();
+  if (!person && !isAdmin()) {
+    view.innerHTML = `${ansichtUmschalter('urlaub')}<div class="empty">
+        <h2>Urlaub</h2>
+        <p>Wähle zuerst, wer du bist. Dann kannst du hier deinen Urlaub beantragen.</p>
+        <button class="btn primary" id="who-btn">${ICON.people} Mitarbeiter wählen</button></div>`;
+    ansichtUmschalterBinden();
+    $('#who-btn').onclick = () => chooseStundenPerson();
+    return;
+  }
+  if (Date.now() - urlaubGeholt > 60000) urlaubHolen();
+  const antraege = sichtbareAntraege();
+  // Was hier zu sehen ist, gilt als gesehen (Zahl am Reiter verschwindet)
+  const lokal = urlaubLokal();
+  let geaendert = false;
+  for (const a of antraege) {
+    if (!isAdmin() && a.status !== 'beantragt' && lokal.gesehen[a.id] !== a.status) { lokal.gesehen[a.id] = a.status; geaendert = true; }
+  }
+  if (geaendert) urlaubLokalSpeichern(lokal);
+
+  const ausstehend = new Set(Object.keys(lokal.ausstehend));
+  const imKalender = antraege.filter((a) => a.status !== 'abgelehnt' || !isAdmin());
+  const amTag = (iso) => imKalender.filter((a) => a.von <= iso && iso <= a.bis);
+  const heute = today();
+  const wochen = monatsRaster(urlaubMonat);
+  const feiertageMonat = [...feiertageBW(Number(urlaubMonat.slice(0, 4))).entries()].filter(([iso]) => iso.startsWith(urlaubMonat));
+  const zelle = (t) => {
+    const ft = feiertag(t.iso);
+    const liste = amTag(t.iso);
+    // Wochenenden und Feiertage zählen nicht als Urlaubstag und bleiben, wie sie sind
+    const st = ft || istWochenende(t.iso) ? '' : liste.find((a) => a.status === 'genehmigt') ? 'genehmigt' : liste.find((a) => a.status === 'beantragt') ? 'beantragt' : liste.length ? 'abgelehnt' : '';
+    const kl = ['uk-tag', t.imMonat ? '' : 'fremd', istWochenende(t.iso) ? 'we' : '', ft ? 'ft' : '', t.iso === heute ? 'heute' : '',
+      st ? `u-${st}` : '', urlaubAuswahl === t.iso ? 'auswahl' : ''].filter(Boolean).join(' ');
+    const namen = isAdmin() && liste.length
+      ? `<small>${liste.slice(0, 2).map((a) => initials(a.name)).join(' ')}${liste.length > 2 ? ` +${liste.length - 2}` : ''}</small>` : '';
+    return `<button type="button" class="${kl}" data-tag="${t.iso}"${ft ? ` title="${esc(ft)}"` : ''}><b>${t.tag}</b>${namen}</button>`;
+  };
+  const offen = isAdmin() ? antraege.filter((a) => a.status === 'beantragt') : [];
+  const jahr = urlaubMonat.slice(0, 4);
+  const liste = antraege.filter((a) => (a.von.startsWith(jahr) || a.bis.startsWith(jahr)) && !(isAdmin() && a.status === 'beantragt'))
+    .sort((a, b) => a.von.localeCompare(b.von));
+  const karte = (a) => `<button type="button" class="rcard urlaub-karte" data-id="${a.id}">
+      <div class="body">
+        <div class="title">${isAdmin() ? `${esc(a.name)} · ` : ''}${zeitraumText(a)}</div>
+        <div class="preview">${tageText(a.tage)}${a.notiz ? ` · ${esc(a.notiz)}` : ''}</div>
+        <div class="meta"><span class="pill ${STATUS_PILL[a.status]}">${STATUS[a.status]}</span>${ausstehend.has(a.id) ? '<span class="pill local">Noch nicht hochgeladen</span>' : ''}</div>
+      </div></button>`;
+  const genehmigtTage = antraege.filter((a) => a.status === 'genehmigt' && !isAdmin()).reduce((n, a) => n + urlaubTageImJahr(a, jahr), 0);
+
+  view.innerHTML = `
+    ${ansichtUmschalter('urlaub')}
+    <div class="month-nav">
+      <button class="icon-btn" id="u-prev" aria-label="Vorheriger Monat">${ICON.back}</button>
+      <b>${monatLabel(urlaubMonat)}</b>
+      <button class="icon-btn" id="u-next" aria-label="Nächster Monat"><span class="flip">${ICON.back}</span></button>
+    </div>
+    <div class="uk">
+      <div class="uk-kopf"><span>KW</span>${['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((w) => `<span>${w}</span>`).join('')}</div>
+      ${wochen.map((w) => `<div class="uk-woche"><span class="uk-kw">${w.kw}</span>${w.tage.map(zelle).join('')}</div>`).join('')}
+    </div>
+    <div class="uk-legende">
+      <span><i class="u-beantragt"></i>Beantragt</span><span><i class="u-genehmigt"></i>Genehmigt</span><span><i class="ft"></i>Feiertag</span>
+    </div>
+    <p class="hint" id="uk-hinweis">${urlaubAuswahl ? 'Jetzt den letzten Urlaubstag antippen.' : 'Ersten Urlaubstag antippen, dann den letzten.'}</p>
+    ${feiertageMonat.length ? `<div class="uk-feiertage">${feiertageMonat.map(([iso, name]) =>
+      `<div><b>${Number(iso.slice(8))}.${iso.slice(5, 7)}.</b> <span>${esc(name)}</span></div>`).join('')}</div>` : ''}
+    ${isAdmin() ? `<div class="month"><span>Offene Anfragen</span><span>${offen.length}</span></div>
+      ${offen.length ? `<div class="card-list">${offen.map((a) => `<div class="rcard urlaub-anfrage" data-id="${a.id}">
+        <div class="body">
+          <div class="title">${esc(a.name)}</div>
+          <div class="preview">${zeitraumText(a)} · ${tageText(a.tage)}${a.notiz ? ` · ${esc(a.notiz)}` : ''}</div>
+          <div class="uk-knoepfe"><button type="button" class="btn ghost" data-ab="${a.id}">Ablehnen</button><button type="button" class="btn primary" data-ok="${a.id}">Genehmigen</button></div>
+        </div></div>`).join('')}</div>` : '<p class="hint">Keine offenen Anfragen.</p>'}` : ''}
+    <div class="month"><span>${isAdmin() ? `Urlaub ${jahr}` : `Mein Urlaub ${jahr}`}</span><span>${isAdmin() ? '' : tageText(genehmigtTage)}</span></div>
+    ${liste.length ? `<div class="card-list">${liste.map(karte).join('')}</div>` : '<p class="hint">Noch kein Urlaub eingetragen.</p>'}
+    <button class="fab" id="urlaub-neu">${ICON.plus}<span>Urlaub beantragen</span></button>`;
+
+  ansichtUmschalterBinden();
+  $('#u-prev').onclick = () => { urlaubMonat = shiftMonth(urlaubMonat, -1); renderUrlaub(); };
+  $('#u-next').onclick = () => { urlaubMonat = shiftMonth(urlaubMonat, 1); renderUrlaub(); };
+  $('#urlaub-neu').onclick = () => {
+    urlaubAuswahl = null;
+    const von = urlaubMonat === heute.slice(0, 7) ? heute : `${urlaubMonat}-01`;
+    urlaubBeantragen(von, von);
+  };
+  $$('.uk-tag').forEach((b) => {
+    b.onclick = () => {
+      const iso = b.dataset.tag;
+      if (!urlaubAuswahl) {
+        // Tag mit Urlaub: Antrag(e) zeigen
+        const hier = amTag(iso);
+        if (hier.length) {
+          if (hier.length === 1) urlaubDetails(hier[0]);
+          else urlaubTagListe(iso, hier);
+          return;
+        }
+        urlaubAuswahl = iso;
+        renderUrlaub();
+        return;
+      }
+      const [von, bis] = [urlaubAuswahl, iso].sort();
+      urlaubAuswahl = null;
+      renderUrlaub();
+      urlaubBeantragen(von, bis);
+    };
+  });
+  $$('.urlaub-karte').forEach((b) => { b.onclick = () => urlaubDetails(antraege.find((a) => a.id === b.dataset.id)); });
+  $$('[data-ok]').forEach((b) => { b.onclick = () => urlaubEntscheiden(antraege.find((a) => a.id === b.dataset.ok), 'genehmigt'); });
+  $$('[data-ab]').forEach((b) => { b.onclick = () => urlaubDetails(antraege.find((a) => a.id === b.dataset.ab), { ablehnen: true }); });
+  $$('.urlaub-anfrage .body').forEach((el) => {
+    el.onclick = (e) => { if (!e.target.closest('button')) urlaubDetails(antraege.find((a) => a.id === el.parentElement.dataset.id)); };
+  });
+  urlaubBadge();
+}
+
+const tageText = (n) => (n === 1 ? '1 Arbeitstag' : `${n} Arbeitstage`);
+// Arbeitstage eines Antrags, die in einem Jahr liegen (Urlaub über Silvester)
+function urlaubTageImJahr(a, jahr) {
+  return arbeitstage(a.von < `${jahr}-01-01` ? `${jahr}-01-01` : a.von, a.bis > `${jahr}-12-31` ? `${jahr}-12-31` : a.bis);
+}
+
+function urlaubTagListe(iso, liste) {
+  const { sheet, close } = openSheet(`
+    <h2>${formatDate(iso)}</h2>
+    <div class="card-list">${liste.map((a) => `<button type="button" class="rcard" data-id="${a.id}"><div class="body">
+      <div class="title">${esc(a.name)}</div><div class="preview">${zeitraumText(a)}</div>
+      <div class="meta"><span class="pill ${STATUS_PILL[a.status]}">${STATUS[a.status]}</span></div></div></button>`).join('')}</div>`);
+  $$('.rcard', sheet).forEach((b) => { b.onclick = () => { close(); urlaubDetails(liste.find((a) => a.id === b.dataset.id)); }; });
+}
+
+function urlaubBeantragen(von, bis) {
+  const person = stundenPerson();
+  if (!person) { toast('Bitte zuerst unter Stunden wählen, wer du bist.', 3500); return; }
+  const { sheet, close } = openSheet(`
+    <h2>Urlaub beantragen</h2>
+    <p class="hint" style="margin-top:0">${esc(person.name)}</p>
+    <div class="row">
+      <label class="field"><span>Von</span><input type="date" id="u-von" value="${von}"></label>
+      <label class="field"><span>Bis</span><input type="date" id="u-bis" value="${bis}"></label>
+    </div>
+    <div class="crew-sum"><div class="kv total" style="border:0;margin:0;padding-top:4px"><span>Urlaubstage</span><b id="u-tage"></b></div></div>
+    <p class="hint" id="u-ft"></p>
+    <label class="field"><span>Notiz</span><input type="text" id="u-notiz" placeholder="optional"></label>
+    <div class="row sheet-actions">
+      <button type="button" class="btn ghost" id="u-abbrechen">Abbrechen</button>
+      <button type="button" class="btn primary" id="u-ok">Beantragen</button>
+    </div>`);
+  const zeigen = () => {
+    const v = $('#u-von', sheet).value;
+    const b = $('#u-bis', sheet).value;
+    $('#u-tage', sheet).textContent = tageText(arbeitstage(v, b));
+    const ft = [];
+    for (let s = v; v && b && s <= b && ft.length < 6; s = plusTage(s, 1)) if (feiertag(s)) ft.push(`${feiertag(s)} (${Number(s.slice(8))}.${s.slice(5, 7)}.)`);
+    $('#u-ft', sheet).textContent = ft.length ? `Feiertage zählen nicht mit: ${ft.join(', ')}` : '';
+  };
+  $('#u-von', sheet).onchange = () => {
+    if ($('#u-bis', sheet).value < $('#u-von', sheet).value) $('#u-bis', sheet).value = $('#u-von', sheet).value;
+    zeigen();
+  };
+  $('#u-bis', sheet).onchange = zeigen;
+  zeigen();
+  $('#u-abbrechen', sheet).onclick = close;
+  $('#u-ok', sheet).onclick = () => {
+    const v = $('#u-von', sheet).value;
+    const b = $('#u-bis', sheet).value;
+    if (!v || !b) { toast('Bitte Von und Bis wählen.'); return; }
+    if (b < v) { toast('Bis darf nicht vor Von liegen.'); return; }
+    const tage = arbeitstage(v, b);
+    if (!tage) { toast('In diesem Zeitraum liegt kein Arbeitstag.', 3500); return; }
+    const doppelt = urlaubLokal().antraege.some((a) => gehoertZu(a, person) && a.status !== 'abgelehnt' && a.von <= b && v <= a.bis);
+    if (doppelt) { toast('Für diese Tage gibt es schon einen Urlaubsantrag.', 3500); return; }
+    antragMerken(neuerAntrag({
+      personId: person.personId || null, name: person.name, von: v, bis: b, tage, notiz: $('#u-notiz', sheet).value.trim(),
+    }), 'neu');
+    close();
+    urlaubMonat = v.slice(0, 7);
+    toast(isConfigured(settings) && navigator.onLine ? 'Urlaub beantragt.' : 'Urlaub beantragt. Er wird verschickt, sobald du online bist.', 3500);
+    renderUrlaub();
+    urlaubHolen({ laut: true });
+  };
+}
+
+function urlaubDetails(a, { ablehnen = false } = {}) {
+  if (!a) return;
+  const eigen = gehoertZu(a, stundenPerson());
+  const entschieden = a.status !== 'beantragt'
+    ? `<div class="kv"><span>${a.status === 'genehmigt' ? 'Genehmigt' : 'Abgelehnt'}</span><b>${esc(a.entschiedenVon || '')}${a.entschiedenAm ? ` · ${formatDate(new Date(a.entschiedenAm).toISOString().slice(0, 10))}` : ''}</b></div>` : '';
+  const { sheet, close } = openSheet(`
+    <h2>Urlaub</h2>
+    <div class="kv"><span>Mitarbeiter</span><b>${esc(a.name)}</b></div>
+    <div class="kv"><span>Zeitraum</span><b>${zeitraumText(a)}</b></div>
+    <div class="kv"><span>Urlaubstage</span><b>${tageText(a.tage)}</b></div>
+    ${a.notiz ? `<div class="kv"><span>Notiz</span><b>${esc(a.notiz)}</b></div>` : ''}
+    <div class="kv"><span>Stand</span><b><span class="pill ${STATUS_PILL[a.status]}">${STATUS[a.status]}</span></b></div>
+    ${entschieden}
+    ${a.grund ? `<div class="kv"><span>Grund</span><b>${esc(a.grund)}</b></div>` : ''}
+    ${isAdmin() && a.status === 'beantragt' ? `
+      <label class="field" style="margin-top:12px"><span>Grund bei Ablehnung</span><input type="text" id="u-grund" placeholder="optional"></label>
+      <div class="row sheet-actions">
+        <button type="button" class="btn ghost" id="u-nein">Ablehnen</button>
+        <button type="button" class="btn primary" id="u-ja">Genehmigen</button>
+      </div>` : ''}
+    ${!isAdmin() && eigen && a.status === 'beantragt' ? `<button type="button" class="btn danger del" id="u-zurueck" style="margin-top:14px">${ICON.trash} Antrag zurückziehen</button>` : ''}
+    ${isAdmin() ? `<button type="button" class="btn danger del" id="u-weg" style="margin-top:14px">${ICON.trash} Antrag löschen</button>` : ''}`);
+  if (ablehnen) setTimeout(() => $('#u-grund', sheet)?.focus(), 250);
+  const ja = $('#u-ja', sheet);
+  if (ja) ja.onclick = () => { close(); urlaubEntscheiden(a, 'genehmigt'); };
+  const nein = $('#u-nein', sheet);
+  if (nein) nein.onclick = () => { const grund = $('#u-grund', sheet).value.trim(); close(); urlaubEntscheiden(a, 'abgelehnt', grund); };
+  const zurueck = $('#u-zurueck', sheet);
+  if (zurueck) zurueck.onclick = () => {
+    if (!confirm('Urlaubsantrag zurückziehen?')) return;
+    antragMerken(a, 'loeschen');
+    close();
+    renderUrlaub();
+    urlaubHolen({ laut: true });
+  };
+  const weg = $('#u-weg', sheet);
+  if (weg) weg.onclick = () => {
+    if (!confirm(a.status === 'genehmigt'
+      ? `Urlaub von ${a.name} (${zeitraumText(a)}) löschen? Die Urlaubstage verschwinden auch aus dem Stundennachweis.`
+      : `Urlaub von ${a.name} (${zeitraumText(a)}) löschen?`)) return;
+    antragMerken(a, 'loeschen');
+    if (a.status === 'genehmigt') urlaubAusStunden(a);
+    close();
+    renderUrlaub();
+    urlaubHolen({ laut: true });
+  };
+}
+
+async function urlaubEntscheiden(a, status, grund = '') {
+  if (!a) return;
+  antragMerken({ ...a, status, grund, entschiedenVon: settings.author || 'Administrator', entschiedenAm: Date.now(), updatedAt: Date.now() }, 'aendern');
+  if (status === 'genehmigt') await urlaubInStunden(a);
+  toast(status === 'genehmigt' ? `Urlaub von ${a.name} genehmigt und in den Stundennachweis eingetragen.` : `Urlaub von ${a.name} abgelehnt.`, 3500);
+  renderUrlaub();
+  urlaubHolen({ laut: true });
+}
+
+// Genehmigter Urlaub landet im Stundennachweis des Mitarbeiters: ein Eintrag „Urlaub“ pro
+// Arbeitstag. Die Kennung hängt am Antrag und am Tag, so entsteht nichts doppelt.
+const urlaubStundeId = (a, iso) => `urlaub-${a.id}-${iso}`;
+async function urlaubInStunden(a) {
+  const vorhanden = new Set((await db.allStunden()).map((e) => e.id));
+  for (let iso = a.von; iso <= a.bis; iso = plusTage(iso, 1)) {
+    if (istWochenende(iso) || feiertag(iso) || vorhanden.has(urlaubStundeId(a, iso))) continue;
+    await db.putStunde(newStunde({
+      id: urlaubStundeId(a, iso), personId: a.personId || null, name: a.name, datum: iso, typ: 'urlaub', notiz: 'Urlaub (genehmigt)',
+    }));
+  }
+  stundenHochladen();
+}
+async function urlaubAusStunden(a) {
+  for (let iso = a.von; iso <= a.bis; iso = plusTage(iso, 1)) {
+    if (istWochenende(iso) || feiertag(iso)) continue;
+    await db.deleteStunde({ id: urlaubStundeId(a, iso), personId: a.personId || null, name: a.name, datum: iso });
+  }
+  stundenHochladen();
+}
+function stundenHochladen() {
+  stundenRemoteCache.clear();
+  if (isConfigured(settings) && navigator.onLine) syncStunden(settings).catch(() => {});
+}
+
 async function chooseStundenPerson() {
   const people = (await db.allPeople()).filter((p) => !p.archived);
   const cur = stundenPerson();
@@ -2538,7 +2894,8 @@ async function chooseStundenPerson() {
     settings.stundenPerson = p;
     db.saveSettings(settings);
     close();
-    renderStunden();
+    urlaubGeholt = 0;
+    if (location.hash === '#/urlaub') renderUrlaub(); else renderStunden();
   };
   $$('.pick', sheet).forEach((b) => {
     b.onclick = () => { const p = people.find((x) => x.id === b.dataset.id); set({ personId: p.id, name: p.name }); };
@@ -2975,6 +3332,7 @@ async function requestPersistentStorage() {
 }
 
 let autoTimer;
+let urlaubVorher = new Set();
 function scheduleAutoSync(delay = 4000) {
   clearTimeout(autoTimer);
   if (!settings.autoSync || !isConfigured(settings)) return;
@@ -2995,11 +3353,18 @@ async function runSync(manual) {
   editorHooks?.refresh();
   let result;
   try {
+    urlaubVorher = offeneIds();
     result = await syncAll(settings, null, { alle: isAdmin() });
   } finally {
     syncing = false;
   }
   stundenRemoteCache.clear(); // Stunden von anderen Geräten beim nächsten Anzeigen neu laden
+  if (result.urlaub) {
+    urlaubGeholt = Date.now();
+    urlaubMelden(result.urlaub, urlaubVorher);
+    urlaubBadge();
+    if (location.hash === '#/urlaub' && !document.querySelector('.sheet-backdrop.open')) renderUrlaub();
+  }
   meldeGeraet(settings, geraetInfo()).catch(() => {});
   if (manual || result.failed) {
     if (result.failed) toast(`${result.failed} Bericht(e) konnten nicht hochgeladen werden.`, 4000);
@@ -3093,6 +3458,7 @@ function spracheWaehlen() {
 
 migrateSites().catch(() => {}).finally(() => {
   route();
+  urlaubBadge();
   if (!settings.lang && !settings.admin) spracheWaehlen();
 });
 scheduleAutoSync(1500);

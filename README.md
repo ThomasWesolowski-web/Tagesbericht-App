@@ -7,6 +7,10 @@ Im Reiter **Stunden** trägt jeder Mitarbeiter seine täglichen Stunden ein (Arb
 Pro Mitarbeiter und Monat landen `stunden/<JJJJ-MM>_<name>.md`, `.json` und `.pdf` im Repo.
 Wer die App auf mehreren Geräten nutzt (z. B. Handy und PC), sieht und bearbeitet seine Stunden auf allen;
 der Administrator kann die Stunden aller Mitarbeiter bearbeiten. Pro Eintrag gilt die neuere Änderung.
+Unter **Stunden → Urlaub** gibt es einen Urlaubskalender (Kalenderwochen, Feiertage Baden-Württemberg).
+Jeder beantragt dort seinen Urlaub, der Administrator genehmigt oder lehnt ab (genehmigte Arbeitstage
+kommen als „Urlaub“ in den Stundennachweis); jeder Antrag liegt als
+`urlaub/<JJJJ>_<name>_<id>.json` im Repo.
 
 Baustellen und Personal werden mit `stammdaten/baustellen.json` und `stammdaten/personal.json`
 im selben Repo abgeglichen, damit alle Handys dieselben Listen haben (pro Eintrag gewinnt die neuere Änderung).
