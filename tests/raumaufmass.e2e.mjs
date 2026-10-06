@@ -369,6 +369,31 @@ async function ablauf(b, { touch }) {
   assert.equal(pdf4.raeume, 2);
   assert.equal(pdf4.gruppen, 1);
   if (SHOTS) writeFileSync(`${SHOTS}/${art}-aufmass-mehrere-raeume.pdf`, Buffer.from(pdf4.b64, 'base64'));
+  // 3-D-Ansicht: Canvas ist gezeichnet, Drehen geht, Zurück schließt
+  await p.click('#drei-d');
+  await p.waitForSelector('.ra-3d canvas');
+  const farbig = () => p.evaluate(() => {
+    const c = document.querySelector('.ra-3d canvas');
+    const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    let n = 0;
+    for (let i = 3; i < d.length; i += 16) if (d[i] > 0) n++;
+    return n;
+  });
+  assert.ok(await farbig() > 1000, '3-D-Ansicht zeigt etwas');
+  await shot(p, `${art}-15b-3d`);
+  const cb = await p.locator('.ra-3d canvas').boundingBox();
+  if (touch) {
+    const cdp = await ctx.newCDPSession(p);
+    const tp = (k) => [{ x: cb.x + cb.width / 2 + k * 15, y: cb.y + cb.height / 2 - k * 5, id: 1, radiusX: 4, radiusY: 4, force: 1 }];
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: tp(0) });
+    for (let k = 1; k <= 8; k++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: tp(k) });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  }
+  else { await p.mouse.move(cb.x + cb.width / 2, cb.y + cb.height / 2); await p.mouse.down(); await p.mouse.move(cb.x + cb.width / 2 + 120, cb.y + cb.height / 2 - 40, { steps: 8 }); await p.mouse.up(); }
+  assert.ok(await farbig() > 1000);
+  await shot(p, `${art}-15c-3d-gedreht`);
+  await p.click('.ra-3d [data-tun="zu"]');
+  assert.equal(await p.locator('.ra-3d').count(), 0);
   // Raum nachträglich umbenennen (Name auf der Karte antippen)
   p.once('dialog', (dlg) => dlg.accept('Küche'));
   await p.locator('.fa-karte[data-id] .ra-name').nth(1).click();

@@ -43,7 +43,7 @@ In diesem Repo liegt nur der App-Code. Es enthält keine Berichte und keine Zuga
   Dachfenster, Decke waagerecht und Schrägflächen als eigene Positionen;
   Körper in der Fläche (Kamin, Säule) als Abzug; gemessene Wände bleiben beim Ziehen fest;
   mehrere Räume in einem Grundriss (Raum Wand an Wand anbauen, Räume verschieben und andocken), Grundriss gesamt
-  im PDF
+  im PDF; 3-D-Ansicht zum Drehen (`raumaufmass/ansicht3d.js`)
   (`raumaufmass/raumgeometrie.js` rechnet, `raumaufmass/raumaufmass.js` ist der Editor,
   `raumaufmass/ra-app.js` die Liste und das PDF; Tests in `tests/`)
 

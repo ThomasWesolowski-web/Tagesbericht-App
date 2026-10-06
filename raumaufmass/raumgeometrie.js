@@ -1817,3 +1817,49 @@ function dxfRaum(raum, z) {
   }
 }
 
+
+// ---------- 3-D-Ansicht ----------
+// Flächen für die 3-D-Ansicht: [{ art, raum, pts: [[x, y, z], …], innen? }] in Metern, z nach oben.
+// art: boden | wand | tuer | fenster | schraege | koerper. Wände folgen den Dachschrägen; innen = Normale
+// in den Raum (zum Ausblenden der Wände, die vor dem Betrachter stehen).
+export function alsFlaechen3d(raeume) {
+  const out = [];
+  for (const raum of raeume) {
+    if (!geschlossen(raum)) continue;
+    const H = Number(raum.hoehe) || 2.5;
+    const E = ebenen(raum);
+    const name = raum.name || 'Raum';
+    const p = punkteVon(raum);
+    out.push({ art: 'boden', raum: name, pts: p.map(([x, y]) => [x, y, 0]) });
+    raum.waende.forEach((w, i) => {
+      const g = wandGeo(raum, i);
+      const verlauf = wandHoehen(raum, i, E).punkte;
+      const auf = (t, z) => [g.a[0] + g.r[0] * t, g.a[1] + g.r[1] * t, z];
+      const pts = [auf(0, 0), auf(g.l, 0), ...[...verlauf].reverse().map(([t, z]) => auf(t, Math.max(0, z)))];
+      const innen = [g.innen[0], g.innen[1], 0];
+      out.push({ art: 'wand', raum: name, wand: w.id, pts, innen });
+      // Öffnungen 5 mm vor der Wand im Raum
+      for (const o of raum.oeffnungen.filter((x) => x.wand === w.id)) {
+        const z0 = o.typ === 'tuer' ? 0 : Number(o.bruestung) || 0;
+        const z1 = Math.min(z0 + (Number(o.hoehe) || 0), H);
+        const v = (t, z) => { const q = auf(t, z); return [q[0] + g.innen[0] * 0.005, q[1] + g.innen[1] * 0.005, z]; };
+        out.push({ art: o.typ === 'tuer' ? 'tuer' : 'fenster', raum: name, wand: w.id, innen, pts: [v(o.abstand, z0), v(o.abstand + o.breite, z0), v(o.abstand + o.breite, z1), v(o.abstand, z1)] });
+      }
+    });
+    // Dachschrägen als geneigte Flächen (die flache Decke bleibt offen, damit man hineinsieht)
+    for (const s of dachBereiche(raum, E).schraegen) {
+      if (s.poly.length >= 3) out.push({ art: 'schraege', raum: name, pts: s.poly.map((q) => [q[0], q[1], Math.min(H, s.h(q))]) });
+    }
+    // Körper als Kasten bis zur Decke (sonst halbe Raumhöhe)
+    for (const k of raum.koerper || []) {
+      const e = koerperEcken(k);
+      const hk = k.bisDecke !== false ? (q) => hoeheBei(raum, q, E) : () => H / 2;
+      e.forEach((q, j) => {
+        const r = e[(j + 1) % 4];
+        out.push({ art: 'koerper', raum: name, pts: [[q[0], q[1], 0], [r[0], r[1], 0], [r[0], r[1], hk(r)], [q[0], q[1], hk(q)]] });
+      });
+      out.push({ art: 'koerper', raum: name, pts: e.map((q) => [q[0], q[1], hk(q)]) });
+    }
+  }
+  return out;
+}

@@ -3,12 +3,13 @@
 // ausgegeben wird ein PDF mit den Grundrissen und Flächen. Der Editor ist raumaufmass.js.
 
 import { openRaumAufmass } from './raumaufmass.js';
+import { zeige3d } from './ansicht3d.js';
 import {
   neuerRaum, berechne, raumKurz, alsSvg, massstabFuer, grenzen, planElemente, gruppeElemente, geschlossen,
-  naechsterName, fmt2,
+  naechsterName, fmt2, verschiebeRaum,
 } from './raumgeometrie.js';
 
-const RA_VERSION = '1.3.1';
+const RA_VERSION = '1.4';
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -23,6 +24,7 @@ const ICON = {
   stift: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1-5L16 4l4 4L9 19z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
   weg: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
   teilen: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M5 13v7h14v-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  wuerfel: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
   pdf: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l5 5v13H7z M14 3v5h5 M10 13h6 M10 17h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
 };
 
@@ -65,6 +67,28 @@ function gruppen(raeume) {
   const out = new Map();
   for (const r of raeume) if (r.gruppe && fertig(r)) out.set(r.gruppe, [...(out.get(r.gruppe) || []), r]);
   return [...out.values()].filter((l) => l.length > 1);
+}
+// Für die 3-D-Ansicht: Grundrisse (Gruppen) und einzelne Räume nebeneinander statt übereinander
+function nebeneinander(raeume) {
+  const teile = [];
+  const gesehen = new Set();
+  for (const r of raeume) {
+    if (gesehen.has(r.id)) continue;
+    const t = r.gruppe ? raeume.filter((x) => x.gruppe === r.gruppe) : [r];
+    t.forEach((x) => gesehen.add(x.id));
+    teile.push(t);
+  }
+  const out = [];
+  let x = 0;
+  for (const t of teile) {
+    const g = t.map(grenzen);
+    const x0 = Math.min(...g.map((b) => b.x0));
+    const y0 = Math.min(...g.map((b) => b.y0));
+    const x1 = Math.max(...g.map((b) => b.x1));
+    out.push(...t.map((r) => verschiebeRaum(r, [x - x0, -y0]).raum));
+    x += x1 - x0 + 1;
+  }
+  return out;
 }
 const bodenSumme = (raeume) => raeume.filter(fertig).reduce((s, r) => s + berechne(r).bodenflaeche, 0);
 
@@ -142,6 +166,7 @@ async function projekt(id) {
         ${p.raeume.length ? '' : '<p class="leer">Noch keine Räume.</p>'}
         <div class="knoepfe">
           <button type="button" class="btn primary block" id="raum-neu">${ICON.plan} Raum zeichnen</button>
+          <button type="button" class="btn ghost block" id="drei-d" ${p.raeume.some(fertig) ? '' : 'disabled'}>${ICON.wuerfel} 3-D ansehen</button>
           <button type="button" class="btn ghost block" id="pdf" ${p.raeume.some(fertig) ? '' : 'disabled'}>${ICON.pdf} PDF ansehen</button>
         </div>
       </section>
@@ -178,6 +203,7 @@ async function projekt(id) {
       };
     });
     $('#raum-neu').onclick = () => oeffnen({ ...neuerRaum(1), name: naechsterName(p.raeume.map((x) => x.name)) });
+    $('#drei-d').onclick = () => zeige3d(nebeneinander(p.raeume.filter(fertig)), p.name);
     $('#pdf').onclick = async () => {
       try {
         const blob = await pdfBauen(p);
