@@ -1,5 +1,5 @@
 // Raumaufmaß (eigene Test-App): Dateien offline aus dem Cache, im Hintergrund aktualisieren.
-const CACHE = 'raumaufmass-v2';
+const CACHE = 'raumaufmass-v3';
 const SHELL = [
   './',
   'index.html',
@@ -13,6 +13,8 @@ const SHELL = [
   'icon-512.png',
   'apple-touch-icon.png',
   '../vendor/jspdf.umd.min.js',
+  '../vendor/pdf.min.js',
+  '../vendor/pdf.worker.min.js',
 ];
 
 self.addEventListener('install', (event) => {
