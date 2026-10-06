@@ -12,7 +12,7 @@ import {
   TYPEN, typLabel, hatZeiten, newStunde, stundenOf, personKey, kw, summe, sortStunden, monatLabel, shiftMonth,
 } from './stunden.js';
 import {
-  isConfigured, syncAll, syncReport, testConnection, deleteRemote, loadAdminConfig, saveAdminConfig, loadStundenRemote, meldeGeraet, ladeGeraete, setzeAdminFreigabe, urlaubAbgleichen,
+  isConfigured, syncAll, syncReport, testConnection, deleteRemote, loadAdminConfig, saveAdminConfig, loadStundenRemote, meldeGeraet, ladeGeraete, setzeAdminFreigabe, urlaubAbgleichen, syncStunden,
 } from './sync.js';
 import { startI18n, SPRACHEN } from './i18n.js';
 import { openMarkup } from './markup.js';
@@ -2835,20 +2835,49 @@ function urlaubDetails(a, { ablehnen = false } = {}) {
   };
   const weg = $('#u-weg', sheet);
   if (weg) weg.onclick = () => {
-    if (!confirm(`Urlaub von ${a.name} (${zeitraumText(a)}) löschen?`)) return;
+    if (!confirm(a.status === 'genehmigt'
+      ? `Urlaub von ${a.name} (${zeitraumText(a)}) löschen? Die Urlaubstage verschwinden auch aus dem Stundennachweis.`
+      : `Urlaub von ${a.name} (${zeitraumText(a)}) löschen?`)) return;
     antragMerken(a, 'loeschen');
+    if (a.status === 'genehmigt') urlaubAusStunden(a);
     close();
     renderUrlaub();
     urlaubHolen({ laut: true });
   };
 }
 
-function urlaubEntscheiden(a, status, grund = '') {
+async function urlaubEntscheiden(a, status, grund = '') {
   if (!a) return;
   antragMerken({ ...a, status, grund, entschiedenVon: settings.author || 'Administrator', entschiedenAm: Date.now(), updatedAt: Date.now() }, 'aendern');
-  toast(status === 'genehmigt' ? `Urlaub von ${a.name} genehmigt.` : `Urlaub von ${a.name} abgelehnt.`);
+  if (status === 'genehmigt') await urlaubInStunden(a);
+  toast(status === 'genehmigt' ? `Urlaub von ${a.name} genehmigt und in den Stundennachweis eingetragen.` : `Urlaub von ${a.name} abgelehnt.`, 3500);
   renderUrlaub();
   urlaubHolen({ laut: true });
+}
+
+// Genehmigter Urlaub landet im Stundennachweis des Mitarbeiters: ein Eintrag „Urlaub“ pro
+// Arbeitstag. Die Kennung hängt am Antrag und am Tag, so entsteht nichts doppelt.
+const urlaubStundeId = (a, iso) => `urlaub-${a.id}-${iso}`;
+async function urlaubInStunden(a) {
+  const vorhanden = new Set((await db.allStunden()).map((e) => e.id));
+  for (let iso = a.von; iso <= a.bis; iso = plusTage(iso, 1)) {
+    if (istWochenende(iso) || feiertag(iso) || vorhanden.has(urlaubStundeId(a, iso))) continue;
+    await db.putStunde(newStunde({
+      id: urlaubStundeId(a, iso), personId: a.personId || null, name: a.name, datum: iso, typ: 'urlaub', notiz: 'Urlaub (genehmigt)',
+    }));
+  }
+  stundenHochladen();
+}
+async function urlaubAusStunden(a) {
+  for (let iso = a.von; iso <= a.bis; iso = plusTage(iso, 1)) {
+    if (istWochenende(iso) || feiertag(iso)) continue;
+    await db.deleteStunde({ id: urlaubStundeId(a, iso), personId: a.personId || null, name: a.name, datum: iso });
+  }
+  stundenHochladen();
+}
+function stundenHochladen() {
+  stundenRemoteCache.clear();
+  if (isConfigured(settings) && navigator.onLine) syncStunden(settings).catch(() => {});
 }
 
 async function chooseStundenPerson() {
