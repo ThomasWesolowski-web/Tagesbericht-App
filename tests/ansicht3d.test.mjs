@@ -1,7 +1,7 @@
 // Tests für die Flächen der 3-D-Ansicht: node --test tests/*.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { neuerRaum, raumAusEcken, neueOeffnung, neuerKoerper, setzeSchraege, alsFlaechen3d } from '../raumaufmass/raumgeometrie.js';
+import { neuerRaum, raumAusEcken, neueOeffnung, neuerKoerper, setzeSchraege, neuesDachfenster, alsFlaechen3d } from '../raumaufmass/raumgeometrie.js';
 
 const raum = (ecken, felder = {}) => ({ ...raumAusEcken(neuerRaum(1), ecken), massstabGesetzt: true, hoehe: 2.5, ...felder });
 
@@ -33,4 +33,16 @@ test('3-D: Wand mit Dachschräge ist niedriger, Schräge als Fläche', () => {
   // Seitenwand steigt vom Kniestock bis zur Raumhöhe
   const wandB = f.find((x) => x.art === 'wand' && x.wand === r.waende[1].id);
   assert.ok(wandB.pts.some((q) => Math.abs(q[2] - 1) < 1e-9) && wandB.pts.some((q) => Math.abs(q[2] - 2.5) < 1e-9));
+});
+
+test('3-D: Dachfenster liegt in der Schräge', () => {
+  let r = raum([[0, 0], [5, 0], [5, 4], [0, 4]]);
+  r = setzeSchraege(r, r.waende[0].id, { kniestock: 1, art: 'winkel', wert: 45 }).raum;
+  r = neuesDachfenster(r, r.waende[0].id).raum;
+  const f = alsFlaechen3d([r]);
+  const df = f.filter((x) => x.art === 'dachfenster');
+  assert.equal(df.length, 1);
+  // 45°: Höhe = Kniestock + Abstand von der Wand (minus 1 cm), alle Ecken unter der Raumhöhe
+  for (const [, y, z] of df[0].pts) assert.ok(Math.abs(z - (1 + y - 0.01)) < 1e-9, `z ${z} bei y ${y}`);
+  assert.ok(df[0].pts.every((q) => q[2] < 2.5));
 });

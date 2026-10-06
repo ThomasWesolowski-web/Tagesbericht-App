@@ -9,7 +9,7 @@ import {
   naechsterName, fmt2, verschiebeRaum,
 } from './raumgeometrie.js';
 
-const RA_VERSION = '1.4';
+const RA_VERSION = '1.4.1';
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];

@@ -9,6 +9,7 @@ const FARBE = {
   wand: [246, 246, 244],
   tuer: [176, 122, 74],
   fenster: [140, 196, 236],
+  dachfenster: [120, 184, 232],
   schraege: [214, 160, 130],
   koerper: [160, 166, 174],
 };
@@ -87,6 +88,9 @@ export function zeige3d(raeume, titel = '3-D-Ansicht') {
     // Türen und Fenster direkt nach ihrer Wand zeichnen
     const wandTiefe = new Map(liste.filter((x) => x.f.art === 'wand').map((x) => [`${x.f.raum}|${x.f.wand}`, x.tiefe]));
     for (const x of liste) if (x.f.art === 'tuer' || x.f.art === 'fenster') x.tiefe = (wandTiefe.get(`${x.f.raum}|${x.f.wand}`) ?? x.tiefe) - 1e-6;
+    // Dachfenster direkt nach ihrer Schräge
+    const schraegeTiefe = new Map(liste.filter((x) => x.f.art === 'schraege').map((x) => [`${x.f.raum}|${x.f.wand}`, x.tiefe]));
+    for (const x of liste) if (x.f.art === 'dachfenster') x.tiefe = (schraegeTiefe.get(`${x.f.raum}|${x.f.wand}`) ?? x.tiefe) - 1e-6;
     liste.sort((a, b) => b.tiefe - a.tiefe);
     for (const { f, s, vorn, hell } of liste) {
       const c = FARBE[f.art].map((x) => Math.round(x * hell));

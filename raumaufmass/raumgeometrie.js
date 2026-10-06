@@ -1820,7 +1820,7 @@ function dxfRaum(raum, z) {
 
 // ---------- 3-D-Ansicht ----------
 // Flächen für die 3-D-Ansicht: [{ art, raum, pts: [[x, y, z], …], innen? }] in Metern, z nach oben.
-// art: boden | wand | tuer | fenster | schraege | koerper. Wände folgen den Dachschrägen; innen = Normale
+// art: boden | wand | tuer | fenster | schraege | dachfenster | koerper. Wände folgen den Dachschrägen; innen = Normale
 // in den Raum (zum Ausblenden der Wände, die vor dem Betrachter stehen).
 export function alsFlaechen3d(raeume) {
   const out = [];
@@ -1848,7 +1848,13 @@ export function alsFlaechen3d(raeume) {
     });
     // Dachschrägen als geneigte Flächen (die flache Decke bleibt offen, damit man hineinsieht)
     for (const s of dachBereiche(raum, E).schraegen) {
-      if (s.poly.length >= 3) out.push({ art: 'schraege', raum: name, pts: s.poly.map((q) => [q[0], q[1], Math.min(H, s.h(q))]) });
+      if (s.poly.length >= 3) out.push({ art: 'schraege', raum: name, wand: s.wand, pts: s.poly.map((q) => [q[0], q[1], Math.min(H, s.h(q))]) });
+    }
+    // Dachfenster liegen in ihrer Schräge (1 cm darunter, damit sie von innen zu sehen sind)
+    for (const o of raum.dachfenster || []) {
+      const q = dachfensterEcken(raum, o);
+      const e = E.find((x) => x.wand === o.wand);
+      if (q && e) out.push({ art: 'dachfenster', raum: name, wand: o.wand, pts: q.map((p) => [p[0], p[1], Math.max(0, Math.min(H, e.h(p)) - 0.01)]) });
     }
     // Körper als Kasten bis zur Decke (sonst halbe Raumhöhe)
     for (const k of raum.koerper || []) {
