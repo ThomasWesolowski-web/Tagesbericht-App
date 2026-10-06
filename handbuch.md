@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.48.0**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.49.0**.
 
 | Was | Wo |
 | --- | --- |
@@ -107,6 +107,8 @@ Zoomen mit zwei Fingern oder dem Mausrad, Verschieben mit zwei Fingern (am Compu
 
 **Stunden:** Jeder führt seinen eigenen Stundennachweis pro Monat. Ein neuer Eintrag startet mit dem heutigen Datum, Beginn 7:00 und Ende 16:00; Art, Baustelle und Art der Arbeit werden selbst gewählt. Beginn und Ende werden mit der Uhr des Handys gewählt; die Minuten werden auf 5-Minuten-Schritte gerundet. Gespeichert werden kann erst, wenn Arbeit, Urlaub, Krank, Feiertag oder Berufsschule gewählt ist; bei Arbeit zusätzlich Baustelle (auch Freitext) und Art der Arbeit, bei Arbeit und Berufsschule Beginn und Ende. Die Pause ist erst Pflicht, wenn zwischen Beginn und Ende mehr als 6 Stunden liegen; bis 6 Stunden darf sie leer bleiben und zählt als 0 Minuten. Der Monat wird als Stundennachweis-PDF geteilt und im Repo unter stunden/ gespeichert. Das PDF passt immer auf eine Seite (bei vielen Einträgen wird die Schrift kleiner) und hat keine Unterschriftszeilen und keine Fußzeile. Mitarbeiter sehen nur ihre eigenen Stunden, der Admin kann jeden Mitarbeiter auswählen. Er findet die Stunden auch, wenn der Mitarbeiter seinen Namen in der App anders geschrieben hat als in der Personal-Liste (Nachname zuerst, mit oder ohne Sonderzeichen wie ș). Wer auf mehreren Geräten angemeldet ist (z. B. Handy und PC), sieht und bearbeitet seine Stunden auf allen; der Admin kann die Stunden aller Mitarbeiter ändern und löschen. Ist ein Eintrag auf zwei Geräten verschieden, gilt die letzte Änderung; gelöschte Einträge kommen nicht zurück.
 
+**Urlaub:** Unter Stunden schaltet oben „Stunden | Urlaub“ auf den Urlaubskalender um. Er zeigt den Monat mit Kalenderwochen, Wochenenden und den gesetzlichen Feiertagen in Baden-Württemberg (rot, darunter mit Namen). Zum Beantragen den ersten Urlaubstag antippen, dann den letzten, oder den Knopf „Urlaub beantragen“ mit Von und Bis nehmen; die App zählt die Arbeitstage ohne Wochenenden und Feiertage. Ein Antrag ist erst gelb (Beantragt), nach der Entscheidung grün (Genehmigt) oder durchgestrichen (Abgelehnt). Solange er offen ist, kann man ihn zurückziehen. Jeder Antrag liegt als eigene Datei im Repo unter urlaub/; ohne Netz geht er beim nächsten Abgleich raus. Mitarbeiter sehen nur ihren eigenen Urlaub. Über eine Entscheidung informieren eine Meldung beim Abgleich und eine rote Zahl am Reiter Stunden. Genehmigter Urlaub wird nicht von selbst in den Stundennachweis eingetragen.
+
 **Baustellen:** Liste aller Baustellen mit Adresse. Anlegen und ändern darf jeder; fertige Baustellen werden oben als abgeschlossen markiert und wandern nach unten. Löschen darf nur der Admin. Auf der Seite einer Baustelle stehen ihre Berichte, der Knopf für die Zusammenfassung und **Pläne und Dokumente**: PDF-Pläne, Bilder oder andere Dateien bis 25 MB anhängen (nachdem die Baustelle gespeichert ist). Sie kommen beim Abgleich auf alle Handys (im Repo unter stammdaten/plaene/). Anhängen darf jeder, entfernen nur der Admin.
 
 **Personal:** In den Einstellungen unter „Personal verwalten“: Name und Kategorie (Meister, Facharbeiter, Helfer, Lehrling). Anlegen darf jeder, löschen nur der Admin.
@@ -136,6 +138,8 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 **Admins vergeben:** In derselben Liste hat jedes Mitarbeiter-Handy einen Schalter „Administrator“. Ein- oder Ausschalten wirkt beim nächsten Abgleich auf dem Handy des Mitarbeiters. So freigegebene Admins können sich nicht selbst abmelden und keine weiteren Admins vergeben. Eine neue PIN lässt die Freigaben bestehen.
 
+**Urlaubsanfragen:** Admins sehen im Urlaubskalender den Urlaub aller Mitarbeiter (mit Kürzeln im Kalender) und darunter „Offene Anfragen“ mit „Genehmigen“ und „Ablehnen“ (beim Ablehnen optional mit Grund). Neue Anfragen zeigen eine rote Zahl am Reiter Stunden und eine Meldung beim Abgleich. Eine Benachrichtigung aufs Handy, während die App geschlossen ist, gibt es nicht. Admins können jeden Antrag auch löschen.
+
 ## Updates, Datenschutz und Grenzen
 
 **Updates kommen von selbst:** Beim Öffnen lädt die App eine neue Version im Hintergrund und lädt sich neu, sobald niemand gerade einen Bericht bearbeitet. Die Version steht unten in den Einstellungen. Dort öffnet „Handbuch zur App“ dieses Handbuch direkt in der App, auch ohne Netz (immer auf Deutsch).
@@ -152,6 +156,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 06.10.2026 | 1.49.0 | Urlaubskalender unter Stunden: Urlaub beantragen, Admins genehmigen oder lehnen ab; Feiertage Baden-Württemberg und Kalenderwochen |
 | 06.10.2026 | 1.48.0 | Raumaufmaß-App 1.5: Grundriss im Editor drehen (Knopf 90° oder zwei Finger) |
 | 06.10.2026 | 1.47.1 | Raumaufmaß-App 1.4.1: Dachfenster in der 3-D-Ansicht |
 | 06.10.2026 | 1.47.0 | Raumaufmaß-App 1.4: 3-D-Ansicht der Räume (drehen und zoomen) |

@@ -17,7 +17,8 @@ Veröffentlicht über GitHub Pages aus `main` (Root): https://thomaswesolowski-w
 | `report.js` | Datenmodell (Bericht, Rapport, Aufmaß) und Markdown-Fassung fürs Repo |
 | `pdf.js` | PDFs (Bericht, Rapport, Aufmaß, Stundennachweis, Zusammenfassung) mit Briefkopf |
 | `stunden.js` | Stundennachweis pro Mitarbeiter |
-| `sync.js` | Abgleich mit `Rapporte-` (Berichte, Stammdaten, Stunden, Admin) |
+| `urlaub.js` | Urlaubskalender: Feiertage Baden-Württemberg, Arbeitstage, Anträge auf dem Gerät (Repo: `urlaub/`, eine Datei pro Antrag) |
+| `sync.js` | Abgleich mit `Rapporte-` (Berichte, Stammdaten, Stunden, Urlaub, Admin) |
 | `db.js` | Speicher auf dem Handy (IndexedDB, `DB_VERSION`) |
 | `media.js` | Fotos verkleinern (1600 px), Anhänge vorbereiten |
 | `markup.js` | Fotos markieren |

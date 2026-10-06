@@ -13,6 +13,48 @@ const ORDER = ['pl', 'ro', 'mk', 'sq'];
 
 // [Deutsch, Polnisch, Rumänisch, Mazedonisch, Albanisch]
 const ROWS = [
+  // Urlaubskalender
+  ['KW', 'Tydz.', 'Săpt.', 'Нед.', 'Java'],
+  ['Mitarbeiter', 'Pracownik', 'Angajat', 'Вработен', 'Punonjësi'],
+  ['Wähle zuerst, wer du bist. Dann kannst du hier deinen Urlaub beantragen.',
+    'Najpierw wybierz, kim jesteś. Potem możesz tu złożyć wniosek o urlop.',
+    'Alege mai întâi cine ești. Apoi poți cere aici concediu.',
+    'Прво избери кој си. Потоа тука можеш да побараш одмор.',
+    'Zgjidh fillimisht kush je. Pastaj mund të kërkosh pushim këtu.'],
+  ['Beantragt', 'Złożony', 'Solicitat', 'Побарано', 'Kërkuar'],
+  ['Genehmigt', 'Zatwierdzony', 'Aprobat', 'Одобрено', 'Miratuar'],
+  ['Abgelehnt', 'Odrzucony', 'Respins', 'Одбиено', 'Refuzuar'],
+  ['Ersten Urlaubstag antippen, dann den letzten.', 'Dotknij pierwszego dnia urlopu, potem ostatniego.', 'Atinge prima zi de concediu, apoi ultima.', 'Допри го првиот ден од одморот, потоа последниот.', 'Prek ditën e parë të pushimit, pastaj të fundit.'],
+  ['Jetzt den letzten Urlaubstag antippen.', 'Teraz dotknij ostatniego dnia urlopu.', 'Acum atinge ultima zi de concediu.', 'Сега допри го последниот ден од одморот.', 'Tani prek ditën e fundit të pushimit.'],
+  ['Noch kein Urlaub eingetragen.', 'Brak wpisanego urlopu.', 'Încă nu este trecut niciun concediu.', 'Сè уште нема внесен одмор.', 'Ende nuk ka pushim të regjistruar.'],
+  ['Urlaub beantragen', 'Złóż wniosek o urlop', 'Cere concediu', 'Побарај одмор', 'Kërko pushim'],
+  ['Urlaubstage', 'Dni urlopu', 'Zile de concediu', 'Денови одмор', 'Ditë pushimi'],
+  ['Beantragen', 'Wyślij wniosek', 'Trimite cererea', 'Побарај', 'Kërko'],
+  ['Noch nicht hochgeladen', 'Jeszcze nie wysłano', 'Încă netrimis', 'Сè уште неиспратено', 'Ende pa dërguar'],
+  ['Urlaub beantragt.', 'Wniosek o urlop złożony.', 'Concediu solicitat.', 'Одморот е побаран.', 'Pushimi u kërkua.'],
+  ['Urlaub beantragt. Er wird verschickt, sobald du online bist.', 'Wniosek złożony. Zostanie wysłany, gdy będziesz online.', 'Concediu solicitat. Cererea se trimite când ești online.', 'Одморот е побаран. Ќе се испрати кога ќе бидеш онлајн.', 'Pushimi u kërkua. Do të dërgohet sapo të jesh online.'],
+  ['Bitte zuerst unter Stunden wählen, wer du bist.', 'Najpierw wybierz w Godzinach, kim jesteś.', 'Alege mai întâi la Ore cine ești.', 'Прво избери во Часови кој си.', 'Zgjidh fillimisht te Orët kush je.'],
+  ['Bitte Von und Bis wählen.', 'Wybierz datę od i do.', 'Alege De la și Până la.', 'Избери Од и До.', 'Zgjidh Nga dhe Deri.'],
+  ['Bis darf nicht vor Von liegen.', 'Data do nie może być przed datą od.', 'Până la nu poate fi înainte de De la.', 'До не смее да биде пред Од.', 'Deri nuk mund të jetë para Nga.'],
+  ['In diesem Zeitraum liegt kein Arbeitstag.', 'W tym okresie nie ma dnia roboczego.', 'În această perioadă nu este nicio zi lucrătoare.', 'Во овој период нема работен ден.', 'Në këtë periudhë nuk ka ditë pune.'],
+  ['Für diese Tage gibt es schon einen Urlaubsantrag.', 'Na te dni jest już wniosek o urlop.', 'Pentru aceste zile există deja o cerere de concediu.', 'За овие денови веќе има барање за одмор.', 'Për këto ditë ka tashmë një kërkesë për pushim.'],
+  ['Kein Netz. Der Antrag geht raus, sobald du wieder online bist.', 'Brak sieci. Wniosek zostanie wysłany, gdy będziesz online.', 'Fără rețea. Cererea se trimite când ești din nou online.', 'Нема мрежа. Барањето ќе се испрати кога пак ќе бидеш онлајн.', 'Nuk ka rrjet. Kërkesa dërgohet sapo të jesh përsëri online.'],
+  ['Stand', 'Status', 'Stare', 'Статус', 'Gjendja'],
+  ['Grund', 'Powód', 'Motiv', 'Причина', 'Arsyeja'],
+  ['Antrag zurückziehen', 'Wycofaj wniosek', 'Retrage cererea', 'Повлечи го барањето', 'Tërhiq kërkesën'],
+  ['Urlaubsantrag zurückziehen?', 'Wycofać wniosek o urlop?', 'Retragi cererea de concediu?', 'Да се повлече барањето за одмор?', 'Ta tërheq kërkesën për pushim?'],
+  ['Neujahr', 'Nowy Rok', 'Anul Nou', 'Нова година', 'Viti i Ri'],
+  ['Heilige Drei Könige', 'Trzech Króli', 'Boboteaza', 'Богојавление', 'Ujët e Bekuar'],
+  ['Karfreitag', 'Wielki Piątek', 'Vinerea Mare', 'Велики петок', 'E Premtja e Madhe'],
+  ['Ostermontag', 'Poniedziałek Wielkanocny', 'A doua zi de Paști', 'Велигденски понеделник', 'E Hëna e Pashkëve'],
+  ['Tag der Arbeit', 'Święto Pracy', 'Ziua Muncii', 'Ден на трудот', 'Dita e Punës'],
+  ['Christi Himmelfahrt', 'Wniebowstąpienie', 'Înălțarea Domnului', 'Спасовден', 'Ngjitja e Krishtit'],
+  ['Pfingstmontag', 'Poniedziałek Zielonych Świątek', 'A doua zi de Rusalii', 'Духовски понеделник', 'E Hëna e Rrëshajëve'],
+  ['Fronleichnam', 'Boże Ciało', 'Corpus Christi', 'Телово', 'Korpus Krishti'],
+  ['Tag der Deutschen Einheit', 'Dzień Jedności Niemiec', 'Ziua Unității Germane', 'Ден на германското обединување', 'Dita e Bashkimit Gjerman'],
+  ['Allerheiligen', 'Wszystkich Świętych', 'Ziua Tuturor Sfinților', 'Сите светии', 'Dita e të Gjithë Shenjtorëve'],
+  ['1. Weihnachtstag', 'Boże Narodzenie (1. dzień)', 'Crăciunul (prima zi)', 'Божиќ (прв ден)', 'Krishtlindja (dita e parë)'],
+  ['2. Weihnachtstag', 'Boże Narodzenie (2. dzień)', 'Crăciunul (a doua zi)', 'Божиќ (втор ден)', 'Krishtlindja (dita e dytë)'],
   // Navigation und Liste
   ['Tagesberichte', 'Raporty dzienne', 'Rapoarte zilnice', 'Дневни извештаи', 'Raportet ditore'],
   ['Berichte', 'Raporty', 'Rapoarte', 'Извештаи', 'Raportet'],
@@ -610,6 +652,13 @@ const WORT = {
   entfernen: { pl: 'usuń', ro: 'elimină', mk: 'отстрани', sq: 'hiq' },
   kw: { pl: 'Tydz.', ro: 'Săpt.', mk: 'Нед.', sq: 'Java' },
   von: { pl: 'od', ro: 'de la', mk: 'од', sq: 'nga' },
+  urlaubIn: { pl: 'Mój urlop', ro: 'Concediul meu', mk: 'Мојот одмор', sq: 'Pushimi im' },
+  arbeitstag: { pl: ['dzień roboczy', 'dni robocze'], ro: ['zi lucrătoare', 'zile lucrătoare'], mk: ['работен ден', 'работни денови'], sq: ['ditë pune', 'ditë pune'] },
+  feiertageNicht: { pl: 'Święta się nie liczą', ro: 'Sărbătorile nu se numără', mk: 'Празниците не се бројат', sq: 'Festat nuk llogariten' },
+  genehmigt: { pl: 'został zatwierdzony', ro: 'a fost aprobat', mk: 'е одобрен', sq: 'u miratua' },
+  abgelehnt: { pl: 'został odrzucony', ro: 'a fost respins', mk: 'е одбиен', sq: 'u refuzua' },
+  deinUrlaub: { pl: 'Twój urlop', ro: 'Concediul tău', mk: 'Твојот одмор', sq: 'Pushimi yt' },
+  schonEntschieden: { pl: 'był już rozpatrzony i zostaje', ro: 'era deja decis și rămâne', mk: 'веќе беше решен и останува', sq: 'ishte vendosur tashmë dhe mbetet' },
 };
 
 let lang = 'de';
@@ -646,6 +695,14 @@ function muster(s) {
   if ((m = /^(\d+) (?:Bericht|Berichte) vom Repo geladen\.$/.exec(s))) return `${m[1]} ${WORT.bericht[lang][m[1] === '1' ? 0 : 1]} – ${WORT.geladen[lang]}.`;
   if ((m = /^(\d+) Berichte hochgeladen\.$/.exec(s))) return `${m[1]} ${WORT.bericht[lang][1]} – ${WORT.hochgeladen[lang]}.`;
   if ((m = /^KW (\d+)$/.exec(s))) return `${WORT.kw[lang]} ${m[1]}`;
+  if ((m = /^Mein Urlaub (\d{4})$/.exec(s))) return `${WORT.urlaubIn[lang]} ${m[1]}`;
+  if ((m = /^(\d+) (Arbeitstag|Arbeitstage)$/.exec(s))) return `${m[1]} ${WORT.arbeitstag[lang][m[1] === '1' ? 0 : 1]}`;
+  if ((m = /^Feiertage zählen nicht mit: (.+)$/.exec(s))) {
+    const namen = m[1].split(', ').map((x) => x.replace(/^(.+) (\(.+\))$/, (_, n, d) => `${dict.get(n) || n} ${d}`));
+    return `${WORT.feiertageNicht[lang]}: ${namen.join(', ')}`;
+  }
+  if ((m = /^Dein Urlaub (.+) wurde (genehmigt|abgelehnt)\.$/.exec(s))) return `${WORT.deinUrlaub[lang]} ${m[1]} ${WORT[m[2]][lang]}.`;
+  if ((m = /^Der Urlaub (.+) war schon entschieden und bleibt\.$/.exec(s))) return `${WORT.deinUrlaub[lang]} ${m[1]} ${WORT.schonEntschieden[lang]}.`;
   if ((m = /^von (.+)$/.exec(s))) return `${WORT.von[lang]} ${m[1]}`;
   return null;
 }
@@ -662,12 +719,19 @@ export function t(s) {
 
 const ATTRS = ['placeholder', 'aria-label', 'title'];
 
+const uebersetzt = new WeakMap(); // Textknoten -> zuletzt eingesetzte Übersetzung
+
 function uebersetze(root) {
   if (root.nodeType === Node.TEXT_NODE) {
     const p = root.parentElement;
     if (!p || p.closest('[data-roh], textarea, script, style')) return;
+    // schon übersetzt (sonst würde z. B. „Bis“ → „Do“ noch einmal als Donnerstag übersetzt)
+    if (uebersetzt.get(root) === root.nodeValue) return;
     const neu = t(root.nodeValue);
-    if (neu !== root.nodeValue) root.nodeValue = neu;
+    if (neu !== root.nodeValue) {
+      root.nodeValue = neu;
+      uebersetzt.set(root, neu);
+    }
     return;
   }
   if (root.nodeType !== Node.ELEMENT_NODE) return;
