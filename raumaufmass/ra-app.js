@@ -9,7 +9,7 @@ import {
   naechsterName, fmt2, verschiebeRaum,
 } from './raumgeometrie.js';
 
-const RA_VERSION = '1.6.0';
+const RA_VERSION = '1.6.1';
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -371,7 +371,8 @@ export async function pdfBauen(p) {
   const plan = (was) => {
     const liste = Array.isArray(was) ? was : [was];
     const gr = grenzen(liste);
-    const rand = 14;
+    const gesamt = Array.isArray(was);
+    const rand = gesamt ? 6 : 14;
     const mst = massstabFuer(liste, CW - 2 * rand, 150);
     const s = 1000 / mst;
     const bw = (gr.x1 - gr.x0) * s;
@@ -380,7 +381,10 @@ export async function pdfBauen(p) {
     const y0 = y + rand;
     const abb = ([x, yy]) => [x0 + (x - gr.x0) * s, y0 + (yy - gr.y0) * s];
     const opt = { wand: 0.6, duenn: 0.2, schrift: 2.6, massAbstand: 7, flaeche: '#f3f5f8', schraege: '#e2e8f0' };
-    for (const e of Array.isArray(was) ? gruppeElemente(liste, abb, opt) : planElemente(was, abb, opt)) {
+    // Grundriss gesamt in kleinem Maßstab: kleinere Schrift, nur Raumnamen, Flächen und Wandmaße
+    // (Türen, Fenster, Körper usw. stehen beschriftet auf den Seiten der einzelnen Räume)
+    if (gesamt && mst >= 200) Object.assign(opt, { wand: 0.45, duenn: 0.15, schrift: mst >= 400 ? 1.5 : 1.8, details: false });
+    for (const e of gesamt ? gruppeElemente(liste, abb, opt) : planElemente(was, abb, opt)) {
       if (e.art === 'flaeche') {
         doc.setFillColor(...rgb(e.farbe));
         const rel = e.punkte.slice(1).map((q, k) => [q[0] - e.punkte[k][0], q[1] - e.punkte[k][1]]);

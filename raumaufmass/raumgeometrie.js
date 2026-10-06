@@ -1463,7 +1463,8 @@ export class Verlauf {
 export function planElemente(raum, abb, o = {}) {
   const g = {
     wand: 3, duenn: 1, schrift: 11, massAbstand: 20, farbe: '#1d232a', mass: '#3a4450', fest: '#0b57d0', flaeche: '#eef2f6',
-    masse: true, namen: true, ungefaehr: !raum.massstabGesetzt, mitFlaeche: true, ...o,
+    // details: false lässt die Beschriftung von Türen, Fenstern, Schrägen, Dachfenstern und Körpern weg
+    masse: true, namen: true, ungefaehr: !raum.massstabGesetzt, mitFlaeche: true, details: true, ...o,
   };
   const els = [];
   const p = punkteVon(raum);
@@ -1487,7 +1488,7 @@ export function planElemente(raum, abb, o = {}) {
       // Beschriftung im Streifen vor der Wand, parallel zur Wand, neben den Dachfenstern
       const wg = wandGeo(raum, e.i);
       const m = add(add(wg.a, mul(wg.r, wg.l / 2)), mul(wg.innen, Math.min(freieTiefe(raum, e), wg.l)));
-      if (punktInnen(m, e.poly)) {
+      if (g.details && punktInnen(m, e.poly)) {
         els.push({ art: 'text', p: abb(m), text: `Schräge ${fmtPos(Math.round(e.winkel * 10) / 10)}° · Kniestock ${fmt2(e.kniestock)}`, groesse: g.schrift * 0.72, winkel: lesbar(sub(abb(add(wg.a, wg.r)), abb(wg.a))), farbe: g.mass, anker: 'mitte' });
       }
     }
@@ -1501,7 +1502,7 @@ export function planElemente(raum, abb, o = {}) {
       els.push({ art: 'linie', a: q[0], b: q[2], breite: g.duenn * 0.7, farbe: g.mass });
       els.push({ art: 'linie', a: q[1], b: q[3], breite: g.duenn * 0.7, farbe: g.mass });
       const mt = mul(add(q[0], q[2]), 0.5);
-      els.push({ art: 'text', p: add(mt, mul(einheit(sub(q[3], q[0])), Math.max(abst(q[0], q[3]) / 2 + g.schrift * 0.8, g.schrift))), text: `DF ${fmtPos(o.breite * 100)}/${fmtPos(o.laenge * 100)}`, groesse: g.schrift * 0.72, winkel: lesbar(sub(abb(add(wg.a, wg.r)), abb(wg.a))), farbe: g.mass, anker: 'mitte' });
+      if (g.details) els.push({ art: 'text', p: add(mt, mul(einheit(sub(q[3], q[0])), Math.max(abst(q[0], q[3]) / 2 + g.schrift * 0.8, g.schrift))), text: `DF ${fmtPos(o.breite * 100)}/${fmtPos(o.laenge * 100)}`, groesse: g.schrift * 0.72, winkel: lesbar(sub(abb(add(wg.a, wg.r)), abb(wg.a))), farbe: g.mass, anker: 'mitte' });
     }
   }
   // Wände mit Lücken für Öffnungen
@@ -1524,7 +1525,7 @@ export function planElemente(raum, abb, o = {}) {
     els.push({ art: 'linie', a: q[0], b: q[2], breite: g.duenn * 0.7, farbe: g.mass });
     els.push({ art: 'linie', a: q[1], b: q[3], breite: g.duenn * 0.7, farbe: g.mass });
     const unter = add(mul(add(q[2], q[3]), 0.5), [0, g.schrift * 0.75]);
-    els.push({ art: 'text', p: unter, text: `${k.name} ${fmtPos(k.breite * 100)}/${fmtPos(k.tiefe * 100)}`, groesse: g.schrift * 0.72, farbe: g.mass, anker: 'mitte', winkel: 0 });
+    if (g.details) els.push({ art: 'text', p: unter, text: `${k.name} ${fmtPos(k.breite * 100)}/${fmtPos(k.tiefe * 100)}`, groesse: g.schrift * 0.72, farbe: g.mass, anker: 'mitte', winkel: 0 });
   }
   // Türen und Fenster
   for (const x of raum.oeffnungen) {
@@ -1556,7 +1557,7 @@ export function planElemente(raum, abb, o = {}) {
     const m = mul(add(a, b), 0.5);
     const tp = add(m, mul(nOut, x.typ === 'tuer' && x.richtung !== 'aussen' ? x.breite * s + g.schrift * 0.9 : g.schrift * 1.5));
     const txt = x.typ === 'tuer' ? `${fmtPos(x.breite * 100)}/${fmtPos(x.hoehe * 100)}` : `${fmtPos(x.breite * 100)}/${fmtPos(x.hoehe * 100)} Br ${fmtPos((x.bruestung || 0) * 100)}`;
-    els.push({ art: 'text', p: tp, text: txt, groesse: g.schrift * 0.78, winkel: lesbar(sub(b, a)), farbe: g.mass, anker: 'mitte' });
+    if (g.details) els.push({ art: 'text', p: tp, text: txt, groesse: g.schrift * 0.78, winkel: lesbar(sub(b, a)), farbe: g.mass, anker: 'mitte' });
   }
   // Maßketten außen an jeder Wand; Wände an einspringenden Ecken (Nische, L-Form) bekommen ihr
   // Maß innen, sonst kreuzen sich die Maßlinien in der Ecke
@@ -1727,7 +1728,7 @@ export function massstabFuer(raum, breiteMm = 170, hoeheMm = 150) {
   if (!g) return 50;
   const w = g.x1 - g.x0 + 1;
   const h = g.y1 - g.y0 + 1;
-  for (const m of [20, 25, 50, 75, 100, 200, 250, 500]) if ((w * 1000) / m <= breiteMm && (h * 1000) / m <= hoeheMm) return m;
+  for (const m of [20, 25, 50, 75, 100, 150, 200, 250, 300, 400, 500, 750]) if ((w * 1000) / m <= breiteMm && (h * 1000) / m <= hoeheMm) return m;
   return 1000;
 }
 
