@@ -1029,6 +1029,42 @@ export function neuerKoerper(raum, [x, y]) {
   return { raum: r, koerper: k.id };
 }
 
+// Treppe: liegt wie ein Körper in raum.koerper (art 'treppe'), damit Verschieben und Auswählen gleich
+// gehen. richtung = Laufrichtung nach oben im Grundriss (oben, rechts, unten, links). Sie wird nur mit
+// abzug (Treppenloch) von der Bodenfläche abgezogen, sonst ist sie nur eingezeichnet.
+export const TREPPE_STANDARD = { breite: 1, tiefe: 3, richtung: 'oben', stufen: 15 };
+export const TREPPE_RICHTUNGEN = { oben: [0, -1], rechts: [1, 0], unten: [0, 1], links: [-1, 0] };
+export const istTreppe = (k) => k?.art === 'treppe';
+
+export function neueTreppe(raum, [x, y]) {
+  const r = kopie(raum);
+  r.koerper = r.koerper || [];
+  const nr = r.koerper.filter(istTreppe).length + 1;
+  // möglichst ganz in den Raum schieben
+  const g = grenzen(r);
+  const rein = (v, a, b, h) => (b - a >= 2 * h ? Math.min(b - h, Math.max(a + h, v)) : v);
+  if (g) { x = rein(x, g.x0, g.x1, TREPPE_STANDARD.breite / 2); y = rein(y, g.y0, g.y1, TREPPE_STANDARD.tiefe / 2); }
+  const k = { id: neueId(), art: 'treppe', name: nr > 1 ? `Treppe ${nr}` : 'Treppe', x: rund(x, 100), y: rund(y, 100), ...TREPPE_STANDARD, bisDecke: false, abzug: false };
+  r.koerper.push(k);
+  return { raum: r, koerper: k.id };
+}
+
+// Stufenkanten und Lauflinie einer Treppe in Metern: { kanten: [[a, b], …], von, bis }
+export function treppenLinien(k) {
+  const d = TREPPE_RICHTUNGEN[k.richtung] || TREPPE_RICHTUNGEN.oben;
+  const laengs = d[0] ? k.breite : k.tiefe; // Lauflänge
+  const quer = d[0] ? k.tiefe : k.breite;
+  const q = [-d[1], d[0]]; // quer zur Laufrichtung
+  const anfang = [k.x - (d[0] * laengs) / 2, k.y - (d[1] * laengs) / 2];
+  const n = Math.max(1, Math.round(k.stufen) || 1);
+  const kanten = [];
+  for (let i = 1; i < n; i++) {
+    const m = add(anfang, mul(d, (laengs * i) / n));
+    kanten.push([add(m, mul(q, -quer / 2)), add(m, mul(q, quer / 2))]);
+  }
+  return { kanten, von: add(anfang, mul(d, Math.min(0.15, laengs / 6))), bis: add(anfang, mul(d, laengs - Math.min(0.1, laengs / 8))), d, laengs, quer, anfang, n };
+}
+
 export function aendereKoerper(raum, id, felder) {
   const r = kopie(raum);
   const k = (r.koerper || []).find((x) => x.id === id);
@@ -1080,7 +1116,9 @@ export function berechne(raum) {
   const dachFlaeche = schraegen.reduce((s, e) => s + e.flaeche, 0);
   const dachfensterFlaeche = dachfenster.reduce((s, o) => s + o.flaeche, 0);
   const wandBrutto = mitSchraege ? waende.reduce((s, w) => s + w.flaeche, 0) : umfang * hoehe;
-  const koerper = (raum.koerper || []).map((k) => ({ ...k, flaeche: k.breite * k.tiefe }));
+  // Treppen zählen nur mit Abzug (Treppenloch) als Körper
+  const koerper = (raum.koerper || []).filter((k) => !istTreppe(k) || k.abzug).map((k) => ({ ...k, flaeche: k.breite * k.tiefe }));
+  const treppen = (raum.koerper || []).filter(istTreppe);
   const koerperFlaeche = koerper.reduce((s, k) => s + k.flaeche, 0);
   const koerperDecke = koerper.filter((k) => k.bisDecke !== false).reduce((s, k) => s + k.flaeche, 0);
   const deckeBrutto = mitSchraege ? bereiche.flachFlaeche : flaeche;
@@ -1114,6 +1152,7 @@ export function berechne(raum) {
     koerper,
     koerperFlaeche,
     koerperDecke,
+    treppen,
     mitSchraege,
     schraegen,
     dachFlaeche,
@@ -1520,6 +1559,30 @@ export function planElemente(raum, abb, o = {}) {
   // Körper (Kamin, Säule …): grau mit Kreuz, Name und Maße in cm
   for (const k of zu ? raum.koerper || [] : []) {
     const q = koerperEcken(k).map(abb);
+    if (istTreppe(k)) {
+      // Treppe: Umriss, Stufenkanten, Lauflinie mit Kreis am Anfang und Pfeil nach oben
+      const t = treppenLinien(k);
+      if (g.mitFlaeche && k.abzug) els.push({ art: 'flaeche', punkte: q, farbe: g.koerper || '#d7dde4' });
+      q.forEach((a, j) => els.push({ art: 'linie', a, b: q[(j + 1) % 4], breite: g.duenn * 1.4, farbe: g.farbe }));
+      for (const [a, b] of t.kanten) els.push({ art: 'linie', a: abb(a), b: abb(b), breite: g.duenn * 0.8, farbe: g.mass });
+      const v = abb(t.von);
+      const z = abb(t.bis);
+      const len = abst(v, z);
+      if (len > 1e-6) {
+        const r = einheit(sub(z, v));
+        const n = [-r[1], r[0]];
+        const spitze = Math.min(g.schrift * 1.1, len / 3);
+        const rk = Math.min(g.schrift * 0.35, len / 8);
+        els.push({ art: 'bogen', m: v, r: rk, von: 0, bis: Math.PI - 1e-3, breite: g.duenn * 1.2, farbe: g.farbe });
+        els.push({ art: 'bogen', m: v, r: rk, von: Math.PI, bis: 2 * Math.PI - 1e-3, breite: g.duenn * 1.2, farbe: g.farbe });
+        els.push({ art: 'linie', a: add(v, mul(r, rk)), b: z, breite: g.duenn * 1.2, farbe: g.farbe });
+        els.push({ art: 'linie', a: z, b: add(sub(z, mul(r, spitze)), mul(n, spitze * 0.45)), breite: g.duenn * 1.2, farbe: g.farbe });
+        els.push({ art: 'linie', a: z, b: sub(sub(z, mul(r, spitze)), mul(n, spitze * 0.45)), breite: g.duenn * 1.2, farbe: g.farbe });
+      }
+      const unter = add(mul(add(q[2], q[3]), 0.5), [0, g.schrift * 0.75]);
+      if (g.details) els.push({ art: 'text', p: unter, text: `${k.name} ${fmtPos(k.breite * 100)}/${fmtPos(k.tiefe * 100)}, ${Math.round(k.stufen)} Stg.`, groesse: g.schrift * 0.72, farbe: g.mass, anker: 'mitte', winkel: 0 });
+      continue;
+    }
     if (g.mitFlaeche) els.push({ art: 'flaeche', punkte: q, farbe: g.koerper || '#d7dde4' });
     q.forEach((a, j) => els.push({ art: 'linie', a, b: q[(j + 1) % 4], breite: g.duenn * 1.4, farbe: g.farbe }));
     els.push({ art: 'linie', a: q[0], b: q[2], breite: g.duenn * 0.7, farbe: g.mass });
@@ -1818,6 +1881,18 @@ function dxfRaum(raum, z) {
   }
   for (const k of n >= 3 ? raum.koerper || [] : []) {
     const q = koerperEcken(k);
+    if (istTreppe(k)) {
+      const t = treppenLinien(k);
+      q.forEach((a, j) => linie(a, q[(j + 1) % 4], 'TREPPE'));
+      for (const [a, b] of t.kanten) linie(a, b, 'TREPPE');
+      linie(t.von, t.bis, 'TREPPE');
+      const sp = Math.min(0.25, t.laengs / 4);
+      const nq = [-t.d[1], t.d[0]];
+      linie(t.bis, add(sub(t.bis, mul(t.d, sp)), mul(nq, sp * 0.45)), 'TREPPE');
+      linie(t.bis, sub(sub(t.bis, mul(t.d, sp)), mul(nq, sp * 0.45)), 'TREPPE');
+      text(add(mul(add(q[2], q[3]), 0.5), [0, 0.15]), `${k.name} ${fmt2(k.breite)}x${fmt2(k.tiefe)} ${Math.round(k.stufen)} Stg`, 80, 'TREPPE');
+      continue;
+    }
     q.forEach((a, j) => linie(a, q[(j + 1) % 4], 'KOERPER'));
     linie(q[0], q[2], 'KOERPER');
     text(add(mul(add(q[2], q[3]), 0.5), [0, 0.15]), `${k.name} ${fmt2(k.breite)}x${fmt2(k.tiefe)}`, 80, 'KOERPER');
@@ -1832,7 +1907,7 @@ function dxfRaum(raum, z) {
 
 // ---------- 3-D-Ansicht ----------
 // Flächen für die 3-D-Ansicht: [{ art, raum, pts: [[x, y, z], …], innen? }] in Metern, z nach oben.
-// art: boden | wand | tuer | fenster | schraege | dachfenster | koerper. Wände folgen den Dachschrägen; innen = Normale
+// art: boden | wand | tuer | fenster | schraege | dachfenster | koerper | treppe. Wände folgen den Dachschrägen; innen = Normale
 // in den Raum (zum Ausblenden der Wände, die vor dem Betrachter stehen).
 export function alsFlaechen3d(raeume) {
   const out = [];
@@ -1870,6 +1945,22 @@ export function alsFlaechen3d(raeume) {
     }
     // Körper als Kasten bis zur Decke (sonst halbe Raumhöhe)
     for (const k of raum.koerper || []) {
+      if (istTreppe(k)) {
+        // Stufen von 0 bis zur Decke am oberen Ende: je Stufe Trittfläche und Setzstufe
+        const t = treppenLinien(k);
+        const nq = [-t.d[1], t.d[0]];
+        const oben = hoeheBei(raum, add(t.anfang, mul(t.d, t.laengs)), E);
+        for (let i = 0; i < t.n; i++) {
+          const a = add(t.anfang, mul(t.d, (t.laengs * i) / t.n));
+          const b = add(t.anfang, mul(t.d, (t.laengs * (i + 1)) / t.n));
+          const z0 = (oben * i) / t.n;
+          const z1 = (oben * (i + 1)) / t.n;
+          const [a1, a2, b1, b2] = [add(a, mul(nq, -t.quer / 2)), add(a, mul(nq, t.quer / 2)), add(b, mul(nq, -t.quer / 2)), add(b, mul(nq, t.quer / 2))];
+          out.push({ art: 'treppe', raum: name, pts: [[a1[0], a1[1], z0], [a2[0], a2[1], z0], [a2[0], a2[1], z1], [a1[0], a1[1], z1]] });
+          out.push({ art: 'treppe', raum: name, pts: [[a1[0], a1[1], z1], [a2[0], a2[1], z1], [b2[0], b2[1], z1], [b1[0], b1[1], z1]] });
+        }
+        continue;
+      }
       const e = koerperEcken(k);
       const hk = k.bisDecke !== false ? (q) => hoeheBei(raum, q, E) : () => H / 2;
       e.forEach((q, j) => {

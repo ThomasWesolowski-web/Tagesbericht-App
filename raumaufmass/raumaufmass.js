@@ -13,7 +13,7 @@ import {
   Verlauf, laengeLesen, wandName, fmt2, alsSvg, alsDxf, winkelVon, punkteVon, massstabFuer,
   schraegeWerte, setzeSchraege, SCHRAEGE_STANDARD, neuesDachfenster, aendereDachfenster, loescheDachfenster,
   dachfensterEcken, punktInnen, raumAnbauen, andocken, verschiebeRaum, raumMitte, pruefeGruppe,
-  naechsterName, neuerRaum, neuerKoerper, aendereKoerper, loescheKoerper, koerperEcken, KOERPER_NAMEN, grenzen,
+  naechsterName, neuerRaum, neuerKoerper, neueTreppe, istTreppe, aendereKoerper, loescheKoerper, koerperEcken, KOERPER_NAMEN, grenzen,
 } from './raumgeometrie.js';
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -27,10 +27,17 @@ const WERKZEUGE = [
   { id: 'zeichnen', label: 'Zeichnen', svg: '<path d="M4 20l1-5L16 4l4 4L9 19z M14 6l4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>' },
   { id: 'auswahl', label: 'Auswahl', svg: '<path d="M6 3l12 9-5.5 1.2L15 20l-2.6 1.2-2.6-6.6L6 18z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>' },
   { id: 'mass', label: 'Maß', svg: '<path d="M3 8h18v8H3z M7 8v3M11 8v4M15 8v3M19 8v4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>' },
+  { id: 'einfuegen', label: 'Einfügen', svg: '<path d="M4 4h16v16H4z M12 8v8 M8 12h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>' },
+];
+// hinter „Einfügen“: Tür, Fenster, Körper und Treppe (Tomeks Wunsch: ein Knopf statt drei)
+const EINFUEGEN = [
   { id: 'tuer', label: 'Tür', svg: '<path d="M4 20h16 M6 20V5h9v15 M12 13h.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>' },
   { id: 'fenster', label: 'Fenster', svg: '<path d="M5 4h14v16H5z M12 4v16 M5 12h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>' },
   { id: 'koerper', label: 'Körper', svg: '<path d="M6 6h12v12H6z M6 6l12 12 M18 6L6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>' },
+  { id: 'treppe', label: 'Treppe', svg: '<path d="M7 3h10v18H7z M7 7h10 M7 11h10 M7 15h10 M12 19V5 M9.5 7.5L12 5l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>' },
 ];
+const istEinfuegen = (w) => EINFUEGEN.some((x) => x.id === w);
+const RICHTUNG_NAMEN = { oben: '↑ nach oben', rechts: '→ nach rechts', unten: '↓ nach unten', links: '← nach links' };
 const IC = {
   drehen: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   rueck: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4L4 9l5 5M4 9h10a6 6 0 0 1 0 12h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -41,12 +48,13 @@ const IC = {
 };
 const HINWEIS = {
   zeichnen: 'Raum grob mit dem Finger nachfahren. Ecken müssen nicht genau sein, die App macht gerade Wände daraus.',
-  auswahl: 'Wand, Ecke, Tür, Fenster oder Körper antippen zum Ändern. Ziehen verschiebt; Wände mit Maß bleiben fest. Auf leerer Fläche ziehen verschiebt die Ansicht.',
-  gruppe: 'Wand, Ecke, Tür, Fenster oder Körper antippen zum Ändern. Einen grauen Raum antippen, um ihn zu bearbeiten.',
+  auswahl: 'Wand, Ecke, Tür, Fenster, Körper oder Treppe antippen zum Ändern. Ziehen verschiebt; Wände mit Maß bleiben fest. Auf leerer Fläche ziehen verschiebt die Ansicht.',
+  gruppe: 'Wand, Ecke, Tür, Fenster, Körper oder Treppe antippen zum Ändern. Einen grauen Raum antippen, um ihn zu bearbeiten.',
   mass: 'Wand antippen und ihre echte Länge eingeben.',
   tuer: 'Auf eine Wand tippen, um dort eine Tür einzusetzen.',
   fenster: 'Auf eine Wand tippen, um dort ein Fenster einzusetzen.',
   koerper: 'In den Raum tippen, wo ein Kamin, eine Säule oder ein Schacht steht. Seine Fläche wird vom Boden abgezogen.',
+  treppe: 'In den Raum tippen, wo die Treppe liegt. Der Pfeil zeigt die Laufrichtung nach oben.',
 };
 // frühere Voreinstellung: 11,5 cm Lücke zwischen angebauten Räumen; jetzt Wand an Wand
 const ALTE_WANDSTAERKE = 0.115;
@@ -295,7 +303,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
   };
 
   const leisteAktualisieren = () => {
-    view.querySelectorAll('.mk-wz').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.wz === werkzeug)));
+    view.querySelectorAll('.mk-wz').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.wz === werkzeug || (b.dataset.wz === 'einfuegen' && istEinfuegen(werkzeug)))));
     $('.ra-zurueck').disabled = !verlauf.kannZurueck;
     $('.ra-vor').disabled = !verlauf.kannVor;
     $('.ra-titel').textContent = andere.length ? `${d.name || 'Raum'} · ${andere.length + 1} Räume` : (d.name || 'Raumaufmaß');
@@ -317,6 +325,13 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     if (strich?.rueckmeldung) { t.textContent = strich.rueckmeldung; return; }
     if (meldung && Date.now() - meldungZeit < 4000) { t.textContent = meldung; return; }
     meldung = '';
+    if (istEinfuegen(werkzeug)) {
+      // umschalten, was eingefügt wird
+      t.textContent = HINWEIS[werkzeug];
+      k.innerHTML = EINFUEGEN.map((x) => `<button type="button" class="chip" data-einfuegen="${x.id}" aria-pressed="${x.id === werkzeug}">${x.label}</button>`).join('');
+      k.querySelectorAll('[data-einfuegen]').forEach((b) => { b.onclick = () => { werkzeug = b.dataset.einfuegen; zeichne(); }; });
+      return;
+    }
     if (werkzeug === 'zeichnen' && entwurf && entwurfErkannt) {
       t.textContent = 'Am blauen Punkt weiterzeichnen. Ist der Raum fertig, „Schließen“ tippen.';
       if (entwurfErkannt.schliessbar || entwurfErkannt.ecken.length >= 3) k.innerHTML = '<button type="button" class="chip ra-schliessen">Schließen</button>';
@@ -744,9 +759,56 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     });
   };
 
+  const treppePanel = (k) => {
+    const id = k.id;
+    const feld = (key, label, wert) => `<label class="fa-feld"><span>${label}</span><input type="text" inputmode="decimal" data-feld="${key}" value="${zahlText(wert, 3)}"></label>`;
+    panelAuf(`
+      <div class="fa-panel-kopf"><b>${escH(k.name)} · ${fmt2(k.breite)} × ${fmt2(k.tiefe)} m</b><button type="button" class="btn primary ra-p-ok">Fertig</button></div>
+      <p class="fa-klein">Laufrichtung (nach oben):</p>
+      <div class="fa-vorschlaege">${Object.entries(RICHTUNG_NAMEN).map(([r, n]) => `<button type="button" class="chip" data-richtung="${r}" aria-pressed="${(k.richtung || 'oben') === r}">${n}</button>`).join('')}</div>
+      <div class="ra-raster2">
+        ${feld('breite', 'Breite in m (waagerecht)', k.breite)}
+        ${feld('tiefe', 'Tiefe in m (senkrecht)', k.tiefe)}
+        ${feld('stufen', 'Anzahl Stufen', k.stufen)}
+      </div>
+      <label class="fa-check"><input type="checkbox" data-abzug ${k.abzug ? 'checked' : ''}> Treppenloch: Fläche vom Boden abziehen</label>
+      <label class="fa-feld"><span>Bezeichnung</span><input type="text" data-name value="${escH(k.name)}"></label>
+      <p class="fa-klein">Ziehen verschiebt die Treppe. Ohne Häkchen ist sie nur eingezeichnet und ändert keine Fläche.</p>
+      <div class="fa-vorschlaege"><button type="button" class="chip ra-gefahr" data-tun="loeschen">Treppe löschen</button></div>`, () => {
+      const setze = (felder) => { if (uebernehme(aendereKoerper(d, id, felder))) koerperPanel(id); };
+      panel.querySelectorAll('[data-richtung]').forEach((b) => {
+        b.onclick = () => {
+          const neu = b.dataset.richtung;
+          // Lauflänge bleibt die lange Seite: beim Wechsel zwischen senkrecht und waagerecht Breite und Tiefe tauschen
+          const quer = (r) => r === 'links' || r === 'rechts';
+          setze(quer(neu) !== quer(k.richtung || 'oben') ? { richtung: neu, breite: k.tiefe, tiefe: k.breite } : { richtung: neu });
+        };
+      });
+      panel.querySelectorAll('[data-feld]').forEach((inp) => {
+        inp.onchange = () => {
+          const v = Number(String(inp.value).replace(',', '.'));
+          const f = inp.dataset.feld;
+          if (f === 'stufen') {
+            if (!(v >= 1 && v <= 60)) { hinweis('Bitte eine Stufenzahl zwischen 1 und 60 eingeben.'); koerperPanel(id); return; }
+            setze({ stufen: Math.round(v) });
+            return;
+          }
+          if (!(v > 0)) { hinweis('Bitte eine Zahl eingeben, z. B. 1,00.'); koerperPanel(id); return; }
+          setze(f === 'breite' ? { breite: v } : { tiefe: v });
+        };
+      });
+      panel.querySelector('[data-abzug]').onchange = (e) => setze({ abzug: e.target.checked });
+      panel.querySelector('[data-name]').onchange = (e) => setze({ name: e.target.value.trim() || k.name });
+      panel.querySelector('[data-tun="loeschen"]').onclick = () => {
+        if (uebernehme(loescheKoerper(d, id))) { auswahl = null; panelZu(); zeichne(); }
+      };
+    });
+  };
+
   const koerperPanel = (id) => {
     const k = (d.koerper || []).find((x) => x.id === id);
     if (!k) { panelZu(); return; }
+    if (istTreppe(k)) { treppePanel(k); return; }
     const gr = grenzen(d);
     const feld = (key, label, wert) => `<label class="fa-feld"><span>${label}</span><input type="text" inputmode="decimal" data-feld="${key}" value="${zahlText(wert, 3)}"></label>`;
     const feldCm = (key, label, wert) => feld(key, label, Math.round(wert * 100) / 100);
@@ -1405,12 +1467,12 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     }
     if (zg.art === 'tipp') {
       if (!geschlossen(d)) { hinweis('Zuerst den Raum mit „Zeichnen“ skizzieren.'); zeichne(); return; }
-      if (werkzeug === 'koerper') {
+      if (werkzeug === 'koerper' || werkzeug === 'treppe') {
         const unter = raumUnter(sp);
         if (unter && unter !== d) { wechseln(unter.id); return; }
-        if (!d.massstabGesetzt) { hinweis('Zuerst ein echtes Maß eingeben, dann lassen sich Körper setzen.'); zeichne(); return; }
+        if (!d.massstabGesetzt) { hinweis(`Zuerst ein echtes Maß eingeben, dann lassen sich ${werkzeug === 'treppe' ? 'Treppen' : 'Körper'} setzen.`); zeichne(); return; }
         if (!unter) { hinweis('Bitte in den Raum tippen.'); zeichne(); return; }
-        const erg = neuerKoerper(d, welt(sp));
+        const erg = (werkzeug === 'treppe' ? neueTreppe : neuerKoerper)(d, welt(sp));
         // danach auf „Auswahl“, damit nicht aus Versehen weitere Körper entstehen
         if (uebernehme(erg)) { werkzeug = 'auswahl'; auswaehlen({ art: 'koerper', id: erg.koerper }); }
         return;
@@ -1441,8 +1503,15 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
 
   // ---------- Knöpfe ----------
   view.querySelectorAll('.mk-wz').forEach((b) => {
-    b.onclick = () => {
-      werkzeug = b.dataset.wz;
+    b.onclick = async () => {
+      if (b.dataset.wz === 'einfuegen') {
+        const wahl = await dialog(`
+          <b>Was möchtest du einfügen?</b>
+          <div class="ra-einfuegen-wahl">${EINFUEGEN.map((x) => `<button type="button" class="btn soft" data-wert="${x.id}"><svg viewBox="0 0 24 24" aria-hidden="true">${x.svg}</svg><span>${x.label}</span></button>`).join('')}</div>
+          <div class="fa-panel-knoepfe"><button type="button" class="btn ghost" data-wert="">Abbrechen</button></div>`);
+        if (!wahl) return;
+        werkzeug = wahl;
+      } else werkzeug = b.dataset.wz;
       if (werkzeug !== 'auswahl') { auswahl = null; panelZu(); }
       meldung = '';
       zeichne();
