@@ -8,6 +8,8 @@ import {
   naechsterName, fmt2,
 } from './raumgeometrie.js';
 
+const RA_VERSION = '1.1';
+
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -70,7 +72,7 @@ const appbar = $('#appbar');
 const view = $('#view');
 
 async function liste() {
-  appbar.innerHTML = '<h1>Raumaufmaß<span class="sub">Testversion, getrennt von der Berichte-App</span></h1>';
+  appbar.innerHTML = `<h1>Raumaufmaß<span class="sub">Testversion ${RA_VERSION}, getrennt von der Berichte-App</span></h1>`;
   const projekte = (await alleProjekte()).sort((a, b) => (b.geaendert || 0) - (a.geaendert || 0));
   view.innerHTML = `
     <section class="section">
@@ -79,7 +81,7 @@ async function liste() {
         ${projekte.length ? projekte.map((p) => `<button type="button" class="proj" data-id="${p.id}"><span><b>${esc(p.name)}</b><small>${esc(p.datum)} · ${p.raeume.length} ${p.raeume.length === 1 ? 'Raum' : 'Räume'} · ${fmt2(bodenSumme(p.raeume))} m² Boden</small></span>${ICON.zurueck.replace('M15 5l-7 7 7 7', 'M9 5l7 7-7 7')}</button>`).join('') : '<p class="leer">Noch kein Aufmaß. Unten ein neues anlegen.</p>'}
       </div>
       <div class="knoepfe"><button type="button" class="btn primary block" id="neu">${ICON.plus} Neues Aufmaß</button></div>
-      <p class="hint">Räume skizzieren, eine Wand messen, Türen, Fenster und Dachschrägen setzen, Räume aneinander anbauen. Alles bleibt auf diesem Gerät; als PDF teilen oder speichern.</p>
+      <p class="hint">Räume skizzieren, eine Wand messen, Türen, Fenster, Dachschrägen und Körper (Kamin, Säule) setzen, Räume Wand an Wand anbauen. Alles bleibt auf diesem Gerät; als PDF teilen oder speichern.</p>
     </section>`;
   $$('.proj', view).forEach((b) => { b.onclick = () => { location.hash = `#/p/${b.dataset.id}`; }; });
   $('#neu').onclick = async () => {
@@ -319,8 +321,12 @@ export async function pdfBauen(p) {
     const b = berechne(r);
     tabelle([
       [b.mitSchraege ? 'Raumhöhe (flache Decke)' : 'Raumhöhe', fmt2(b.hoehe), 'm'],
-      ['Bodenfläche', fmt2(b.bodenflaeche), 'm²'],
-      [b.mitSchraege ? 'Deckenfläche waagerecht' : 'Deckenfläche', fmt2(b.deckenflaeche), 'm²'],
+      ...(b.koerper.length ? [
+        ['Bodenfläche brutto', fmt2(b.bodenBrutto), 'm²'],
+        ...b.koerper.map((k) => [`${k.name} (${fmt2(k.breite)} × ${fmt2(k.tiefe)} m)${k.bisDecke !== false ? ', auch Decke' : ''}, abgezogen`, fmt2(k.flaeche), 'm²']),
+        ['Bodenfläche netto', fmt2(b.bodenflaeche), 'm²'],
+      ] : [['Bodenfläche', fmt2(b.bodenflaeche), 'm²']]),
+      [`${b.mitSchraege ? 'Deckenfläche waagerecht' : 'Deckenfläche'}${b.koerperDecke ? ' netto' : ''}`, fmt2(b.deckenflaeche), 'm²'],
       ...b.schraegen.map((e) => [`Dachschräge an Wand ${e.wandName} (Kniestock ${fmt2(e.kniestock)} m, ${fmt2(e.winkel)}°)`, fmt2(e.flaeche), 'm²']),
       ...b.dachfenster.map((o) => [`${o.name} (${fmt2(o.breite)} × ${fmt2(o.laenge)} m), abgezogen`, fmt2(o.flaeche), 'm²']),
       ...(b.mitSchraege ? [['Dachschrägen netto', fmt2(b.dachNetto), 'm²']] : []),

@@ -21,8 +21,8 @@ test('Raum anbauen und andocken', () => {
   const k = erg.neu;
   nah(berechne(k).bodenflaeche, 12, 1e-9);
   const xs = punkteVon(k).map((p) => p[0]);
-  nah(Math.min(...xs), 5.115, 1e-9, 'Trennwand 11,5 cm');
-  nah(Math.max(...xs), 8.115, 1e-9);
+  nah(Math.min(...xs), 5, 1e-9, 'Wand an Wand, ohne Lücke');
+  nah(Math.max(...xs), 8, 1e-9);
   assert.equal(k.waende[0].mass, 4, 'gemeinsame Wand gemessen');
   assert.equal(k.waende[1].mass, 3, 'Tiefe gemessen');
   assert.equal(erg.raum.gruppe, k.gruppe);
@@ -34,10 +34,13 @@ test('Raum anbauen und andocken', () => {
   const weg = verschiebeRaum(k, [0.2, 0.17]).raum;
   const d = andocken(weg, [erg.raum]);
   assert.equal(d.an, r.name);
-  nah(Math.min(...punkteVon(d.raum).map((p) => p[0])), 5.115, 1e-9, 'Abstand Trennwand');
+  nah(Math.min(...punkteVon(d.raum).map((p) => p[0])), 5, 1e-9, 'Wand an Wand angedockt');
   nah(Math.min(...punkteVon(d.raum).map((p) => p[1])), 0, 1e-9, 'bündig an der Ecke');
   // zu weit weg: bleibt, wo er ist
   assert.equal(andocken(verschiebeRaum(k, [1, 0]).raum, [erg.raum]).an, null);
+  // mit eingestelltem Abstand (Wandstärke) bleibt die Lücke möglich
+  const mitLuecke = raumAnbauen(r, r.waende[1].id, { tiefe: 3, staerke: 0.115 }).neu;
+  nah(Math.min(...punkteVon(mitLuecke).map((p) => p[0])), 5.115, 1e-9, 'Abstand 11,5 cm');
 });
 
 test('Überschneidung wird gemeldet', () => {
