@@ -3,6 +3,7 @@
 // Ein Antrag: { id, personId, name, von, bis, tage, notiz, status, grund, erstelltAm, updatedAt,
 //               entschiedenVon, entschiedenAm, pfad }
 // status: beantragt | genehmigt | abgelehnt
+// Betriebsurlaub (vom Administrator für alle): betrieb: true, name 'Betriebsurlaub', gleich genehmigt
 
 import { kw } from './stunden.js';
 import { newId } from './report.js';
@@ -166,6 +167,17 @@ export function antragMerken(a, art) {
     if (d.ausstehend[a.id] !== 'neu') d.ausstehend[a.id] = art;
   }
   urlaubLokalSpeichern(d);
+}
+
+// Arbeitstage ohne die Tage, die schon Betriebsurlaub sind
+export function arbeitstageOhneBetrieb(von, bis, antraege = urlaubLokal().antraege) {
+  if (!von || !bis || bis < von) return 0;
+  const betrieb = antraege.filter((a) => a.betrieb);
+  let n = 0;
+  for (let s = von; s <= bis; s = plusTage(s, 1)) {
+    if (!istWochenende(s) && !feiertag(s) && !betrieb.some((b) => b.von <= s && s <= b.bis)) n++;
+  }
+  return n;
 }
 
 // Gehört der Antrag zu dieser Person? (gleiche Person oder gleiche Namensteile, wie bei den Stunden)

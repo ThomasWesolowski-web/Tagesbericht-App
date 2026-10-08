@@ -636,8 +636,8 @@ export async function syncStunden(settings) {
 
 // ---------- Urlaub ----------
 // Pro Antrag eine Datei urlaub/<JJJJ>_<name>_<id>.json. So überschreiben sich Anträge
-// verschiedener Mitarbeiter nie gegenseitig. Mitarbeiter laden nur ihre eigenen Anträge,
-// der Administrator alle.
+// verschiedener Mitarbeiter nie gegenseitig. Mitarbeiter laden nur ihre eigenen Anträge
+// und den Betriebsurlaub (urlaub/<JJJJ>_betriebsurlaub_<id>.json), der Administrator alle.
 
 const urlaubPfad = (a) => a.pfad || `urlaub/${a.von.slice(0, 4)}_${slug(a.name) || 'mitarbeiter'}_${a.id.slice(0, 8)}.json`;
 
@@ -696,7 +696,7 @@ export async function urlaubAbgleichen(settings, { alle = false, name = '' } = {
   }
   const gesucht = namensTeile(slug(name));
   const dateien = (Array.isArray(liste) ? liste : []).filter((f) => f.type === 'file' && f.name.endsWith('.json')
-    && (alle || namensTeile(f.name.replace(/^\d{4}_/, '').replace(/_[^_]+\.json$/, '')) === gesucht));
+    && (alle || [gesucht, 'betriebsurlaub'].includes(namensTeile(f.name.replace(/^\d{4}_/, '').replace(/_[^_]+\.json$/, '')))));
   const remote = (await Promise.all(dateien.map(async (f) => {
     const r = await getJson(gh, settings, f.path);
     return r ? { ...r.data, pfad: f.path } : null;
@@ -709,7 +709,7 @@ export async function urlaubAbgleichen(settings, { alle = false, name = '' } = {
   // Beim allerersten Abgleich auf diesem Gerät nichts melden, nur merken
   const neuEntschieden = [];
   for (const a of ergebnis.values()) {
-    if (a.status !== 'beantragt' && d.gemeldet[a.id] !== a.status && namensTeile(slug(a.name)) === gesucht) {
+    if (!a.betrieb && a.status !== 'beantragt' && d.gemeldet[a.id] !== a.status && namensTeile(slug(a.name)) === gesucht) {
       if (d.stand) neuEntschieden.push(a);
       d.gemeldet[a.id] = a.status;
     }

@@ -849,6 +849,7 @@ html.mk-offen, html.mk-offen body { overflow: hidden; }
 .uk-tag.ft { color: var(--danger); background: var(--danger-soft); }
 .uk-tag.u-beantragt { background: var(--warn-soft); color: var(--warn); box-shadow: inset 0 0 0 2px var(--warn); }
 .uk-tag.u-genehmigt { background: var(--ok); color: #fff; }
+.uk-tag.u-betrieb { background: #2f6fb3; color: #fff; }
 .uk-tag.u-abgelehnt { text-decoration: line-through; color: var(--ink-3); }
 .uk-tag.heute b { text-decoration: underline; text-underline-offset: 3px; }
 .uk-tag.auswahl { box-shadow: inset 0 0 0 3px var(--accent); }
@@ -856,6 +857,7 @@ html.mk-offen, html.mk-offen body { overflow: hidden; }
 .uk-legende i { display: inline-block; width: 12px; height: 12px; border-radius: 4px; margin-right: 5px; vertical-align: -1px; }
 .uk-legende i.u-beantragt { background: var(--warn-soft); box-shadow: inset 0 0 0 2px var(--warn); }
 .uk-legende i.u-genehmigt { background: var(--ok); }
+.uk-legende i.u-betrieb { background: #2f6fb3; }
 .uk-legende i.ft { background: var(--danger-soft); box-shadow: inset 0 0 0 2px var(--danger); }
 .uk-feiertage { margin: 4px 4px 0; font-size: .85rem; color: var(--danger); }
 .uk-feiertage b { display: inline-block; min-width: 46px; }

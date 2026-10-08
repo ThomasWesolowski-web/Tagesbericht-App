@@ -23,6 +23,7 @@ const ROWS = [
     'Zgjidh fillimisht kush je. Pastaj mund të kërkosh pushim këtu.'],
   ['Beantragt', 'Złożony', 'Solicitat', 'Побарано', 'Kërkuar'],
   ['Genehmigt', 'Zatwierdzony', 'Aprobat', 'Одобрено', 'Miratuar'],
+  ['Betriebsurlaub', 'Urlop firmowy', 'Concediu colectiv', 'Колективен одмор', 'Pushim kolektiv'],
   ['Abgelehnt', 'Odrzucony', 'Respins', 'Одбиено', 'Refuzuar'],
   ['Ersten Urlaubstag antippen, dann den letzten.', 'Dotknij pierwszego dnia urlopu, potem ostatniego.', 'Atinge prima zi de concediu, apoi ultima.', 'Допри го првиот ден од одморот, потоа последниот.', 'Prek ditën e parë të pushimit, pastaj të fundit.'],
   ['Jetzt den letzten Urlaubstag antippen.', 'Teraz dotknij ostatniego dnia urlopu.', 'Acum atinge ultima zi de concediu.', 'Сега допри го последниот ден од одморот.', 'Tani prek ditën e fundit të pushimit.'],
