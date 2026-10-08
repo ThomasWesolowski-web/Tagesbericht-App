@@ -52,6 +52,8 @@
     .mat-zeile { display: flex; gap: 6px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
     .mat-in { flex: 1 1 120px; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; font-size: 15px; }
     .mat-in.mat-kurz { flex: 0 1 84px; }
+    .mat-zeile[data-a] { display: grid; grid-template-columns: minmax(0, 1.4fr) 62px minmax(0, 1fr) 40px; }
+    .mat-zeile[data-a] .mat-in { flex: none; width: 100%; }
     .mat-pos { border: 1px solid var(--line); border-radius: 12px; padding: 4px 10px; margin: 8px 0; }
     .mat-text { white-space: pre-line; }
     .mat-blatt { max-height: 88vh; overflow-y: auto; }
