@@ -4,12 +4,14 @@
 
 import { openRaumAufmass } from './raumaufmass.js';
 import { zeige3d } from './ansicht3d.js';
+import { materialPlaner, systemListe, systemEditor, systemSpeicherSetzen, alleSysteme } from './material-ui.js';
+import { bedarf, KNAUF_STAND } from './material.js';
 import {
   neuerRaum, berechne, raumKurz, alsSvg, massstabFuer, grenzen, planElemente, gruppeElemente, geschlossen,
   naechsterName, fmt2, verschiebeRaum, grundrissAbgleichen,
 } from './raumgeometrie.js';
 
-const RA_VERSION = '1.8.0';
+const RA_VERSION = '1.9.0';
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -25,6 +27,7 @@ const ICON = {
   weg: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
   teilen: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M5 13v7h14v-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   wuerfel: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
+  schichten: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v16M9 4v16M13 4v16M20 4v16M9 8h4M9 16h4" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
   pdf: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l5 5v13H7z M14 3v5h5 M10 13h6 M10 17h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
 };
 
@@ -39,8 +42,13 @@ function toast(text, ms = 2600) {
 
 // ---------- Speicher (IndexedDB) ----------
 const dbOffen = new Promise((resolve, reject) => {
-  const req = indexedDB.open('raumaufmass', 1);
-  req.onupgradeneeded = () => req.result.createObjectStore('projekte', { keyPath: 'id' });
+  // Version 2: Store „systeme“ für eigene oder geänderte Material-Systeme
+  const req = indexedDB.open('raumaufmass', 2);
+  req.onupgradeneeded = () => {
+    const db = req.result;
+    if (!db.objectStoreNames.contains('projekte')) db.createObjectStore('projekte', { keyPath: 'id' });
+    if (!db.objectStoreNames.contains('systeme')) db.createObjectStore('systeme', { keyPath: 'id' });
+  };
   req.onsuccess = () => resolve(req.result);
   req.onerror = () => reject(req.error);
 });
@@ -54,6 +62,7 @@ async function tx(modus, fn) {
     t.onerror = () => reject(t.error);
   });
 }
+systemSpeicherSetzen(() => dbOffen);
 const alleProjekte = () => tx('readonly', (s) => s.getAll());
 const projektLaden = (id) => tx('readonly', (s) => s.get(id));
 const projektSpeichern = (p) => tx('readwrite', (s) => s.put({ ...p, geaendert: Date.now() }));
@@ -105,10 +114,12 @@ async function liste() {
       <div class="knoepfe">
         ${projekte.length ? projekte.map((p) => `<button type="button" class="proj" data-id="${p.id}"><span><b>${esc(p.name)}</b><small>${esc(p.datum)} · ${p.raeume.length} ${p.raeume.length === 1 ? 'Raum' : 'Räume'} · ${fmt2(bodenSumme(p.raeume))} m² Boden netto</small></span>${ICON.zurueck.replace('M15 5l-7 7 7 7', 'M9 5l7 7-7 7')}</button>`).join('') : '<p class="leer">Noch kein Aufmaß. Unten ein neues anlegen.</p>'}
       </div>
-      <div class="knoepfe"><button type="button" class="btn primary block" id="neu">${ICON.plus} Neues Aufmaß</button></div>
+      <div class="knoepfe"><button type="button" class="btn primary block" id="neu">${ICON.plus} Neues Aufmaß</button>
+        <button type="button" class="btn ghost block" id="systeme">${ICON.schichten} Systeme für Material (Knauf, eigene)</button></div>
       <p class="hint">Räume skizzieren, eine Wand messen, Türen, Fenster, Dachschrägen und Körper (Kamin, Säule) setzen, Räume Wand an Wand anbauen. Alles bleibt auf diesem Gerät gespeichert; als PDF ansehen, teilen oder speichern.</p>
     </section>`;
   $$('.proj', view).forEach((b) => { b.onclick = () => { location.hash = `#/p/${b.dataset.id}`; }; });
+  $('#systeme').onclick = () => { location.hash = '#/systeme'; };
   $('#neu').onclick = async () => {
     const p = { id: neueId(), name: `Aufmaß ${heute()}`, datum: heute(), raeume: [], erstellt: Date.now() };
     await projektSpeichern(p);
@@ -170,6 +181,7 @@ async function projekt(id) {
         <div class="knoepfe">
           <button type="button" class="btn primary block" id="raum-neu">${ICON.plan} Raum zeichnen</button>
           <button type="button" class="btn ghost block" id="drei-d" ${p.raeume.some(fertig) ? '' : 'disabled'}>${ICON.wuerfel} 3-D ansehen</button>
+          <button type="button" class="btn ghost block" id="material" ${p.raeume.some(fertig) ? '' : 'disabled'}>${ICON.schichten} Material planen</button>
           <button type="button" class="btn ghost block" id="pdf" ${p.raeume.some(fertig) ? '' : 'disabled'}>${ICON.pdf} PDF ansehen</button>
         </div>
       </section>
@@ -208,9 +220,10 @@ async function projekt(id) {
     });
     $('#raum-neu').onclick = () => oeffnen({ ...neuerRaum(1), name: naechsterName(p.raeume.map((x) => x.name)) });
     $('#drei-d').onclick = () => zeige3d(nebeneinander(p.raeume.filter(fertig)), p.name);
+    $('#material').onclick = () => { location.hash = `#/p/${p.id}/material`; };
     $('#pdf').onclick = async () => {
       try {
-        const blob = await pdfBauen(p);
+        const blob = await pdfBauen(p, await alleSysteme());
         await pdfZeigen(blob, `${(p.name || 'raumaufmass').replace(/[^\wäöüÄÖÜß-]+/g, '_')}.pdf`, p.name);
       } catch (err) {
         toast(`PDF ging nicht (${err.message}).`, 5000);
@@ -342,7 +355,7 @@ function jsPdfLaden() {
 // jsPDF kann nur Windows-1252; andere Zeichen ersetzen (wie in der Berichte-App)
 const pdfText = (t) => String(t ?? '').normalize('NFC').replace(/[^\u0000-ÿ€–—‘’‚“”„•…]/g, (c) => c.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\u0000-ÿ]/g, '?'));
 
-export async function pdfBauen(p) {
+export async function pdfBauen(p, systeme = null) {
   const { jsPDF } = await jsPdfLaden();
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const M = 18;
@@ -460,13 +473,86 @@ export async function pdfBauen(p) {
       [`Wandfläche netto${r.einstellungen?.abzug === 'vob' ? ' (Öffnungen bis 2,5 m² übermessen)' : ''}`, fmt2(b.wandNetto), 'm²'],
     ], true);
   }
+  if (systeme && p.material) materialSeiten(doc, p, raeume, systeme, { M, CW, titel: (t) => { neueSeite(); titel(t); }, tabelle, y: () => y, setY: (v) => { y = v; } });
   return doc.output('blob');
 }
 
+// PDF-Seiten Material: Bedarf gesamt, Zuordnung Fläche → System, Aufbauten als Schnitt
+function materialSeiten(doc, p, raeume, systeme, { M, CW, titel, tabelle, y, setY }) {
+  const erg = bedarf(p.material, raeume.map((raum) => ({ raum, b: berechne(raum) })), systeme);
+  if (!erg.zuordnung.length) return;
+  const zahl = (n, d) => (Math.round(n * 10 ** d) / 10 ** d).toLocaleString('de-DE', { maximumFractionDigits: d });
+  const hinweis = (t) => {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(90, 98, 108);
+    const zeilen = doc.splitTextToSize(pdfText(t), CW);
+    doc.text(zeilen, M, y()); setY(y() + zeilen.length * 4 + 3);
+  };
+  titel('Materialbedarf');
+  hinweis(`Richtwerte nach Knauf-Unterlagen (Stand ${KNAUF_STAND}) bzw. eigenen Werten, mit Verschnitt, ohne Gewähr. Verbrauch hängt vom Untergrund ab; vor der Bestellung am Bau prüfen.`);
+  setY(y() + 3);
+  tabelle(erg.material.map((x) => [`${x.name}${x.anzahl ? ` (${x.anzahl} × ${x.gebinde.name || 'Gebinde'} ${zahl(x.gebinde.inhalt, 2)} ${x.gebinde.einheit || x.einheit})` : ''}`, zahl(x.menge, x.einheit === 'Stk' ? 0 : 1), x.einheit]));
+  setY(y() + 4);
+  tabelle([...erg.jeSystem.map((j) => [j.name, fmt2(j.m2), 'm²']), ['Fläche mit System gesamt', fmt2(erg.jeSystem.reduce((s, j) => s + j.m2, 0)), 'm²']], true);
+  titel('Material: Zuordnung der Flächen');
+  tabelle(erg.zuordnung.map((z) => [`${z.raumName} · ${z.flaeche.name} · ${z.systemName}`, fmt2(z.m2), 'm²']));
+  titel('Aufbauten');
+  const FARBE = { massiv: '#d9d2c5', putz: '#f1e6c8', spachtel: '#fbf6e6', platte: '#e8edf3', profil: '#ffffff', daemmung: '#f7e3a3', luft: '#ffffff', holz: '#e6c9a0', grund: '#dbe9f6' };
+  const rgb = (hex) => [1, 3, 5].map((k) => parseInt(hex.slice(k, k + 2), 16));
+  for (const j of erg.jeSystem) {
+    const s = systeme.find((x) => x.id === j.system);
+    const aufbau = s?.aufbau || [];
+    const hoch = 22 + Math.max(aufbau.length * 4.5, 22);
+    if (y() + hoch > 297 - M) { doc.addPage(); setY(M); }
+    let yy = y();
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(30, 35, 42);
+    doc.text(pdfText(`${s.name} · ${fmt2(j.m2)} m²`), M, yy + 4);
+    yy += 8;
+    // Schnitt: Schichtbreite nach Dicke, dünne Schichten mindestens 2 mm, dicke gekappt
+    const roh = aufbau.map((a) => Math.min(30, Math.max(2.5, (Number(a.dicke) || 0) * 0.2)));
+    let x = M;
+    aufbau.forEach((a, i) => {
+      doc.setFillColor(...rgb(FARBE[a.art] || FARBE.massiv)); doc.setDrawColor(110, 120, 130); doc.setLineWidth(0.2);
+      doc.rect(x, yy, roh[i], 20, 'FD');
+      doc.setFontSize(6.5); doc.setTextColor(30, 35, 42);
+      doc.text(String(i + 1), x + roh[i] / 2, yy + 11, { align: 'center' });
+      x += roh[i];
+    });
+    doc.setFontSize(8.5); doc.setFont('helvetica', 'normal');
+    aufbau.forEach((a, i) => {
+      doc.text(pdfText(`${i + 1}  ${a.name}${Number(a.dicke) ? ` · ${zahl(Number(a.dicke), 1)} mm` : ''}`), M + 70, yy + 3 + i * 4.5);
+    });
+    if (s.quelle) { doc.setFontSize(7.5); doc.setTextColor(90, 98, 108); doc.text(doc.splitTextToSize(pdfText(`Quelle: ${s.quelle}`), 60), M, yy + 24); }
+    setY(yy + hoch);
+  }
+}
+
 // ---------- Start ----------
+async function materialSeite(id) {
+  const p = await projektLaden(id);
+  if (!p) { location.hash = '#/'; return; }
+  await materialPlaner({
+    p, appbar, view, toast,
+    speichern: () => projektSpeichern(p),
+    pdf: async (pp, systeme) => {
+      try {
+        const blob = await pdfBauen(pp, systeme);
+        await pdfZeigen(blob, `${(pp.name || 'raumaufmass').replace(/[^\wäöüÄÖÜß-]+/g, '_')}.pdf`, pp.name);
+      } catch (err) {
+        toast(`PDF ging nicht (${err.message}).`, 5000);
+      }
+    },
+  });
+}
+
 function route() {
-  const m = /^#\/p\/(.+)$/.exec(location.hash);
-  if (m) projekt(decodeURIComponent(m[1])); else liste();
+  const [pfad, such = ''] = location.hash.split('?');
+  const zurueck = new URLSearchParams(such).get('zurueck') || '';
+  let m;
+  if ((m = /^#\/p\/(.+)\/material$/.exec(pfad))) materialSeite(decodeURIComponent(m[1]));
+  else if ((m = /^#\/p\/(.+)$/.exec(pfad))) projekt(decodeURIComponent(m[1]));
+  else if ((m = /^#\/systeme\/(.+)$/.exec(pfad))) systemEditor({ id: decodeURIComponent(m[1]), appbar, view, toast, zurueck });
+  else if (pfad === '#/systeme') systemListe({ appbar, view, zurueck });
+  else liste();
   window.scrollTo(0, 0);
 }
 window.addEventListener('hashchange', route);
@@ -475,5 +561,5 @@ route();
 if (navigator.storage?.persist) navigator.storage.persisted().then((ja) => ja || navigator.storage.persist()).catch(() => {});
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 // für Tests: PDF eines gespeicherten Aufmaßes bauen
-window.raumaufmassPdf = async (id) => pdfBauen(await projektLaden(id));
+window.raumaufmassPdf = async (id) => pdfBauen(await projektLaden(id), await alleSysteme());
 window.raumaufmassProjekte = alleProjekte;

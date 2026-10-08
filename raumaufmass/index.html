@@ -31,6 +31,30 @@
     .ra-einfuegen-wahl button { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 8px; }
     .ra-einfuegen-wahl svg { width: 30px; height: 30px; }
     .ra-drehen svg { width: 22px; height: 22px; }
+    /* Material-Planer und System-Editor */
+    .ra-app .mat-tab, .mat-blatt .mat-tab { width: 100%; border-collapse: collapse; font-size: 15px; }
+    .mat-tab td { padding: 8px 2px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    .mat-tab td.n { text-align: right; white-space: nowrap; }
+    .mat-tab small { display: block; color: var(--ink-3); font-size: 12px; }
+    .mat-h3 { font-size: 15px; margin: 16px 0 6px; }
+    .mat-wert { color: var(--ink-2); font-weight: 400; }
+    .mat-waende { border-left: 3px solid var(--line); padding-left: 10px; margin: 8px 0; }
+    .mat-systeme { display: grid; gap: 8px; }
+    .mat-sys { display: flex; gap: 10px; align-items: center; text-align: left; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); color: var(--ink); font: inherit; cursor: pointer; }
+    .mat-sys svg, .ra-app .btn svg { width: 20px; height: 20px; flex: none; }
+    .mat-sys span { display: grid; }
+    .mat-sys small { color: var(--ink-2); }
+    .mat-svg { background: #fff; color: #1d232a; border-radius: 10px; padding: 8px; margin: 8px 0 12px; overflow-x: auto; }
+    .mat-marke { font-style: normal; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 6px; background: #e3eefc; color: #1f4f8a; margin-left: 4px; vertical-align: 1px; }
+    .mat-marke.anders { background: #fdf0d5; color: #8a5a00; }
+    .mat-marke.eigen { background: #e2f3e4; color: #2e6b30; }
+    .mat-label { font-size: 13px; color: var(--ink-2); align-self: center; }
+    .mat-zeile { display: flex; gap: 6px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
+    .mat-in { flex: 1 1 120px; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; font-size: 15px; }
+    .mat-in.mat-kurz { flex: 0 1 84px; }
+    .mat-pos { border: 1px solid var(--line); border-radius: 12px; padding: 4px 10px; margin: 8px 0; }
+    .mat-text { white-space: pre-line; }
+    .mat-blatt { max-height: 88vh; overflow-y: auto; }
   </style>
   <script>
     ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (n) { document.addEventListener(n, function (e) { e.preventDefault(); }, { passive: false }); });
