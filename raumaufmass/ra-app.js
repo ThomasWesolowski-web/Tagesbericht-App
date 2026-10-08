@@ -11,7 +11,7 @@ import {
   naechsterName, fmt2, verschiebeRaum, grundrissAbgleichen,
 } from './raumgeometrie.js';
 
-const RA_VERSION = '1.9.0';
+const RA_VERSION = '1.9.1';
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];

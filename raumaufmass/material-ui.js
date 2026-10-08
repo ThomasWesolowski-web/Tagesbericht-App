@@ -50,7 +50,8 @@ export function aufbauZeigen(s) {
     <h2>${esc(s.name)}</h2>
     ${s.beschreibung ? `<p class="hint mat-text">${esc(s.beschreibung)}</p>` : ''}
     <div class="mat-svg">${aufbauSvg(s)}</div>
-    <h3 class="mat-h3">Materialbedarf je m²</h3>
+    <h3 class="mat-h3">Materialbedarf je m²${s.trennwand ? ' Wand (beide Seiten)' : ''}</h3>
+    ${s.trennwand ? '<p class="hint">Trennwand: Wähle sie bei beiden angrenzenden Räumen; jeder Raum rechnet die Hälfte. Grenzt sie an einen Raum, der nicht im Aufmaß ist, fehlt diese Hälfte.</p>' : ''}
     <table class="mat-tab">${(s.positionen || []).map((p) => `<tr><td>${esc(p.name)}</td><td class="n">${zahlText(p.menge, 3)} ${esc(p.einheit)}${p.jeParameter ? ` je ${esc(String(p.bezug ?? 1))} ${esc((s.parameter || []).find((q) => q.key === p.jeParameter)?.einheit || '')}` : ''}</td></tr>`).join('')}</table>
     ${s.quelle ? `<p class="hint">Quelle: ${esc(s.quelle)}</p>` : ''}
     <button type="button" class="btn primary block" id="mat-zu">Schließen</button></div>`;
@@ -196,6 +197,7 @@ export async function systemEditor({ id, appbar, view, toast, zurueck }) {
           <label class="field"><span>Verschnitt %</span><input type="number" inputmode="decimal" step="any" id="s-v" value="${s.verschnitt ?? 0}"></label>
           <label class="field"><span>Hersteller</span><input type="text" id="s-h" value="${esc(s.hersteller || '')}"></label>
         </div>
+        <label class="mat-haken"><input type="checkbox" id="s-trenn"${s.trennwand ? ' checked' : ''}> Trennwand: Mengen gelten für die ganze Wand (beide Seiten), jeder angrenzende Raum rechnet die Hälfte</label>
         ${s.quelle ? `<p class="hint">Quelle: ${esc(s.quelle)}</p>` : ''}
       </section>
       <section class="section">
@@ -244,6 +246,7 @@ export async function systemEditor({ id, appbar, view, toast, zurueck }) {
       s.beschreibung = $('#s-text').value.trim();
       s.verschnitt = zahl($('#s-v').value);
       s.hersteller = $('#s-h').value.trim();
+      s.trennwand = $('#s-trenn').checked;
       $$('[data-a]', view).forEach((z) => {
         const a = s.aufbau[Number(z.dataset.a)];
         a.name = $('[data-f=name]', z).value.trim();
