@@ -87,3 +87,13 @@ test('Material: Dachschrägen eigener Bereich', () => {
   assert.equal(erg.zuordnung.length, 1);
   assert.equal(erg.zuordnung[0].flaeche.bereich, 'schraege');
 });
+
+test('Material: Trennwand rechnet je Raum die Hälfte', () => {
+  const r = raum([[0, 0], [4, 0], [4, 3], [0, 3]]);
+  const b = berechne(r);
+  const tw = { ...PUTZ, id: 'tw', trennwand: true, positionen: [{ name: 'Platte', menge: 2, einheit: 'm²' }], verschnitt: 0 };
+  const erg = bedarf({ standard: { wand: 'tw' } }, [{ raum: r, b }], [tw]);
+  // 35 m² Wandfläche, 2 m² Platte je m² Wand (beide Seiten) → je Raumseite 1 m²
+  assert.ok(Math.abs(erg.material[0].menge - 35) < 1e-9);
+  assert.ok(STANDARD_SYSTEME.filter((s) => s.trennwand).length >= 5);
+});

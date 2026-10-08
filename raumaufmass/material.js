@@ -68,10 +68,12 @@ export function bedarf(material, raeume, systeme) {
       zuordnung.push({ raum: raum.id, raumName: raum.name || 'Raum', flaeche: f, system: s.id, systemName: s.name, m2: f.flaeche });
       const par = parameterVon(s, material?.parameter?.[s.id]);
       const verschnitt = zahl(material?.verschnitt?.[s.id], zahl(s.verschnitt)) / 100;
+      // Trennwand: Mengen gelten für die ganze Wand (beide Seiten); jeder angrenzende Raum zählt die Hälfte
+      const anteil = s.trennwand ? 0.5 : 1;
       for (const pos of s.positionen || []) {
         let je = zahl(pos.menge);
         if (pos.jeParameter) je *= zahl(par[pos.jeParameter], 1) / zahl(pos.bezug, 1);
-        const menge = je * f.flaeche * (1 + (pos.ohneVerschnitt ? 0 : verschnitt));
+        const menge = je * anteil * f.flaeche * (1 + (pos.ohneVerschnitt ? 0 : verschnitt));
         const key = `${pos.name}|${pos.einheit}`;
         const alt = summen.get(key) || { name: pos.name, einheit: pos.einheit, menge: 0, gebinde: pos.gebinde || null, systeme: new Set() };
         alt.menge += menge;
@@ -137,7 +139,7 @@ export function aufbauSvg(system, o = {}) {
     teile.push(`<text x="${mx.toFixed(1)}" y="${top + hoch / 2 + 4}" font-size="10" text-anchor="middle" fill="#1d232a">${i + 1}</text>`);
     x += w;
   });
-  teile.push(`<text x="${x0}" y="${top - 2}" font-size="9" fill="#8a939d">Untergrund</text><text x="${(x).toFixed(1)}" y="${top - 2}" font-size="9" text-anchor="end" fill="#8a939d">Raum</text>`);
+  teile.push(`<text x="${x0}" y="${top - 2}" font-size="9" fill="#8a939d">${system.trennwand ? 'Nachbarraum' : 'Untergrund'}</text><text x="${(x).toFixed(1)}" y="${top - 2}" font-size="9" text-anchor="end" fill="#8a939d">Raum</text>`);
   const breite = Math.max(W, x0 + 240 + Math.max(0, ...aufbau.map((s) => (s.name.length + 12) * 6.2)));
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${breite.toFixed(0)} ${H}" width="100%" style="max-width:${breite.toFixed(0)}px">${teile.join('')}${labels.join('')}</svg>`;
 }
