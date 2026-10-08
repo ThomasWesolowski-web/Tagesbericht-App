@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.53.0**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.54.0**.
 
 | Was | Wo |
 | --- | --- |
@@ -142,6 +142,8 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 **Urlaubsanfragen:** Admins sehen im Urlaubskalender den Urlaub aller Mitarbeiter (mit Kürzeln im Kalender) und darunter „Offene Anfragen“ mit „Genehmigen“ und „Ablehnen“ (beim Ablehnen optional mit Grund). Neue Anfragen zeigen eine rote Zahl am Reiter Stunden und eine Meldung beim Abgleich. Eine Benachrichtigung aufs Handy, während die App geschlossen ist, gibt es nicht. Admins können jeden Antrag auch löschen.
 
+**Abgerechnet:** Admins sehen bei jedem Rapport in der Berichtsliste einen Schieber „Abgerechnet“. Antippen schaltet ihn um, ohne den Rapport zu öffnen. Denselben Schieber gibt es unten in der PDF-Vorschau eines Rapports und einer Zusammenfassung; dort markiert er alle Rapporte im PDF auf einmal. In der Zusammenfassung lässt sich nach „Offen“ oder „Abgerechnet“ filtern. Der Merker gilt auf allen Admin-Handys (im Repo unter abrechnung/abgerechnet.json); die Mitarbeiter sehen ihn nicht, und am Rapport selbst ändert sich nichts.
+
 ## Updates, Datenschutz und Grenzen
 
 **Updates kommen von selbst:** Beim Öffnen lädt die App eine neue Version im Hintergrund und lädt sich neu, sobald niemand gerade einen Bericht bearbeitet. Die Version steht unten in den Einstellungen. Dort öffnet „Handbuch zur App“ dieses Handbuch direkt in der App, auch ohne Netz (immer auf Deutsch).
@@ -158,6 +160,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 08.10.2026 | 1.54.0 | Rapporte: Schieber „Abgerechnet“ für Admins in der Berichtsliste und in der PDF-Vorschau (auch für alle Rapporte einer Zusammenfassung), Filter Offen/Abgerechnet in der Zusammenfassung |
 | 06.10.2026 | 1.53.0 | Übersetzung: Fachwörterliste für Rumänisch, Polnisch, Mazedonisch und Albanisch, damit Baustellenwörter wie Spachtelmasse oder Klebeband richtig ins Deutsche kommen |
 | 06.10.2026 | 1.52.0 | Raumaufmaß-App 1.8: Dachschräge „Gleiche Dachfläche wie“ Nachbarraum, Schrägen in einer Ebene, Knick und First in einer Flucht |
 | 06.10.2026 | 1.51.1 | Raumaufmaß-App 1.7.1: Türen in einer gemeinsamen Wand zählen auch im Nachbarraum (Wandfläche, Grundriss, PDF), auch in schon gespeicherten Aufmaßen |

@@ -11,6 +11,7 @@ import { berichtInsDeutsche, insDeutsche, FREITEXTE } from './translate.js';
 import { SPRACHEN } from './i18n.js';
 import { planReportId } from './plaene.js';
 import { urlaubLokal, urlaubLokalSpeichern } from './urlaub.js';
+import { abrechnungLokal, abrechnungLokalSpeichern, abrechnungMischen } from './abrechnung.js';
 
 const FELDNAMEN = { taetigkeiten: 'Ausgeführte Arbeiten', material: 'Material und Geräte', bemerkungen: 'Bemerkungen' };
 
@@ -509,6 +510,39 @@ function namensTeile(s) {
   return s.split('-').filter(Boolean).sort().join('-');
 }
 
+// ---------- Abgerechnete Rapporte (nur Administrator) ----------
+// Eine Liste für alle Admin-Handys: abrechnung/abgerechnet.json { berichte: { id: { an, am, von, updatedAt } } }
+
+const ABRECHNUNG_PATH = 'abrechnung/abgerechnet.json';
+
+export async function abrechnungAbgleichen(settings) {
+  const gh = client(settings);
+  for (let versuch = 0; versuch < 3; versuch++) {
+    const lokal = abrechnungLokal();
+    const remote = await getJson(gh, settings, ABRECHNUNG_PATH);
+    const gemischt = abrechnungMischen(remote?.data?.berichte || {}, lokal.eintraege);
+    const geaendert = Object.entries(gemischt).some(([id, e]) => (remote?.data?.berichte?.[id]?.updatedAt || 0) !== (e.updatedAt || 0));
+    if (lokal.ausstehend && geaendert) {
+      const text = `${JSON.stringify({ berichte: gemischt }, null, 2)}\n`;
+      const body = { message: 'Abgerechnete Rapporte', content: await blobToBase64(new Blob([text])), branch: settings.branch };
+      if (remote) body.sha = remote.sha;
+      try {
+        await gh(contentsPath(ABRECHNUNG_PATH), { method: 'PUT', body });
+      } catch (err) {
+        // Ein anderes Admin-Handy hat gleichzeitig geschrieben: neu lesen und noch einmal
+        if ((err.status === 409 || err.status === 422) && versuch < 2) continue;
+        throw err;
+      }
+    }
+    // Was während des Abgleichs auf dem Handy neu gesetzt wurde, bleibt zum Hochladen vorgemerkt.
+    const jetzt = abrechnungLokal();
+    const nochOffen = Object.entries(jetzt.eintraege).some(([id, e]) => (e.updatedAt || 0) > (gemischt[id]?.updatedAt || 0));
+    abrechnungLokalSpeichern({ eintraege: abrechnungMischen(gemischt, jetzt.eintraege), ausstehend: nochOffen });
+    return true;
+  }
+  return false;
+}
+
 // ---------- Geräte: wer hat die App eingerichtet? ----------
 // Jedes Handy legt stammdaten/geraete/<name>_<id>.json an und schreibt die Datei
 // nur neu, wenn sich Name, Version, Sprache oder Installation ändern.
@@ -869,6 +903,14 @@ export function syncAll(settings, onProgress, { alle = false } = {}) {
     } catch (err) {
       urlaubError = err.message;
     }
+    let abrechnungError = null;
+    if (alle) {
+      try {
+        await abrechnungAbgleichen(settings);
+      } catch (err) {
+        abrechnungError = err.message;
+      }
+    }
     const pending = (await db.allReports()).filter((r) => r.dirty);
     for (const r of pending) {
       onProgress?.({ report: r, ok, failed, total: pending.length });
@@ -892,7 +934,7 @@ export function syncAll(settings, onProgress, { alle = false } = {}) {
     } catch (err) {
       ladeFehler = err.message;
     }
-    return { ok, failed, total: pending.length, stammdatenChanged, stammdatenError, stundenError, urlaub, urlaubError, geladen, ladeFehler };
+    return { ok, failed, total: pending.length, stammdatenChanged, stammdatenError, stundenError, urlaub, urlaubError, abrechnungError, geladen, ladeFehler };
   })().finally(() => {
     running = null;
   });
