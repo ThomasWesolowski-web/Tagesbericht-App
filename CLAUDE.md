@@ -27,6 +27,7 @@ Veröffentlicht über GitHub Pages aus `main` (Root): https://thomaswesolowski-w
 | `raumaufmass/` | Raumaufmaß als eigene App (vorübergehend): `ra-app.js` Liste/PDF, `raumaufmass.js` Editor, `raumgeometrie.js` Rechnung (mit Node testbar), `ansicht3d.js` 3-D-Ansicht (Canvas, ohne Bibliothek), eigener `sw.js` (`CACHE` raumaufmass-vN) |
 | `i18n.js` | Oberflächen-Sprachen DE/PL/RO/MK/SQ |
 | `translate.js` | Freitexte beim Hochladen ins Deutsche übersetzen (MyMemory) |
+| `abrechnung.js` | Merker „Abgerechnet“ für Rapporte (nur Admin; Repo: `abrechnung/abgerechnet.json`) |
 | `fachwoerter.js` | Fachwörterliste RO/PL/MK/SQ → Deutsch, vor dem Übersetzer angewandt |
 | `handbuch.js`, `handbuch.md` | Handbuch in der App (Kopie des Claude Docs) |
 | `sw.js` | Offline-Cache (`CACHE`, Liste `SHELL`) |

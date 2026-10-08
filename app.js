@@ -19,12 +19,13 @@ import { openMarkup } from './markup.js';
 import { planReportId, planTauglich, istPdf, pdfSeiten, planQuelle, formenSkalieren, pinNummern } from './plaene.js';
 import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from './fotoaufmass.js';
 import { raumKurz } from './raumgeometrie.js';
+import { istAbgerechnet, abgerechnetSetzen, abrechnungLokal } from './abrechnung.js';
 import {
   STATUS, feiertageBW, feiertag, istWochenende, arbeitstage, monatsRaster, neuerAntrag, zeitraumText, plusTage,
   urlaubLokal, urlaubLokalSpeichern, antragMerken, gehoertZu,
 } from './urlaub.js';
 
-const APP_VERSION = '1.53.0';
+const APP_VERSION = '1.54.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -323,6 +324,7 @@ async function renderList({ aufmass = false } = {}) {
     }
     let out = '';
     let month = '';
+    const abr = abrechnungLokal();
     for (const r of shown) {
       const label = monthLabel(r.datum);
       if (label !== month) {
@@ -343,7 +345,7 @@ async function renderList({ aufmass = false } = {}) {
           <div class="body">
             <div class="title ${r.baustelle ? '' : 'muted'}">${esc(r.baustelle || 'Ohne Baustelle')}</div>
             ${preview ? `<div class="preview">${esc(preview)}</div>` : ''}
-            <div class="meta">${r.art === 'rapport' ? '<span class="pill art">Rapport</span>' : ''}${r.fremd && r.erstelltVon ? `<span class="pill von">von ${esc(r.erstelltVon)}</span>` : ''}${syncPill(r)}${n ? `<span>${ICON.clip} ${n}</span>` : ''}</div>
+            <div class="meta">${r.art === 'rapport' ? '<span class="pill art">Rapport</span>' : ''}${r.fremd && r.erstelltVon ? `<span class="pill von">von ${esc(r.erstelltVon)}</span>` : ''}${syncPill(r)}${n ? `<span>${ICON.clip} ${n}</span>` : ''}${r.art === 'rapport' && isAdmin() ? abgSchalter(r.id, istAbgerechnet(r.id, abr)) : ''}</div>
           </div>
           <div class="hours">${rechts}</div>
         </a>`;
@@ -352,6 +354,30 @@ async function renderList({ aufmass = false } = {}) {
   };
   draw('');
   $('#search').addEventListener('input', (e) => draw(e.target.value));
+  // Schieber „Abgerechnet“ auf der Karte: umschalten statt den Bericht öffnen
+  listEl.addEventListener('click', (e) => {
+    const s = e.target.closest('.abg');
+    if (!s) return;
+    e.preventDefault();
+    e.stopPropagation();
+    abgerechnetUmschalten([s.dataset.abg], s.getAttribute('aria-checked') !== 'true');
+    s.setAttribute('aria-checked', istAbgerechnet(s.dataset.abg));
+  });
+}
+
+// ---------- Abgerechnete Rapporte (nur Administrator) ----------
+
+function abgSchalter(id, an) {
+  return `<span class="abg" role="switch" tabindex="0" data-abg="${esc(id)}" aria-checked="${an}"><i></i>Abgerechnet</span>`;
+}
+
+function abgerechnetUmschalten(ids, an) {
+  if (!ids.length) return;
+  abgerechnetSetzen(ids, an, settings.author || '');
+  const n = ids.length;
+  toast(an ? (n === 1 ? 'Als abgerechnet markiert.' : `${n} Rapporte als abgerechnet markiert.`)
+    : (n === 1 ? 'Wieder als offen markiert.' : `${n} Rapporte wieder als offen markiert.`));
+  if (isConfigured(settings)) scheduleAutoSync(1500);
 }
 
 function isStandalone() {
@@ -1413,7 +1439,7 @@ async function shareReport(report) {
   }
   hideToast();
   const title = `${artLabel(report)} ${formatDate(report.datum)}${report.baustelle ? ` – ${report.baustelle}` : ''}`;
-  await sharePdfFile(file, title, extras);
+  await sharePdfFile(file, title, extras, { abrechnen: report.art === 'rapport' && isAdmin() ? [report.id] : [] });
 }
 
 // PDF erst in der App ansehen; Teilen/Speichern über den Knopf unten.
@@ -1426,7 +1452,7 @@ async function loadPdfJs() {
   return pdfjs;
 }
 
-async function sharePdfFile(file, title, extras) {
+async function sharePdfFile(file, title, extras, { abrechnen = [] } = {}) {
   const share = async () => {
     const all = [file, ...extras];
     const list = navigator.canShare?.({ files: all }) ? all : [file];
@@ -1440,13 +1466,17 @@ async function sharePdfFile(file, title, extras) {
       <div><b>${esc(title)}</b><small id="pdfv-info">${esc(formatBytes(file.size))}</small></div>
       <div class="pdfv-zoom"><button type="button" data-z="-1" aria-label="Verkleinern">−</button><button type="button" data-z="1" aria-label="Vergrößern">+</button></div></header>
     <div class="pdf-pages" id="pdfv-pages"><p class="hint" style="text-align:center;margin-top:40px">PDF wird geladen …</p></div>
-    <footer><button type="button" class="btn primary block" id="pdfv-share">${ICON.share} Teilen oder speichern</button></footer>`;
+    <footer>${abrechnen.length ? `<div class="toggle pdfv-abg"><span><b>Abgerechnet</b><small>${abrechnen.length === 1 ? 'Dieser Rapport' : `Alle ${abrechnen.length} Rapporte in diesem PDF`}</small></span>
+        <label class="switch"><input type="checkbox" id="pdfv-abg" ${abrechnen.every((id) => istAbgerechnet(id)) ? 'checked' : ''}><i></i></label></div>` : ''}
+      <button type="button" class="btn primary block" id="pdfv-share">${ICON.share} Teilen oder speichern</button></footer>`;
   document.body.appendChild(view);
   document.body.classList.add('no-scroll');
   let closed = false;
   let pdfDok = null;
   const close = () => { closed = true; view.remove(); document.body.classList.remove('no-scroll'); pdfDok?.destroy(); };
-  $('#pdfv-close', view).onclick = close;
+  $('#pdfv-close', view).onclick = () => { close(); if ((location.hash || '#/') === '#/') renderList(); };
+  const abgEl = $('#pdfv-abg', view);
+  if (abgEl) abgEl.onchange = () => abgerechnetUmschalten(abrechnen, abgEl.checked);
   $('#pdfv-share', view).onclick = async () => {
     try { await share(); } catch (e) { if (e.name !== 'AbortError') toast('Teilen hat nicht geklappt.'); }
   };
@@ -2162,10 +2192,11 @@ async function openZusammenfassung(preset = {}) {
   const reports = (await db.allReports()).filter((r) => r.art !== 'aufmass');
   if (!reports.length) { toast('Es gibt noch keine Berichte.'); return; }
   const sites = await db.allSites();
-  const f = { baustelleId: preset.baustelleId || '', art: '', von: '', bis: '', gesamt: true };
+  const f = { baustelleId: preset.baustelleId || '', art: '', abr: '', von: '', bis: '', gesamt: true };
+  const abrPasst = (r) => !f.abr || (f.abr === 'ab') === istAbgerechnet(r.id);
   // „Gesamter Zeitraum“ = erster bis letzter Bericht der gewählten Baustelle/Art
   const gesamt = () => {
-    const d = reports.filter((r) => (!f.baustelleId || siteKey(r) === f.baustelleId) && (!f.art || (r.art || 'tagesbericht') === f.art)).map((r) => r.datum).sort();
+    const d = reports.filter((r) => (!f.baustelleId || siteKey(r) === f.baustelleId) && (!f.art || (r.art || 'tagesbericht') === f.art) && abrPasst(r)).map((r) => r.datum).sort();
     if (d.length) { f.von = d[0]; f.bis = d[d.length - 1]; }
   };
   gesamt();
@@ -2181,6 +2212,10 @@ async function openZusammenfassung(preset = {}) {
       <button type="button" role="radio" data-art="" aria-checked="true">Alle</button>
       <button type="button" role="radio" data-art="tagesbericht" aria-checked="false">Tagesberichte</button>
       <button type="button" role="radio" data-art="rapport" aria-checked="false">Rapporte</button></div></div>
+    ${isAdmin() ? `<div class="field"><span>Abrechnung</span><div class="seg three" id="z-abr">
+      <button type="button" role="radio" data-abr="" aria-checked="true">Alle</button>
+      <button type="button" role="radio" data-abr="offen" aria-checked="false">Offen</button>
+      <button type="button" role="radio" data-abr="ab" aria-checked="false">Abgerechnet</button></div></div>` : ''}
     <div class="field"><span>Zeitraum</span><div class="chips" id="z-quick">
       <button type="button" class="chip" data-q="alle">Gesamter Zeitraum</button>
       <button type="button" class="chip" data-q="0">Dieser Monat</button>
@@ -2194,7 +2229,7 @@ async function openZusammenfassung(preset = {}) {
     <p class="hint" style="text-align:center">Enthält die Berichte, die auf diesem Handy gespeichert sind.</p>`);
 
   const auswahl = () => reports.filter((r) => (!f.baustelleId || siteKey(r) === f.baustelleId)
-    && (!f.art || (r.art || 'tagesbericht') === f.art) && r.datum >= f.von && r.datum <= f.bis);
+    && (!f.art || (r.art || 'tagesbericht') === f.art) && abrPasst(r) && r.datum >= f.von && r.datum <= f.bis);
   const draw = () => {
     if (f.gesamt) gesamt();
     $('#z-von', sheet).value = f.von;
@@ -2219,6 +2254,13 @@ async function openZusammenfassung(preset = {}) {
     c.onclick = () => {
       f.gesamt = c.dataset.q === 'alle';
       if (!f.gesamt) [f.von, f.bis] = monatsGrenzen(Number(c.dataset.q));
+      draw();
+    };
+  });
+  $$('#z-abr button', sheet).forEach((b) => {
+    b.onclick = () => {
+      f.abr = b.dataset.abr;
+      $$('#z-abr button', sheet).forEach((x) => x.setAttribute('aria-checked', x === b));
       draw();
     };
   });
@@ -2247,7 +2289,8 @@ async function openZusammenfassung(preset = {}) {
       return;
     }
     close();
-    await sharePdfFile(file, `Zusammenfassung ${titel}`, []);
+    const rapporte = isAdmin() ? l.filter((r) => r.art === 'rapport').map((r) => r.id) : [];
+    await sharePdfFile(file, `Zusammenfassung ${titel}`, [], { abrechnen: rapporte });
   };
 }
 
