@@ -653,6 +653,13 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
 export async function buildStundenPdf(name, ym, entries) {
   const { jsPDF } = await loadJsPdf();
   const doc = neuesPdf(jsPDF);
+  await stundenSeite(doc, name, ym, entries);
+  doc.setProperties({ title: `Stundennachweis ${monatLabel(ym)} ${name}` });
+  return doc.output('blob');
+}
+
+// Eine Seite Stundennachweis (auch für das Monats-PDF aller Mitarbeiter)
+async function stundenSeite(doc, name, ym, entries) {
   const W = 210;
   const H = 297;
   const M = 16;
@@ -759,8 +766,67 @@ export async function buildStundenPdf(name, ym, entries) {
     font('bold', 11); color(i === 0 ? FIRMEN_GRUEN : INK);
     doc.text(v, cx, cy + 9.5);
   });
+}
 
-  doc.setProperties({ title: `Stundennachweis ${monatLabel(ym)} ${name}` });
+export function stundenAllePdfName(ym) {
+  return `Stundennachweise_alle_${ym}.pdf`;
+}
+
+// Stunden aller Mitarbeiter eines Monats: Seite 1 Übersicht, danach je Mitarbeiter eine Seite.
+// personen: [{ name, kategorie, eintraege }]
+export async function buildStundenAllePdf(ym, personen) {
+  const { jsPDF } = await loadJsPdf();
+  const doc = neuesPdf(jsPDF);
+  const W = 210;
+  const M = 16;
+  const CW = W - 2 * M;
+  const color = (c) => doc.setTextColor(...c);
+  const font = (style = 'normal', size = 10) => { doc.setFont('helvetica', style); doc.setFontSize(size); };
+
+  let y = await briefkopf(doc, { W, M, font, color });
+  y += 9;
+  font('bold', 18); color(INK);
+  doc.text('Stunden aller Mitarbeiter', M, y);
+  font('normal', 11); color(MUTED);
+  doc.text(monatLabel(ym), W - M, y, { align: 'right' });
+  y += 9;
+
+  const cols = [
+    { label: 'Mitarbeiter', w: 56 }, { label: 'Kategorie', w: 28 }, { label: 'Arbeitstage', w: 22, align: 'right' },
+    { label: 'Urlaub', w: 18, align: 'right' }, { label: 'Krank', w: 18, align: 'right' }, { label: 'Stunden', w: CW - 142, align: 'right' },
+  ];
+  const rowH = 7;
+  const zeile = (cells, { kopf = false, fett = false, fill = null } = {}) => {
+    if (fill) { doc.setFillColor(...fill); doc.rect(M, y, CW, rowH, 'F'); }
+    font(kopf || fett ? 'bold' : 'normal', kopf ? 8.5 : 9.5); color(kopf ? MUTED : INK);
+    let x = M;
+    cells.forEach((t, i) => {
+      const c = cols[i];
+      const text = doc.splitTextToSize(String(t ?? ''), c.w - 3)[0] || '';
+      doc.text(text, c.align === 'right' ? x + c.w - 2 : x + 2, y + 4.8, { align: c.align === 'right' ? 'right' : 'left' });
+      x += c.w;
+    });
+    doc.setDrawColor(...LINE);
+    doc.line(M, y + rowH, M + CW, y + rowH);
+    y += rowH;
+  };
+  zeile(cols.map((c) => c.label), { kopf: true, fill: SOFT });
+  const gesamt = { tage: 0, urlaub: 0, krank: 0, stunden: 0 };
+  for (const p of personen) {
+    const s = summe(p.eintraege);
+    gesamt.tage += s.arbeitstage; gesamt.urlaub += s.urlaub; gesamt.krank += s.krank; gesamt.stunden += s.stunden;
+    zeile([p.name, p.kategorie || '', s.arbeitstage, s.urlaub || '', s.krank || '', formatHours(s.stunden)]);
+  }
+  zeile(['Gesamt', '', gesamt.tage, gesamt.urlaub || '', gesamt.krank || '', formatHours(gesamt.stunden)], { fett: true, fill: [237, 245, 237] });
+  y += 5;
+  font('normal', 9); color(MUTED);
+  doc.text(`${personen.length} ${personen.length === 1 ? 'Mitarbeiter' : 'Mitarbeiter'} · je Mitarbeiter folgt eine Seite mit allen Einträgen`, M, y);
+
+  for (const p of personen) {
+    doc.addPage();
+    await stundenSeite(doc, p.name, ym, p.eintraege);
+  }
+  doc.setProperties({ title: `Stunden aller Mitarbeiter ${monatLabel(ym)}` });
   return doc.output('blob');
 }
 
@@ -876,7 +942,7 @@ export async function buildSammelPdf({ titel, von, bis, items, author }) {
       g.personen.set(e.name, (g.personen.get(e.name) || 0) + h);
     }
   }
-  const ORDER = ['Meister', 'Facharbeiter', 'Helfer', 'Lehrling', 'Ohne Kategorie'];
+  const ORDER = ['Meister', 'Facharbeiter', 'Helfer', 'Lehrling', 'Büro', 'Ohne Kategorie'];
   const katRows = [];
   for (const k of ORDER) {
     const g = kat.get(k);

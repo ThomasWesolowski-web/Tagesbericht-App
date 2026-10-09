@@ -506,6 +506,39 @@ export async function loadStundenRemote(settings, ym, name) {
   return { eintraege: [...eintraege.values()], geloescht: [...geloescht] };
 }
 
+// Alle Stundennachweise eines Monats (für das Monats-PDF des Administrators).
+// Dateien mit denselben Namensteilen gehören zu einer Person und werden zusammengeführt.
+export async function loadStundenMonatAlle(settings, ym) {
+  const gh = client(settings);
+  let liste = [];
+  try {
+    liste = await gh(`${contentsPath('stunden')}?ref=${encodeURIComponent(settings.branch)}&t=${Date.now()}`);
+  } catch (err) {
+    if (err.status !== 404) throw err;
+  }
+  const dateien = (Array.isArray(liste) ? liste : []).filter((f) => f.type === 'file' && f.name.startsWith(`${ym}_`) && f.name.endsWith('.json'));
+  const daten = await Promise.all(dateien.map((f) => getJson(gh, settings, f.path).then((r) => ({ f, data: r?.data }))));
+  const personen = new Map();
+  for (const { f, data } of daten) {
+    if (!data) continue;
+    const key = namensTeile(f.name.slice(ym.length + 1, -5));
+    if (!personen.has(key)) personen.set(key, { name: data.mitarbeiter || '', eintraege: new Map(), geloescht: new Set() });
+    const p = personen.get(key);
+    for (const e of data.eintraege || []) {
+      const alt = p.eintraege.get(e.id);
+      if (!alt || (e.updatedAt || 0) > (alt.updatedAt || 0)) p.eintraege.set(e.id, e);
+    }
+    for (const id of data.geloescht || []) p.geloescht.add(id);
+  }
+  return [...personen.entries()].map(([key, p]) => ({
+    key, name: p.name, eintraege: [...p.eintraege.values()].filter((e) => !p.geloescht.has(e.id)).map(({ stunden, ...e }) => e),
+  }));
+}
+
+export function namensSchluessel(name) {
+  return namensTeile(slug(name || ''));
+}
+
 function namensTeile(s) {
   return s.split('-').filter(Boolean).sort().join('-');
 }
