@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.56.0**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.57.0**.
 
 | Was | Wo |
 | --- | --- |
@@ -162,9 +162,9 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 09.10.2026 | 1.57.0 | Stunden: Monats-PDF mit den Stunden aller Mitarbeiter für Admins (ohne Admin-Stunden); neue Personal-Kategorie Büro |
 | 08.10.2026 | 1.56.1 | Raumaufmaß-App 1.9.1: Knauf-Metallständerwände W111, W112, W113, W115 und W116 als Systeme (Trennwand, je Raum die halbe Menge) |
 | 08.10.2026 | 1.56.0 | Raumaufmaß-App 1.9: Material planen mit Knauf-Systemen (Putz, Spachtel, Vorsatzschale, Trockenbau-Decke, Dachschräge), Materialbedarf mit Gebinden, Aufbau als Schnitt, eigene Systeme bearbeiten, Material-Seiten im PDF |
-| 09.10.2026 | 1.56.0 | Stunden: Monats-PDF mit den Stunden aller Mitarbeiter für Admins (ohne Admin-Stunden); neue Personal-Kategorie Büro |
 | 08.10.2026 | 1.55.0 | Urlaubskalender: Admins tragen Betriebsurlaub für alle ein (blau im Kalender, automatisch im Stundennachweis jedes Mitarbeiters) |
 | 08.10.2026 | 1.54.0 | Rapporte: Schieber „Abgerechnet“ für Admins in der Berichtsliste und in der PDF-Vorschau (auch für alle Rapporte einer Zusammenfassung), Filter Offen/Abgerechnet in der Zusammenfassung |
 | 06.10.2026 | 1.53.0 | Übersetzung: Fachwörterliste für Rumänisch, Polnisch, Mazedonisch und Albanisch, damit Baustellenwörter wie Spachtelmasse oder Klebeband richtig ins Deutsche kommen |
