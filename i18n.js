@@ -162,6 +162,7 @@ const ROWS = [
   ['Facharbeiter', 'Fachowiec', 'Muncitor calificat', 'Квалификуван работник', 'Punëtor i kualifikuar'],
   ['Helfer', 'Pomocnik', 'Ajutor', 'Помошник', 'Ndihmës'],
   ['Lehrling', 'Uczeń', 'Ucenic', 'Ученик', 'Nxënës'],
+  ['Büro', 'Biuro', 'Birou', 'Канцеларија', 'Zyrë'],
 
   // Baustellen und Personal
   ['Noch keine Baustellen', 'Brak budów', 'Încă nu există șantiere', 'Сè уште нема градилишта', 'Ende nuk ka kantiere'],

@@ -6,13 +6,13 @@ import {
   ABRECHNUNG, MASCHINEN_VORSCHLAEGE, maschinenStunden, today, newId, GEWERKE, gewerkeText,
 } from './report.js';
 import {
-  buildPdf, pdfFileName, buildStundenPdf, stundenPdfName, buildSammelPdf, sammelPdfName,
+  buildPdf, pdfFileName, buildStundenPdf, stundenPdfName, buildStundenAllePdf, stundenAllePdfName, buildSammelPdf, sammelPdfName,
 } from './pdf.js';
 import {
   TYPEN, typLabel, hatZeiten, newStunde, stundenOf, personKey, kw, summe, sortStunden, monatLabel, shiftMonth,
 } from './stunden.js';
 import {
-  isConfigured, syncAll, syncReport, testConnection, deleteRemote, loadAdminConfig, saveAdminConfig, loadStundenRemote, meldeGeraet, ladeGeraete, setzeAdminFreigabe, urlaubAbgleichen, syncStunden,
+  isConfigured, syncAll, syncReport, testConnection, deleteRemote, loadAdminConfig, saveAdminConfig, loadStundenRemote, loadStundenMonatAlle, namensSchluessel, meldeGeraet, ladeGeraete, setzeAdminFreigabe, urlaubAbgleichen, syncStunden,
 } from './sync.js';
 import { startI18n, SPRACHEN } from './i18n.js';
 import { openMarkup } from './markup.js';
@@ -2535,6 +2535,7 @@ async function renderStunden() {
       <div class="card-list">${w.items.map(card).join('')}</div>`).join('')
     : '<p class="hint" style="text-align:center;margin:28px 0">Für diesen Monat ist noch nichts eingetragen.</p>'}
     ${list.length ? `<button class="btn soft block" id="stunden-pdf" style="margin-top:18px">${ICON.share} Monat als PDF teilen</button>` : ''}
+    ${isAdmin() ? `<button class="btn soft block" id="stunden-alle-pdf" style="margin-top:10px">${ICON.doc} Alle Mitarbeiter ${monatLabel(stundenMonat)} als PDF</button>` : ''}
     <button class="fab" id="stunde-neu">${ICON.plus}<span>Stunden eintragen</span></button>`;
 
   ansichtUmschalterBinden();
@@ -2567,6 +2568,59 @@ async function renderStunden() {
   });
   const pdfBtn = $('#stunden-pdf');
   if (pdfBtn) pdfBtn.onclick = () => shareStundenPdf(person.name, stundenMonat, list);
+  const alleBtn = $('#stunden-alle-pdf');
+  if (alleBtn) alleBtn.onclick = () => stundenAlleTeilen(stundenMonat);
+}
+
+// Monats-PDF für den Administrator: Stunden aller Mitarbeiter (aus dem Repo und von diesem Gerät),
+// ohne die Stunden der Administratoren.
+async function stundenAlleTeilen(ym) {
+  toast('Stunden aller Mitarbeiter werden geladen …', 15000);
+  const online = isConfigured(settings) && navigator.onLine;
+  let remote = [];
+  let geraete = [];
+  try {
+    if (online) [remote, geraete] = await Promise.all([loadStundenMonatAlle(settings, ym), ladeGeraete(settings).catch(() => [])]);
+  } catch (err) {
+    toast(`Stunden laden: ${err.message}`, 4000);
+    return;
+  }
+  const personen = new Map(remote.map((p) => [p.key, { name: p.name, eintraege: new Map(p.eintraege.map((e) => [e.id, e])) }]));
+  // Einträge auf diesem Gerät (auch noch nicht hochgeladene) gehen vor, wenn sie neuer sind
+  const geloescht = db.stundenGeloescht();
+  for (const e of await db.allStunden()) {
+    if (!e.datum.startsWith(ym)) continue;
+    const key = namensSchluessel(e.name);
+    if (!personen.has(key)) personen.set(key, { name: e.name, eintraege: new Map() });
+    const p = personen.get(key);
+    const alt = p.eintraege.get(e.id);
+    if (!alt || (e.updatedAt || 0) >= (alt.updatedAt || 0)) p.eintraege.set(e.id, e);
+  }
+  // Administratoren (Admin-Handys und dieses Gerät) sind ausgenommen
+  const admins = new Set([...geraete.filter((g) => g.admin).map((g) => g.name), stundenPerson()?.name, settings.author]
+    .filter(Boolean).map(namensSchluessel));
+  const leute = await db.allPeople();
+  const kategorie = (name) => {
+    const p = leute.find((x) => namensSchluessel(x.name) === namensSchluessel(name));
+    return p ? kategorieOf(p) : '';
+  };
+  const ordnung = (k) => (KATEGORIEN.indexOf(k) + 1) || 99;
+  const liste = [...personen.entries()]
+    .filter(([key]) => !admins.has(key))
+    .map(([, p]) => ({ name: p.name, kategorie: kategorie(p.name), eintraege: [...p.eintraege.values()].filter((e) => !geloescht.has(e.id)) }))
+    .filter((p) => p.eintraege.length)
+    .sort((a, b) => ordnung(a.kategorie) - ordnung(b.kategorie) || a.name.localeCompare(b.name, 'de'));
+  if (!liste.length) { toast(`Für ${monatLabel(ym)} hat noch kein Mitarbeiter Stunden eingetragen.`, 3500); return; }
+  let file;
+  try {
+    file = new File([await buildStundenAllePdf(ym, liste)], stundenAllePdfName(ym), { type: 'application/pdf' });
+  } catch (err) {
+    toast(`PDF konnte nicht erstellt werden: ${err.message}`, 4000);
+    return;
+  }
+  hideToast();
+  if (!online) toast('Ohne Netz: nur die Stunden, die auf diesem Handy liegen.', 3500);
+  await sharePdfFile(file, `Stunden aller Mitarbeiter ${monatLabel(ym)}`, []);
 }
 
 // ---------- Urlaub ----------

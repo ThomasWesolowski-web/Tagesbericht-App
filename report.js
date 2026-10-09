@@ -181,7 +181,7 @@ function minutes(hhmm) {
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 }
 
-export const KATEGORIEN = ['Meister', 'Facharbeiter', 'Helfer', 'Lehrling'];
+export const KATEGORIEN = ['Meister', 'Facharbeiter', 'Helfer', 'Lehrling', 'Büro'];
 
 export function newPerson(fields = {}) {
   return { id: newId(), name: '', kategorie: 'Facharbeiter', archived: 0, createdAt: Date.now(), ...fields };
@@ -192,6 +192,7 @@ export function kategorieOf(x) {
   if (KATEGORIEN.includes(x?.kategorie)) return x.kategorie;
   const f = (x?.funktion || '').toLowerCase();
   if (!f) return x?.personId ? 'Facharbeiter' : 'Ohne Kategorie';
+  if (/büro|buero|verwaltung|sekretär|buchhalt/.test(f)) return 'Büro';
   if (/meister|polier|vorarbeiter|bauf(ü|ue)hrer|chef/.test(f)) return 'Meister';
   if (/lehrling|azubi|auszubild|lernend/.test(f)) return 'Lehrling';
   if (/helfer|hilfs/.test(f)) return 'Helfer';
