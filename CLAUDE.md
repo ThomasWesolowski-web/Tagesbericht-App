@@ -39,7 +39,9 @@ Veröffentlicht über GitHub Pages aus `main` (Root): https://thomaswesolowski-w
   (`APP_VERSION` in `app.js` und `CACHE` in `sw.js` hochzählen). Ohne neue Cache-Nummer zeigen die
   Handys weiter die alte App.
 - **Neue Dateien**, die die App lädt, auch in `SHELL` in `sw.js` eintragen, sonst fehlen sie offline.
-- **Raumaufmaß-App** (`raumaufmass/`): bei Änderungen dort `CACHE` in `raumaufmass/sw.js` hochzählen.
+- **Raumaufmaß-App** (`raumaufmass/`): bei Änderungen dort nur `RA_VERSION` (`raumaufmass/ra-app.js`) und
+  `CACHE` in `raumaufmass/sw.js` hochzählen, nicht `APP_VERSION`/`CACHE` der Tagesbericht-App (Tomeks
+  Entscheidung 09.10.2026; der Haupt-`sw.js` lässt `raumaufmass/` ohnehin aus).
   `raumgeometrie.js` gibt es zweimal: die Kopie im Hauptordner zeigt nur alte Räume in Berichten an
   und bleibt auf dem Stand von 1.46.0; Neues (z. B. Körper, Wand an Wand) nur in `raumaufmass/`.
   Die Raumaufmaß-App ist nur Deutsch; ihre Version steht in `RA_VERSION` (`raumaufmass/ra-app.js`).

@@ -7,6 +7,10 @@ description: Checkliste für jede Änderung an der Tagesbericht-App, bevor sie v
 
 Jede Änderung, die auf die Handys soll, ist eine neue Version. Diese Schritte der Reihe nach abarbeiten.
 
+Betrifft die Änderung nur die Raumaufmaß-App (`raumaufmass/`), zählt nur deren eigene Nummer:
+`RA_VERSION` in `raumaufmass/ra-app.js` und `CACHE` in `raumaufmass/sw.js`. `APP_VERSION` und `CACHE`
+der Tagesbericht-App bleiben dann gleich.
+
 ## 1. Versionsnummern hochzählen
 
 - `app.js`: `const APP_VERSION = 'X.Y.Z';`
