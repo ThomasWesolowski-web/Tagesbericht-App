@@ -25,7 +25,7 @@ import {
   urlaubLokal, urlaubLokalSpeichern, antragMerken, gehoertZu, arbeitstageOhneBetrieb,
 } from './urlaub.js';
 
-const APP_VERSION = '1.57.0';
+const APP_VERSION = '1.58.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -2545,25 +2545,28 @@ async function renderStunden() {
   };
   $('#m-prev').onclick = () => { stundenMonat = shiftMonth(stundenMonat, -1); renderStunden(); };
   $('#m-next').onclick = () => { stundenMonat = shiftMonth(stundenMonat, 1); renderStunden(); };
-  $('#stunde-neu').onclick = () => {
+  $('#stunde-neu').onclick = async () => {
     // Neuer Eintrag: Art, Baustelle und Art der Arbeit werden aktiv gewählt; Zeiten stehen auf dem
     // üblichen Arbeitstag 7:00 bis 16:00 und lassen sich ändern.
+    // Büro-Mitarbeiter: Arbeit im Büro ist schon eingestellt.
     const datum = stundenMonat === today().slice(0, 7) ? today() : `${stundenMonat}-01`;
+    const buero = await istBueroPerson(person);
     openStundeEditor(newStunde({
       personId: person.personId || null,
       name: person.name,
       datum,
-      typ: '',
+      typ: buero ? 'arbeit' : '',
       beginn: '07:00',
       ende: '16:00',
-    }), true);
+      ...(buero ? { baustelle: BUERO, gewerkFrei: BUERO } : {}),
+    }), true, buero);
   };
   $$('.rcard.stunde').forEach((b) => {
     b.onclick = () => {
       const e = list.find((x) => x.id === b.dataset.id);
       // Einträge von einem anderen Gerät werden beim Speichern auf dieses Gerät übernommen.
       const { fremd, ...eintrag } = structuredClone(e);
-      openStundeEditor(eintrag, false);
+      istBueroPerson(person).then((buero) => openStundeEditor(eintrag, false, buero));
     };
   });
   const pdfBtn = $('#stunden-pdf');
@@ -3138,7 +3141,19 @@ function zeitWahlBinden(inp, aendern) {
   };
 }
 
-function openStundeEditor(e, isNew) {
+// Büro-Mitarbeiter (Kategorie Büro in der Personal-Liste): Arbeitsstätte ist voreingestellt
+// das Büro, die Art der Arbeit ist immer „Büro“.
+const BUERO = 'Büro';
+
+async function istBueroPerson(person) {
+  if (!person?.name) return false;
+  const leute = await db.allPeople();
+  const p = leute.find((x) => person.personId && x.id === person.personId)
+    || leute.find((x) => namensSchluessel(x.name) === namensSchluessel(person.name));
+  return Boolean(p) && kategorieOf(p) === BUERO;
+}
+
+function openStundeEditor(e, isNew, buero = false) {
   const origMonth = isNew ? null : { ...e };
   const { sheet, close } = openSheet(`
     <h2>${isNew ? 'Stunden eintragen' : 'Eintrag bearbeiten'}</h2>
@@ -3147,7 +3162,9 @@ function openStundeEditor(e, isNew) {
       `<button type="button" class="chip" data-typ="${t.id}" aria-pressed="${e.typ === t.id}">${t.label}</button>`).join('')}</div>
     <div id="st-zeit">
       <div class="field"><span>Baustelle</span><button type="button" class="site-pick" id="st-site"></button></div>
-      <div class="field"><span>Art der Arbeit</span>${gewerkeHtml(e, 'st-gw')}</div>
+      <div class="field"><span>Art der Arbeit</span>${buero
+        ? `<input type="text" value="${BUERO}" readonly>`
+        : gewerkeHtml(e, 'st-gw')}</div>
       <div class="row three">
         <div class="field"><span>Beginn</span>${zeitWahlHtml('st-beginn', e.beginn)}</div>
         <div class="field"><span>Ende</span>${zeitWahlHtml('st-ende', e.ende)}</div>
@@ -3180,7 +3197,11 @@ function openStundeEditor(e, isNew) {
   drawTyp();
 
   $('#st-datum', sheet).onchange = (ev) => { e.datum = ev.target.value; };
-  $$('#st-typ .chip', sheet).forEach((c) => { c.onclick = () => { e.typ = c.dataset.typ; drawTyp(); }; });
+  $$('#st-typ .chip', sheet).forEach((c) => { c.onclick = () => {
+    e.typ = c.dataset.typ;
+    if (buero && e.typ === 'arbeit' && !e.baustelle) e.baustelle = BUERO;
+    drawTyp();
+  }; });
   $('#st-site', sheet).onclick = () => openSitePicker(e.baustelleId, (site) => {
     e.baustelleId = site.id;
     e.baustelle = site.name;
@@ -3194,6 +3215,7 @@ function openStundeEditor(e, isNew) {
   $('#st-save', sheet).onclick = async () => {
     // Pflichtangaben wie beim Rapport
     if (!e.datum) { toast('Bitte ein Datum wählen.'); return; }
+    if (buero && e.typ === 'arbeit') Object.assign(e, { gewerke: [], gewerkFrei: BUERO });
     if (!e.typ) { toast('Bitte Arbeit, Urlaub, Krank, Feiertag oder Berufsschule wählen.', 3500); return; }
     if (e.typ === 'arbeit' && !e.baustelle) { toast('Bitte eine Baustelle wählen.'); return; }
     if (e.typ === 'arbeit' && !(e.gewerke || []).length && !(e.gewerkFrei || '').trim()) { toast('Bitte die Art der Arbeit eintragen.'); return; }
