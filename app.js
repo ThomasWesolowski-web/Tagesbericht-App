@@ -25,7 +25,7 @@ import {
   urlaubLokal, urlaubLokalSpeichern, antragMerken, gehoertZu, arbeitstageOhneBetrieb,
 } from './urlaub.js';
 
-const APP_VERSION = '1.59.0';
+const APP_VERSION = '1.60.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -1884,9 +1884,20 @@ async function openSitePicker(currentId, onSelect, currentFrei = '') {
     close();
     onSelect({ id: null, name, adresse: '', frei: true });
   };
-  // Beim Tippen gespeicherte Baustellen vorschlagen; Antippen übernimmt die gespeicherte.
+  // Beim Tippen vorhandene Baustellen vorschlagen; Antippen übernimmt sie.
   const waehle = (site) => { close(); onSelect(site); };
-  baustellenVorschlag(frei, $('#frei-vorschlag', sheet), sites, waehle);
+  // Dazu Baustellen, die nur als Freitext in Berichten stehen (nicht gespeichert).
+  const gespeichert = new Set(sites.map((s) => suchText(s.name).trim()));
+  const freie = new Map();
+  for (const r of await db.allReports()) {
+    const name = (r.baustelle || '').trim();
+    const key = suchText(name);
+    if (r.baustelleId || !name || gespeichert.has(key) || freie.has(key)) continue;
+    freie.set(key, { id: `frei:${key}`, name, adresse: '', frei: true });
+  }
+  const vorschlaege = [...sites, ...freie.values()];
+  const waehleVorschlag = (v) => waehle(v.frei ? { id: null, name: v.name, adresse: '', frei: true } : v);
+  baustellenVorschlag(frei, $('#frei-vorschlag', sheet), vorschlaege, waehleVorschlag);
   baustellenVorschlag($('#sheet-form [name=name]', sheet), $('#neu-vorschlag', sheet), sites, waehle);
   $('#sheet-frei-ok', sheet).onclick = freiOk;
   frei.onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); freiOk(); } };
@@ -1940,9 +1951,9 @@ function baustellenVorschlag(input, box, sites, onPick) {
   const zeigen = () => {
     const treffer = baustellenTreffer(input.value, sites);
     box.hidden = !treffer.length;
-    box.innerHTML = treffer.length ? `<p class="hint">Gespeicherte Baustelle nehmen:</p>
+    box.innerHTML = treffer.length ? `<p class="hint">Vorhandene Baustelle nehmen:</p>
       <div class="pick-list">${treffer.map((s) => `<button type="button" class="pick" data-id="${esc(s.id)}">
-        ${ICON.pin}<span><b>${esc(s.name)}</b>${s.adresse ? `<small>${esc(s.adresse)}</small>` : ''}</span></button>`).join('')}</div>` : '';
+        ${ICON.pin}<span><b>${esc(s.name)}</b>${s.adresse ? `<small>${esc(s.adresse)}</small>` : s.frei ? '<small>Aus früheren Berichten</small>' : ''}</span></button>`).join('')}</div>` : '';
     $$('.pick', box).forEach((b) => { b.onclick = () => onPick(sites.find((s) => s.id === b.dataset.id)); });
   };
   input.addEventListener('input', zeigen);

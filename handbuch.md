@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.59.0**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.60.0**.
 
 | Was | Wo |
 | --- | --- |
@@ -34,7 +34,7 @@ Ist der Token einmal eingetragen, sind die GitHub-Felder gesperrt, damit niemand
 
 Im Reiter **Berichte** startet das Plus unten rechts einen neuen Bericht. Er beginnt leer und wird erst mit **Speichern** festgehalten; **Abbrechen** verwirft alles, auch neue Fotos und Markierungen.
 
-1. **Baustelle wählen:** aus der Liste oder als Freitext („Nur in diesem Bericht“), z. B. für kleine Aufträge, die nicht in die Baustellen-Liste sollen. Beim Tippen im Freitext-Feld (und beim Namen einer neuen Baustelle) schlägt die App passende gespeicherte Baustellen vor; Groß- und Kleinschreibung und Akzente spielen keine Rolle, auch Teile von Name oder Adresse genügen. Antippen übernimmt die gespeicherte Baustelle.
+1. **Baustelle wählen:** aus der Liste oder als Freitext („Nur in diesem Bericht“), z. B. für kleine Aufträge, die nicht in die Baustellen-Liste sollen. Beim Tippen im Freitext-Feld (und beim Namen einer neuen Baustelle) schlägt die App passende Baustellen vor: gespeicherte und (im Freitext-Feld) auch solche, die nur als Freitext in früheren Berichten auf diesem Handy stehen; Groß- und Kleinschreibung und Akzente spielen keine Rolle, auch Teile von Name oder Adresse genügen. Antippen übernimmt die Baustelle.
 2. **Art wählen:** Tagesbericht oder Rapport (Regie- oder Pauschalarbeit für den Bauherrn).
 3. **Art der Arbeit:** Gerüstbau, Putz, Malerarbeiten, Trockenbau (mehrere möglich) plus Freitext.
 4. **Personal:** Personen aus der Liste hinzufügen, jeweils mit Kategorie (Meister, Facharbeiter, Helfer, Lehrling, Büro), Beginn, Ende und Pause. Die Minuten von Beginn und Ende werden auf 5-Minuten-Schritte gerundet; die erste Person startet mit 7:00 bis 16:00, weitere Personen übernehmen die Zeiten der ersten.
@@ -162,6 +162,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 16.10.2026 | 1.60.0 | Baustellen-Vorschläge auch aus früheren Berichten (Freitext-Baustellen, die nicht gespeichert sind) |
 | 16.10.2026 | 1.59.0 | Berichte: Beim Eintippen einer Baustelle werden passende gespeicherte Baustellen vorgeschlagen |
 | 09.10.2026 | 1.58.0 | Stunden: Büro-Mitarbeiter haben Arbeitsstätte Büro voreingestellt, Art der Arbeit immer Büro |
 | 09.10.2026 | 1.57.0 | Stunden: Monats-PDF mit den Stunden aller Mitarbeiter für Admins (ohne Admin-Stunden); neue Personal-Kategorie Büro |
