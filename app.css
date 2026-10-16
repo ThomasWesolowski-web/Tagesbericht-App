@@ -543,6 +543,8 @@ body.no-scroll { overflow: hidden; }
 .frei-site { display: flex; gap: 8px; align-items: flex-end; }
 .frei-site .field { flex: 1; min-width: 0; margin-bottom: 14px; }
 .frei-site .btn { margin-bottom: 14px; }
+.site-vorschlag { margin: -6px 0 14px; }
+.site-vorschlag .hint { margin: 0 0 6px; }
 .gewerke { margin-bottom: 12px; }
 .gewerke .chips { margin-bottom: 8px; }
 .gewerke .gw-frei {
