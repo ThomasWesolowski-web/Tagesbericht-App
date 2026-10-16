@@ -25,7 +25,7 @@ import {
   urlaubLokal, urlaubLokalSpeichern, antragMerken, gehoertZu, arbeitstageOhneBetrieb,
 } from './urlaub.js';
 
-const APP_VERSION = '1.58.0';
+const APP_VERSION = '1.59.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -1849,12 +1849,14 @@ async function openSitePicker(currentId, onSelect, currentFrei = '') {
           <input type="text" id="sheet-frei" value="${esc(currentFrei)}" placeholder="z. B. Kleine Reparatur Müller" autocomplete="off"></label>
         <button type="button" class="btn soft" id="sheet-frei-ok">Übernehmen</button>
       </div>
+      <div class="site-vorschlag" id="frei-vorschlag" hidden></div>
       <p class="hint" style="margin:-6px 0 4px">Für kleine Baustellen: erscheint nur hier, nicht in der Baustellen-Liste.</p>
       <div class="sheet-or"><span>oder</span></div>
       <button class="btn ghost block" id="sheet-new">${ICON.plus} Neue Baustelle erstellen</button>
       <form id="sheet-form" class="section" hidden onsubmit="return false">
         <h2>Neue Baustelle</h2>
         ${siteFields(newSite())}
+        <div class="site-vorschlag" id="neu-vorschlag" hidden></div>
         <div class="attach-actions" style="margin-top:4px">
           <button type="button" class="btn ghost" id="sheet-cancel">Abbrechen</button>
           <button type="button" class="btn primary" id="sheet-save">Speichern</button>
@@ -1882,12 +1884,16 @@ async function openSitePicker(currentId, onSelect, currentFrei = '') {
     close();
     onSelect({ id: null, name, adresse: '', frei: true });
   };
+  // Beim Tippen gespeicherte Baustellen vorschlagen; Antippen übernimmt die gespeicherte.
+  const waehle = (site) => { close(); onSelect(site); };
+  baustellenVorschlag(frei, $('#frei-vorschlag', sheet), sites, waehle);
+  baustellenVorschlag($('#sheet-form [name=name]', sheet), $('#neu-vorschlag', sheet), sites, waehle);
   $('#sheet-frei-ok', sheet).onclick = freiOk;
   frei.onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); freiOk(); } };
   const search = $('#sheet-search', sheet);
   if (search) search.oninput = () => {
-    const q = search.value.trim().toLowerCase();
-    $$('.pick', sheet).forEach((b) => { b.hidden = q && !b.textContent.toLowerCase().includes(q); });
+    const q = suchText(search.value).trim();
+    $$('.sheet > .pick-list .pick', sheet).forEach((b) => { b.hidden = q && !suchText(b.textContent).includes(q); });
   };
   $('#sheet-new', sheet).onclick = () => {
     $('#sheet-new', sheet).hidden = true;
@@ -1909,6 +1915,38 @@ async function openSitePicker(currentId, onSelect, currentFrei = '') {
     close();
     onSelect(site);
   };
+}
+
+// Für die Suche: klein, ohne Akzente (ș → s, é → e), ß → ss.
+const suchText = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ß/g, 'ss').toLowerCase();
+
+// Treffer unter gespeicherten Baustellen für einen getippten Text: jedes getippte Wort muss im
+// Namen oder in der Adresse vorkommen. Namen, die mit dem Text beginnen, kommen zuerst.
+function baustellenTreffer(text, sites, max = 5) {
+  const q = suchText(text).trim();
+  if (!q) return [];
+  const woerter = q.split(/\s+/);
+  return sites
+    .map((s) => ({ s, name: suchText(s.name), alles: suchText(`${s.name} ${s.adresse || ''}`) }))
+    .filter((x) => woerter.every((w) => x.alles.includes(w)))
+    .sort((a, b) => (b.name.startsWith(q) - a.name.startsWith(q)) || (b.name.includes(q) - a.name.includes(q))
+      || a.s.name.localeCompare(b.s.name, 'de'))
+    .slice(0, max)
+    .map((x) => x.s);
+}
+
+function baustellenVorschlag(input, box, sites, onPick) {
+  if (!input || !box || !sites.length) return;
+  const zeigen = () => {
+    const treffer = baustellenTreffer(input.value, sites);
+    box.hidden = !treffer.length;
+    box.innerHTML = treffer.length ? `<p class="hint">Gespeicherte Baustelle nehmen:</p>
+      <div class="pick-list">${treffer.map((s) => `<button type="button" class="pick" data-id="${esc(s.id)}">
+        ${ICON.pin}<span><b>${esc(s.name)}</b>${s.adresse ? `<small>${esc(s.adresse)}</small>` : ''}</span></button>`).join('')}</div>` : '';
+    $$('.pick', box).forEach((b) => { b.onclick = () => onPick(sites.find((s) => s.id === b.dataset.id)); });
+  };
+  input.addEventListener('input', zeigen);
+  zeigen();
 }
 
 // ---------- Personal ----------
