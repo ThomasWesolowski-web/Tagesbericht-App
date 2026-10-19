@@ -1006,8 +1006,10 @@ button.zp-dc { cursor: pointer; }
 .ps-view .mk-top b { flex: 1; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ps-anzahl { font-size: .85rem; color: rgba(255,255,255,.7); white-space: nowrap; }
 .ps-hinweis { margin: 0 16px 8px; font-size: .9rem; color: rgba(255,255,255,.85); }
-.ps-liste { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; padding: 4px 12px calc(16px + var(--safe-b, 0px)); display: grid; gap: 14px; align-content: start; justify-items: center; }
-.ps-seite { width: 100%; max-width: 720px; background: none; border: 0; padding: 0; color: inherit; cursor: pointer; display: grid; gap: 6px; }
+.ps-liste { flex: 1; overflow: auto; -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y; overscroll-behavior: contain; padding: 4px 12px calc(16px + var(--safe-b, 0px)); }
+.ps-inhalt { margin: 0 auto; display: grid; gap: 14px; align-content: start; }
+.ps-seite { width: 100%; color: inherit; display: grid; gap: 6px; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.ps-seite.waehlbar { cursor: pointer; }
 .ps-bild { width: 100%; background: #fff; border-radius: 4px; overflow: hidden; display: flex; align-items: center; justify-content: center; color: #666; font-size: .85rem; }
-.ps-bild img { width: 100%; height: 100%; display: block; object-fit: contain; }
-.ps-seite > span { font-size: .85rem; color: rgba(255,255,255,.75); }
+.ps-bild img { width: 100%; height: 100%; display: block; object-fit: contain; pointer-events: none; }
+.ps-seite > span { font-size: .85rem; color: rgba(255,255,255,.75); text-align: center; }

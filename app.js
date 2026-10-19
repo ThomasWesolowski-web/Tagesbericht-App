@@ -30,7 +30,7 @@ import {
   planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
 } from './zeitplan.js';
 
-const APP_VERSION = '1.64.0';
+const APP_VERSION = '1.64.1';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -1332,7 +1332,7 @@ async function renderEditor(id) {
         if (istPdf(plan)) {
           const n = await pdfSeiten(plan.datei.blob).catch(() => 1);
           if (n > 1) {
-            seite = await pdfSeitenAnsicht(plan.datei, { hinweis: 'Seite antippen, die im Bericht markiert werden soll.', onSeite: () => true });
+            seite = await pdfSeitenAnsicht(plan.datei, { hinweis: 'Seite antippen, die im Bericht markiert werden soll. Mit zwei Fingern zoomen.', onSeite: () => true });
             if (!seite) return;
           }
         }
@@ -2395,23 +2395,24 @@ async function planListeBinden(site) {
   zeichnen();
 }
 
-// Plan in voller Schärfe ansehen: verschieben und zoomen. Mehrseitige PDFs zeigen erst alle
-// Seiten untereinander; eine angetippte Seite öffnet sich groß, danach geht es zurück zur Liste.
+// Plan in voller Schärfe ansehen: verschieben und zoomen. Mehrseitige PDFs zeigen alle
+// Seiten untereinander, dort wird direkt mit zwei Fingern gezoomt.
 async function planAnsehen(f) {
   if (istPdf(f)) {
     const n = await pdfSeiten(f.blob).catch(() => 1);
     if (n > 1) {
-      await pdfSeitenAnsicht(f, { hinweis: 'Seite antippen, um sie groß anzusehen und zu zoomen.', onSeite: async (s) => { await planSeiteAnsehen(f, s); return false; } });
+      await pdfSeitenAnsicht(f, { hinweis: 'Mit zwei Fingern zoomen.' });
       return;
     }
   }
   await planSeiteAnsehen(f, 1);
 }
 
-// Alle Seiten eines PDFs untereinander zum Blättern. Die Bilder werden erst gezeichnet, wenn
-// sie in die Nähe des Bildschirms kommen (Speicher auf dem iPhone). onSeite(seite) wird beim
-// Antippen aufgerufen; gibt sie true zurück, schließt die Ansicht und liefert die Seite, sonst null.
-async function pdfSeitenAnsicht(f, { hinweis = '', onSeite }) {
+// Alle Seiten eines PDFs untereinander zum Blättern und Zoomen mit zwei Fingern. Die Bilder
+// werden erst gezeichnet, wenn sie in die Nähe des Bildschirms kommen (Speicher auf dem iPhone),
+// nach dem Zoomen werden die sichtbaren Seiten schärfer nachgezeichnet. Mit onSeite lässt sich
+// eine Seite antippen: gibt onSeite(seite) true zurück, schließt die Ansicht und liefert die Seite.
+async function pdfSeitenAnsicht(f, { hinweis = '', onSeite = null }) {
   let doc;
   try {
     doc = await pdfDokument(f.blob);
@@ -2429,30 +2430,63 @@ async function pdfSeitenAnsicht(f, { hinweis = '', onSeite }) {
       <span class="ps-anzahl">${doc.n} <span>Seiten</span></span>
     </div>
     ${hinweis ? `<p class="ps-hinweis">${esc(hinweis)}</p>` : ''}
-    <div class="ps-liste">${formate.map((v, i) => `<button type="button" class="ps-seite" data-s="${i + 1}">
+    <div class="ps-liste"><div class="ps-inhalt">${formate.map((v, i) => `<div class="ps-seite${onSeite ? ' waehlbar' : ''}" data-s="${i + 1}">
       <div class="ps-bild" style="aspect-ratio: 1 / ${v.toFixed(4)}"></div>
       <span><span>Seite</span> ${i + 1} / ${doc.n}</span>
-    </button>`).join('')}</div>`;
+    </div>`).join('')}</div></div>`;
   document.body.appendChild(view);
+  const liste = $('.ps-liste', view);
+  const inhalt = $('.ps-inhalt', view);
+  const seiten = $$('.ps-seite', view);
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
   const urls = [];
-  const breite = Math.min(1400, Math.round(Math.min(window.innerWidth, 720) * Math.min(2, window.devicePixelRatio || 1)));
-  // eine Seite nach der anderen zeichnen, damit der Speicher nicht vollläuft
-  const warteschlange = [];
-  let zeichnet = false;
   let offen = true;
+
+  // Zoom: die Liste wird breiter, verschoben wird mit dem Finger wie gewohnt
+  let zoom = 1;
+  const grundBreite = () => Math.min(liste.clientWidth - 24, 720);
+  const zoomSetzen = (z) => {
+    zoom = Math.min(6, Math.max(1, z));
+    inhalt.style.width = `${Math.round(grundBreite() * zoom)}px`;
+  };
+  zoomSetzen(1);
+
+  // Seiten zeichnen, eine nach der anderen; höchstens zwei Seiten bleiben scharf nachgezeichnet
+  const breite = Math.min(1400, Math.round(grundBreite() * Math.min(2, dpr)));
+  const warteschlange = [];
+  const scharf = [];
+  let zeichnet = false;
+  const zeichnen = async (el, w) => {
+    const b = await doc.bild(Number(el.dataset.s), w);
+    if (!offen || !b.blob?.size) return;
+    const url = URL.createObjectURL(b.blob);
+    urls.push(url);
+    const bild = $('.ps-bild', el);
+    if (!el.basis) {
+      el.basis = { url, w: b.w };
+      bild.innerHTML = `<img src="${url}" alt="">`;
+      return;
+    }
+    if (el.scharf) URL.revokeObjectURL(el.scharf.url);
+    else scharf.push(el);
+    el.scharf = { url, w: b.w };
+    $('img', bild).src = url;
+    while (scharf.length > 2) {
+      const alt = scharf.shift();
+      URL.revokeObjectURL(alt.scharf.url);
+      alt.scharf = null;
+      $('img', alt).src = alt.basis.url;
+    }
+  };
   const weiter = async () => {
     if (zeichnet) return;
     zeichnet = true;
     while (offen && warteschlange.length) {
-      const el = warteschlange.shift();
+      const { el, w } = warteschlange.shift();
       try {
-        const b = await doc.bild(Number(el.dataset.s), breite);
-        if (!offen || !b.blob?.size) continue;
-        const url = URL.createObjectURL(b.blob);
-        urls.push(url);
-        $('.ps-bild', el).innerHTML = `<img src="${url}" alt="">`;
+        await zeichnen(el, w);
       } catch {
-        $('.ps-bild', el).textContent = 'Seite lässt sich nicht anzeigen';
+        if (!el.basis) $('.ps-bild', el).textContent = 'Seite lässt sich nicht anzeigen';
       }
     }
     zeichnet = false;
@@ -2461,27 +2495,91 @@ async function pdfSeitenAnsicht(f, { hinweis = '', onSeite }) {
     eintraege.forEach((e) => {
       if (!e.isIntersecting) return;
       beobachter.unobserve(e.target);
-      warteschlange.push(e.target);
+      warteschlange.push({ el: e.target, w: breite });
     });
     weiter();
-  }, { root: $('.ps-liste', view), rootMargin: '600px 0px' });
-  $$('.ps-seite', view).forEach((el) => beobachter.observe(el));
+  }, { root: liste, rootMargin: '600px 0px' });
+  seiten.forEach((el) => beobachter.observe(el));
+  const nachschaerfen = () => {
+    const sicht = liste.getBoundingClientRect();
+    seiten.forEach((el) => {
+      const r = $('.ps-bild', el).getBoundingClientRect();
+      if (!el.basis || r.bottom < sicht.top || r.top > sicht.bottom) return;
+      const bedarf = Math.min(4096, Math.round(r.width * dpr));
+      if (bedarf > (el.scharf || el.basis).w * 1.2 && !warteschlange.some((j) => j.el === el)) warteschlange.push({ el, w: bedarf });
+    });
+    weiter();
+  };
+
+  // Zwei Finger: der Punkt zwischen den Fingern bleibt auf derselben Stelle der Seite
+  let pinch = null;
+  let pinchEnde = 0;
+  const mitte = (t) => ({ x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 });
+  const abstand = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY) || 1;
+  liste.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 2) return;
+    e.preventDefault();
+    const m = mitte(e.touches);
+    // Seite unter (oder am nächsten an) den Fingern als Anker
+    let anker = seiten[0];
+    let best = Infinity;
+    for (const el of seiten) {
+      const r = el.getBoundingClientRect();
+      const d = m.y < r.top ? r.top - m.y : m.y > r.bottom ? m.y - r.bottom : 0;
+      if (d < best) { best = d; anker = el; }
+      if (!d) break;
+    }
+    const r = anker.getBoundingClientRect();
+    pinch = { z0: zoom, d0: abstand(e.touches), anker, fx: (m.x - r.left) / r.width, fy: (m.y - r.top) / r.height };
+  }, { passive: false });
+  liste.addEventListener('touchmove', (e) => {
+    if (!pinch || e.touches.length !== 2) return;
+    e.preventDefault();
+    const m = mitte(e.touches);
+    zoomSetzen(pinch.z0 * (abstand(e.touches) / pinch.d0));
+    const r = pinch.anker.getBoundingClientRect();
+    liste.scrollLeft += r.left + pinch.fx * r.width - m.x;
+    liste.scrollTop += r.top + pinch.fy * r.height - m.y;
+  }, { passive: false });
+  const pinchLos = (e) => {
+    if (!pinch || e.touches.length >= 2) return;
+    pinch = null;
+    pinchEnde = Date.now();
+    nachschaerfen();
+  };
+  liste.addEventListener('touchend', pinchLos);
+  liste.addEventListener('touchcancel', pinchLos);
+  let scrollPause = null;
+  liste.addEventListener('scroll', () => {
+    if (zoom <= 1.2) return;
+    clearTimeout(scrollPause);
+    scrollPause = setTimeout(nachschaerfen, 250);
+  }, { passive: true });
+  // iPhone: eigenes Zoomen der ganzen Seite verhindern
+  const gesteStopp = (e) => e.preventDefault();
+  view.addEventListener('gesturestart', gesteStopp);
+  view.addEventListener('gesturechange', gesteStopp);
+
   return new Promise((resolve) => {
     const zu = (ergebnis) => {
       offen = false;
       beobachter.disconnect();
+      clearTimeout(scrollPause);
       view.remove();
       urls.forEach((u) => URL.revokeObjectURL(u));
       doc.schliessen();
       resolve(ergebnis);
     };
     $('.ps-zu', view).onclick = () => zu(null);
-    $$('.ps-seite', view).forEach((el) => {
-      el.onclick = async () => {
-        const s = Number(el.dataset.s);
-        if (await onSeite(s)) zu(s);
-      };
-    });
+    if (onSeite) {
+      seiten.forEach((el) => {
+        el.onclick = async () => {
+          if (Date.now() - pinchEnde < 500) return;
+          const s = Number(el.dataset.s);
+          if (await onSeite(s)) zu(s);
+        };
+      });
+    }
   });
 }
 
