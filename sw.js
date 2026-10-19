@@ -1,6 +1,6 @@
 // Offline-Betrieb: die App-Dateien kommen aus dem Cache und werden im
 // Hintergrund aktualisiert. Anfragen an GitHub laufen nie über den Cache.
-const CACHE = 'tagesberichte-v92';
+const CACHE = 'tagesberichte-v94';
 const SHELL = [
   './',
   'index.html',
@@ -13,6 +13,7 @@ const SHELL = [
   'pdf.js',
   'stunden.js',
   'urlaub.js',
+  'zeitplan.js',
   'i18n.js',
   'translate.js',
   'fachwoerter.js',

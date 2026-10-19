@@ -12,6 +12,7 @@ import { SPRACHEN } from './i18n.js';
 import { planReportId } from './plaene.js';
 import { urlaubLokal, urlaubLokalSpeichern } from './urlaub.js';
 import { abrechnungLokal, abrechnungLokalSpeichern, abrechnungMischen } from './abrechnung.js';
+import { zeitplanLokal, zeitplanLokalSpeichern, zeitplanMischen } from './zeitplan.js';
 
 const FELDNAMEN = { taetigkeiten: 'Ausgeführte Arbeiten', material: 'Material und Geräte', bemerkungen: 'Bemerkungen' };
 
@@ -576,6 +577,40 @@ export async function abrechnungAbgleichen(settings) {
   return false;
 }
 
+// ---------- Baustellen-Zeitplan (nur Administrator) ----------
+// Eine Datei für alle Admin-Handys: planung/zeitplan.json { auftraege: { id: auftrag } }
+
+const ZEITPLAN_PATH = 'planung/zeitplan.json';
+
+export async function zeitplanAbgleichen(settings) {
+  const gh = client(settings);
+  for (let versuch = 0; versuch < 3; versuch++) {
+    const lokal = zeitplanLokal();
+    const remote = await getJson(gh, settings, ZEITPLAN_PATH);
+    const vorher = remote?.data?.auftraege || {};
+    const gemischt = zeitplanMischen(vorher, lokal.auftraege);
+    const geaendert = Object.entries(gemischt).some(([id, a]) => (vorher[id]?.updatedAt || 0) !== (a.updatedAt || 0));
+    if (lokal.ausstehend && geaendert) {
+      const text = `${JSON.stringify({ aktualisiert: new Date().toISOString(), auftraege: gemischt }, null, 2)}\n`;
+      const body = { message: 'Baustellen-Zeitplan aktualisiert', content: await blobToBase64(new Blob([text])), branch: settings.branch };
+      if (remote) body.sha = remote.sha;
+      try {
+        await gh(contentsPath(ZEITPLAN_PATH), { method: 'PUT', body });
+      } catch (err) {
+        // Ein anderes Admin-Handy hat gleichzeitig geschrieben: neu lesen und noch einmal
+        if ((err.status === 409 || err.status === 422) && versuch < 2) continue;
+        throw err;
+      }
+    }
+    // Was während des Abgleichs auf dem Handy geändert wurde, bleibt zum Hochladen vorgemerkt.
+    const jetzt = zeitplanLokal();
+    const nochOffen = Object.entries(jetzt.auftraege).some(([id, a]) => (a.updatedAt || 0) > (gemischt[id]?.updatedAt || 0));
+    zeitplanLokalSpeichern({ auftraege: zeitplanMischen(gemischt, jetzt.auftraege), ausstehend: nochOffen });
+    return true;
+  }
+  return false;
+}
+
 // ---------- Geräte: wer hat die App eingerichtet? ----------
 // Jedes Handy legt stammdaten/geraete/<name>_<id>.json an und schreibt die Datei
 // nur neu, wenn sich Name, Version, Sprache oder Installation ändern.
@@ -942,6 +977,11 @@ export function syncAll(settings, onProgress, { alle = false } = {}) {
         await abrechnungAbgleichen(settings);
       } catch (err) {
         abrechnungError = err.message;
+      }
+      try {
+        await zeitplanAbgleichen(settings);
+      } catch (err) {
+        abrechnungError ||= `Zeitplan: ${err.message}`;
       }
     }
     const pending = (await db.allReports()).filter((r) => r.dirty);

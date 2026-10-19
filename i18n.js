@@ -251,6 +251,11 @@ const ROWS = [
   ['Krank', 'Choroba', 'Boală', 'Боледување', 'Sëmurë'],
   ['Feiertag', 'Święto', 'Sărbătoare', 'Празник', 'Festë'],
   ['Berufsschule', 'Szkoła zawodowa', 'Școală profesională', 'Стручно училиште', 'Shkollë profesionale'],
+  // Personal: Gewerk und Berufsschultag (Baustellen-Zeitplan)
+  ['Gewerk', 'Branża', 'Meserie', 'Занает', 'Zanati'],
+  ['Ohne', 'Brak', 'Fără', 'Без', 'Pa'],
+  ['Berufsschultag', 'Dzień szkoły zawodowej', 'Ziua de școală profesională', 'Ден во стручно училиште', 'Dita e shkollës profesionale'],
+  ['Keiner', 'Brak', 'Niciuna', 'Нема', 'Asnjë'],
   ['Ohne Baustelle', 'Bez budowy', 'Fără șantier', 'Без градилиште', 'Pa kantier'],
 
   // Einstellungen (was Mitarbeiter brauchen)

@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.59.0**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.61.0**.
 
 | Was | Wo |
 | --- | --- |
@@ -34,7 +34,7 @@ Ist der Token einmal eingetragen, sind die GitHub-Felder gesperrt, damit niemand
 
 Im Reiter **Berichte** startet das Plus unten rechts einen neuen Bericht. Er beginnt leer und wird erst mit **Speichern** festgehalten; **Abbrechen** verwirft alles, auch neue Fotos und Markierungen.
 
-1. **Baustelle wählen:** aus der Liste oder als Freitext („Nur in diesem Bericht“), z. B. für kleine Aufträge, die nicht in die Baustellen-Liste sollen. Beim Tippen im Freitext-Feld (und beim Namen einer neuen Baustelle) schlägt die App passende gespeicherte Baustellen vor; Groß- und Kleinschreibung und Akzente spielen keine Rolle, auch Teile von Name oder Adresse genügen. Antippen übernimmt die gespeicherte Baustelle.
+1. **Baustelle wählen:** aus der Liste oder als Freitext („Nur in diesem Bericht“), z. B. für kleine Aufträge, die nicht in die Baustellen-Liste sollen. Beim Tippen im Freitext-Feld (und beim Namen einer neuen Baustelle) schlägt die App passende Baustellen vor: gespeicherte und (im Freitext-Feld) auch solche, die nur als Freitext in früheren Berichten auf diesem Handy stehen; Groß- und Kleinschreibung und Akzente spielen keine Rolle, auch Teile von Name oder Adresse genügen. Antippen übernimmt die Baustelle.
 2. **Art wählen:** Tagesbericht oder Rapport (Regie- oder Pauschalarbeit für den Bauherrn).
 3. **Art der Arbeit:** Gerüstbau, Putz, Malerarbeiten, Trockenbau (mehrere möglich) plus Freitext.
 4. **Personal:** Personen aus der Liste hinzufügen, jeweils mit Kategorie (Meister, Facharbeiter, Helfer, Lehrling, Büro), Beginn, Ende und Pause. Die Minuten von Beginn und Ende werden auf 5-Minuten-Schritte gerundet; die erste Person startet mit 7:00 bis 16:00, weitere Personen übernehmen die Zeiten der ersten.
@@ -115,7 +115,13 @@ Zoomen mit zwei Fingern oder dem Mausrad, Verschieben mit zwei Fingern (am Compu
 
 **Baustellen:** Liste aller Baustellen mit Adresse. Anlegen und ändern darf jeder; fertige Baustellen werden oben als abgeschlossen markiert und wandern nach unten. Löschen darf nur der Admin. Auf der Seite einer Baustelle stehen ihre Berichte, der Knopf für die Zusammenfassung und **Pläne und Dokumente**: PDF-Pläne, Bilder oder andere Dateien bis 25 MB anhängen (nachdem die Baustelle gespeichert ist). Sie kommen beim Abgleich auf alle Handys (im Repo unter stammdaten/plaene/). Anhängen darf jeder, entfernen nur der Admin.
 
-**Personal:** In den Einstellungen unter „Personal verwalten“: Name und Kategorie (Meister, Facharbeiter, Helfer, Lehrling, Büro). Anlegen darf jeder, löschen nur der Admin.
+**Zeitplan (nur Admin):** Oben im Reiter Baustellen schaltet „Liste | Zeitplan“ um. Ein Auftrag ist eine Baustelle oder „Nur Gerüst“ für Fremdgewerke. Beim Anlegen wählst du eine Vorlage (Nur Gerüst, WDVS, Fassade, Innenputz, Trockenbau, Maler oder leer) und den Beginn; daraus entstehen Abschnitte mit Gewerk, Von/Bis, Leuten (Stunden pro Tag) und Material mit der KW, in der es da sein muss. Ein Abschnitt kann auch „Ohne Personal“ sein (z. B. Trocknen) oder Gerüst auf- bzw. abbauen.
+
+Die Ansicht zeigt einen Balkenplan pro Woche (KW) oder pro Tag. Ein Auftrag lässt sich mit −1/+1 Woche verschieben; mit „Folgende mitverschieben“ wandern die späteren Abschnitte mit. Bei Gerüst-Aufträgen rechnet die App die Standzeit zwischen Aufbau und Abbau selbst und zeigt, wie viele Wochen über der Grundstandzeit (Vorgabe 4 Wochen) liegen.
+
+**Plantafel und Auslastung:** Die Plantafel zeigt je Person und Woche die eingeplanten Stunden. Die Auslastung zeigt pro Woche geplante gegen freie Stunden je Gewerk, die m² Gerüst draußen und das Material der Woche. Gerechnet wird mit 8 Stunden pro Arbeitstag ohne Wochenenden und Feiertage. Genehmigter Urlaub und Betriebsurlaub zählen nicht als frei, der Berufsschultag eines Lehrlings ebenfalls nicht, Büro-Personen gar nicht. Rot markiert wird, wer im Urlaub eingeplant ist oder an einem Tag mehr als 8 Stunden hat. Der Plan liegt im Repo unter planung/zeitplan.json.
+
+**Personal:** In den Einstellungen unter „Personal verwalten“: Name und Kategorie (Meister, Facharbeiter, Helfer, Lehrling, Büro), dazu das Gewerk (Putz, Maler, Trockenbau, Gerüstbau oder ohne) für den Zeitplan und bei Lehrlingen der Berufsschultag. Anlegen darf jeder, löschen nur der Admin.
 
 Baustellen und Personal werden über das Repo auf allen Handys gleich gehalten. Bei gleichzeitigen Änderungen gewinnt die neuere.
 
@@ -146,6 +152,8 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 **Abgerechnet:** Admins sehen bei jedem Rapport in der Berichtsliste einen Schieber „Abgerechnet“. Antippen schaltet ihn um, ohne den Rapport zu öffnen. Denselben Schieber gibt es unten in der PDF-Vorschau eines Rapports und einer Zusammenfassung; dort markiert er alle Rapporte im PDF auf einmal. In der Zusammenfassung lässt sich nach „Offen“ oder „Abgerechnet“ filtern. Der Merker gilt auf allen Admin-Handys (im Repo unter abrechnung/abgerechnet.json); die Mitarbeiter sehen ihn nicht, und am Rapport selbst ändert sich nichts.
 
+**Baustellen-Zeitplan:** Nur Admins sehen unter Baustellen den Zeitplan mit Plantafel und Auslastung (siehe oben). Er wird nur zwischen Admin-Handys abgeglichen; Mitarbeiter sehen ihn noch nicht.
+
 ## Updates, Datenschutz und Grenzen
 
 **Updates kommen von selbst:** Beim Öffnen lädt die App eine neue Version im Hintergrund und lädt sich neu, sobald niemand gerade einen Bericht bearbeitet. Die Version steht unten in den Einstellungen. Dort öffnet „Handbuch zur App“ dieses Handbuch direkt in der App, auch ohne Netz (immer auf Deutsch).
@@ -162,6 +170,8 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 19.10.2026 | 1.61.0 | Baustellen: Zeitplan für Admins mit Abschnitten, Gewerken, Nur-Gerüst-Aufträgen mit Standzeit, Vorlagen, Verschieben, Plantafel und wöchentlicher Auslastung. Personal: Gewerk und Berufsschultag. |
+| 16.10.2026 | 1.60.0 | Baustellen-Vorschläge auch aus früheren Berichten (Freitext-Baustellen, die nicht gespeichert sind) |
 | 16.10.2026 | 1.59.0 | Berichte: Beim Eintippen einer Baustelle werden passende gespeicherte Baustellen vorgeschlagen |
 | 09.10.2026 | 1.58.0 | Stunden: Büro-Mitarbeiter haben Arbeitsstätte Büro voreingestellt, Art der Arbeit immer Büro |
 | 09.10.2026 | 1.57.0 | Stunden: Monats-PDF mit den Stunden aller Mitarbeiter für Admins (ohne Admin-Stunden); neue Personal-Kategorie Büro |
