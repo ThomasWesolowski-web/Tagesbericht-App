@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.64.1**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.65.0**.
 
 | Was | Wo |
 | --- | --- |
@@ -113,7 +113,7 @@ Zoomen mit zwei Fingern oder dem Mausrad, Verschieben mit zwei Fingern (am Compu
 
 **Urlaub:** Unter Stunden schaltet oben „Stunden | Urlaub“ auf den Urlaubskalender um. Er zeigt den Monat mit Kalenderwochen, Wochenenden und den gesetzlichen Feiertagen in Baden-Württemberg (rot, darunter mit Namen). Zum Beantragen den ersten Urlaubstag antippen, dann den letzten, oder den Knopf „Urlaub beantragen“ mit Von und Bis nehmen; die App zählt die Arbeitstage ohne Wochenenden und Feiertage. Ein Antrag ist erst gelb (Beantragt), nach der Entscheidung grün (Genehmigt) oder durchgestrichen (Abgelehnt). Solange er offen ist, kann man ihn zurückziehen. Jeder Antrag liegt als eigene Datei im Repo unter urlaub/; ohne Netz geht er beim nächsten Abgleich raus. Mitarbeiter sehen nur ihren eigenen Urlaub und den Betriebsurlaub (blau). Über eine Entscheidung informieren eine Meldung beim Abgleich und eine rote Zahl am Reiter Stunden. Genehmigter Urlaub wird von selbst für jeden Arbeitstag als „Urlaub“ in den Stundennachweis des Mitarbeiters eingetragen; löscht ein Admin den Urlaub wieder, verschwinden die Tage auch dort.
 
-**Baustellen:** Liste aller Baustellen mit Adresse. Anlegen und ändern darf jeder; fertige Baustellen werden oben als abgeschlossen markiert und wandern nach unten. Löschen darf nur der Admin. Auf der Seite einer Baustelle stehen ihre Berichte, der Knopf für die Zusammenfassung und **Pläne und Dokumente**: PDF-Pläne, Bilder oder andere Dateien bis 25 MB anhängen (nachdem die Baustelle gespeichert ist). Sie kommen beim Abgleich auf alle Handys (im Repo unter stammdaten/plaene/). Anhängen darf jeder, entfernen nur der Admin. Einen Plan antippen öffnet ihn zum Verschieben und Zoomen. Bei PDFs mit mehreren Seiten stehen alle Seiten untereinander zum Durchblättern; mit zwei Fingern wird direkt hineingezoomt, nach dem Zoomen werden die sichtbaren Seiten schärfer nachgezeichnet.
+**Baustellen:** Liste aller Baustellen mit Adresse. Anlegen und ändern darf jeder; fertige Baustellen werden oben als abgeschlossen markiert und wandern nach unten. Löschen darf nur der Admin. Auf der Seite einer Baustelle stehen ihre Berichte, der Knopf für die Zusammenfassung und **Pläne und Dokumente**: PDF-Pläne, Bilder oder andere Dateien bis 25 MB anhängen (nachdem die Baustelle gespeichert ist). Sie kommen beim Abgleich auf alle Handys (im Repo unter stammdaten/plaene/). Anhängen darf jeder, entfernen nur der Admin. Einen Plan antippen öffnet ihn zum Verschieben und Zoomen. Bei PDFs mit mehreren Seiten stehen alle Seiten untereinander zum Durchblättern; mit zwei Fingern wird direkt hineingezoomt, nach dem Zoomen werden die sichtbaren Seiten schärfer nachgezeichnet. Excel-Dateien (.xlsx) und CSV-Dateien zeigt die App direkt als Tabelle an, mit allen Tabellenblättern; vergrößern mit zwei Fingern oder + und −. Andere Dateien (z. B. Word oder alte .xls-Dateien) öffnet der Knopf „In anderer App öffnen“, z. B. mit Excel oder Numbers; das gilt auch für Anhänge im Bericht.
 
 **Zeitplan (nur Admin):** Oben im Reiter Baustellen schaltet „Liste | Zeitplan“ um. Ein Auftrag ist eine Baustelle oder „Nur Gerüst“ für Fremdgewerke. Beim Anlegen wählst du eine Vorlage (Nur Gerüst, WDVS, Fassade, Innenputz, Trockenbau, Maler oder leer) und den Beginn; daraus entstehen Abschnitte mit Gewerk, Von/Bis, Leuten (Stunden pro Tag) und Material mit der KW, in der es da sein muss. Ein Abschnitt kann auch „Ohne Personal“ sein (z. B. Trocknen) oder Gerüst auf- bzw. abbauen.
 
@@ -172,6 +172,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 19.10.2026 | 1.65.0 | Excel- und CSV-Dateien an Baustellen und Berichten werden in der App als Tabelle angezeigt; andere Dateien über „In anderer App öffnen“. |
 | 19.10.2026 | 1.64.1 | Mehrseitige PDFs: direkt in der Seitenliste mit zwei Fingern zoomen, ohne Seite erst antippen zu müssen. |
 | 19.10.2026 | 1.64.0 | Mehrseitige PDFs an Baustellen: alle Seiten untereinander zum Durchblättern statt der Frage „Welche Seite?“; auch beim Markieren im Bericht wird die Seite angetippt. |
 | 19.10.2026 | 1.63.0 | Personal: Warnung, wenn eine Person mit gleichem Namen (auch vertauscht) schon existiert; im Bericht wird die vorhandene ausgewählt. |

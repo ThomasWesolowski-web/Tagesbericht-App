@@ -16,6 +16,7 @@ import {
 } from './sync.js';
 import { startI18n, SPRACHEN } from './i18n.js';
 import { openMarkup } from './markup.js';
+import { istTabelle, istAltesExcel, tabelleLesen, MAX_ZEILEN, MAX_SPALTEN } from './tabelle.js';
 import { planReportId, planTauglich, istPdf, pdfSeiten, pdfDokument, planQuelle, formenSkalieren, pinNummern } from './plaene.js';
 import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from './fotoaufmass.js';
 import { raumKurz } from './raumgeometrie.js';
@@ -30,7 +31,7 @@ import {
   planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
 } from './zeitplan.js';
 
-const APP_VERSION = '1.64.1';
+const APP_VERSION = '1.65.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -1440,6 +1441,13 @@ function openFile(file) {
     lb.onclick = () => { lb.hidden = true; lb.innerHTML = ''; };
     return;
   }
+  // Excel, Word & Co.: in der installierten App führt ein Download-Link auf dem iPhone ins Leere,
+  // deshalb eine eigene Ansicht (Tabellen direkt lesbar) mit „In anderer App öffnen“
+  if (!istPdf(file)) { dateiAnsicht(file); return; }
+  dateiHerunterladen(file);
+}
+
+function dateiHerunterladen(file) {
   const a = document.createElement('a');
   a.href = objectUrl(file.blob);
   a.download = file.name;
@@ -1448,6 +1456,96 @@ function openFile(file) {
   document.body.appendChild(a);
   a.click();
   a.remove();
+}
+
+// Datei an eine andere App weitergeben (iPhone/Android: Teilen-Menü, z. B. Excel oder Numbers)
+async function dateiWeitergeben(file) {
+  const f = new File([file.blob], file.name, { type: file.type || 'application/octet-stream' });
+  if (navigator.canShare?.({ files: [f] })) {
+    try { await navigator.share({ files: [f], title: file.name }); } catch (e) { if (e.name !== 'AbortError') toast('Öffnen hat nicht geklappt.'); }
+    return;
+  }
+  dateiHerunterladen(file);
+}
+
+async function dateiAnsicht(file) {
+  const tabelle = istTabelle(file);
+  const view = document.createElement('div');
+  view.className = 'pdf-view tab-view';
+  view.innerHTML = `
+    <header><button type="button" class="icon-btn" id="tabv-zu" aria-label="Zurück">${ICON.back}</button>
+      <div><b>${esc(file.name)}</b><small>${esc(formatBytes(file.size || file.blob.size))}</small></div>
+      ${tabelle ? '<div class="pdfv-zoom"><button type="button" data-z="-1" aria-label="Verkleinern">−</button><button type="button" data-z="1" aria-label="Vergrößern">+</button></div>' : ''}</header>
+    <div class="tab-blaetter" hidden></div>
+    <div class="tab-inhalt"><p class="hint tab-meldung">${tabelle ? 'Wird geladen …' : istAltesExcel(file)
+      ? 'Diese ältere Excel-Datei (.xls) kann die App nicht selbst anzeigen. Unten auf „In anderer App öffnen“ tippen, z. B. mit Excel oder Numbers.'
+      : 'Diese Datei kann die App nicht selbst anzeigen. Unten auf „In anderer App öffnen“ tippen.'}</p></div>
+    <footer><button type="button" class="btn primary block" id="tabv-teilen">${ICON.share} In anderer App öffnen</button></footer>`;
+  document.body.appendChild(view);
+  document.body.classList.add('no-scroll');
+  $('#tabv-zu', view).onclick = () => { view.remove(); document.body.classList.remove('no-scroll'); };
+  $('#tabv-teilen', view).onclick = () => dateiWeitergeben(file);
+  if (!tabelle) return;
+  const inhalt = $('.tab-inhalt', view);
+  let blaetter;
+  try {
+    blaetter = await tabelleLesen(file);
+  } catch (err) {
+    $('.tab-meldung', view).textContent = `Die Tabelle lässt sich nicht anzeigen (${err.message}). Unten auf „In anderer App öffnen“ tippen.`;
+    return;
+  }
+  const buchstabe = (i) => { let s = ''; for (i += 1; i > 0; i = Math.floor((i - 1) / 26)) s = String.fromCharCode(65 + ((i - 1) % 26)) + s; return s; };
+  const zeigen = (b) => {
+    const breite = Math.max(1, ...b.zeilen.map((z) => z.length));
+    inhalt.innerHTML = b.zeilen.length
+      ? `<table class="tab-tabelle"><thead><tr><th></th>${Array.from({ length: breite }, (_, i) => `<th>${buchstabe(i)}</th>`).join('')}</tr></thead>
+        <tbody>${b.zeilen.map((z, r) => `<tr><th>${r + 1}</th>${Array.from({ length: breite }, (_, i) => `<td>${esc(z[i] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table>
+        ${b.gekuerzt ? `<p class="hint tab-meldung">Die Tabelle ist sehr groß; gezeigt werden die ersten ${MAX_ZEILEN} Zeilen und ${MAX_SPALTEN} Spalten. Alles: „In anderer App öffnen“.</p>` : ''}`
+      : '<p class="hint tab-meldung">Dieses Blatt ist leer.</p>';
+    inhalt.scrollTo(0, 0);
+  };
+  if (blaetter.length > 1) {
+    const leiste = $('.tab-blaetter', view);
+    leiste.hidden = false;
+    leiste.innerHTML = blaetter.map((b, i) => `<button type="button" class="chip" data-i="${i}" aria-pressed="${i === 0}">${esc(b.name)}</button>`).join('');
+    $$('.chip', leiste).forEach((c) => {
+      c.onclick = () => {
+        $$('.chip', leiste).forEach((x) => x.setAttribute('aria-pressed', String(x === c)));
+        zeigen(blaetter[Number(c.dataset.i)]);
+      };
+    });
+  }
+  zeigen(blaetter[0]);
+  // Größe: Knöpfe oder zwei Finger; der Punkt zwischen den Fingern bleibt ungefähr stehen
+  let groesse = 13;
+  const groesseSetzen = (g, mx = inhalt.clientWidth / 2, my = inhalt.clientHeight / 2) => {
+    const neu = Math.min(40, Math.max(6, g));
+    const f = neu / groesse;
+    const x = (inhalt.scrollLeft + mx) * f - mx;
+    const y = (inhalt.scrollTop + my) * f - my;
+    groesse = neu;
+    inhalt.style.fontSize = `${neu}px`;
+    inhalt.scrollLeft = x;
+    inhalt.scrollTop = y;
+  };
+  $$('.pdfv-zoom button', view).forEach((b) => { b.onclick = () => groesseSetzen(groesse * (b.dataset.z === '1' ? 1.25 : 0.8)); });
+  let pinch = null;
+  const abstand = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY) || 1;
+  inhalt.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 2) return;
+    e.preventDefault();
+    pinch = { d0: abstand(e.touches), g0: groesse };
+  }, { passive: false });
+  inhalt.addEventListener('touchmove', (e) => {
+    if (!pinch || e.touches.length !== 2) return;
+    e.preventDefault();
+    const r = inhalt.getBoundingClientRect();
+    const mx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left;
+    const my = (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top;
+    groesseSetzen(pinch.g0 * (abstand(e.touches) / pinch.d0), mx, my);
+  }, { passive: false });
+  inhalt.addEventListener('touchend', (e) => { if (e.touches.length < 2) pinch = null; });
+  view.addEventListener('gesturestart', (e) => e.preventDefault());
 }
 
 // Bericht als PDF mit eingebauten Fotos teilen (Mail, WhatsApp …).
