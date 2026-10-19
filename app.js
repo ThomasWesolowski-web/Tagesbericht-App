@@ -30,7 +30,7 @@ import {
   planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
 } from './zeitplan.js';
 
-const APP_VERSION = '1.61.0';
+const APP_VERSION = '1.62.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -70,6 +70,27 @@ startI18n(settings.lang || 'de');
       // Safari zieht die Seite nach dem Schließen der Tastatur nicht immer zurück
       window.scrollTo(window.scrollX, window.scrollY);
     }, 100);
+  });
+})();
+
+// Antippen eines ausgefüllten Feldes markiert den Inhalt, damit man gleich drüberschreiben kann
+// (Tomeks Wunsch 1.62.0). Nur einzeilige Felder, keine Freitexte (textarea). Ein zweites Antippen
+// setzt wie gewohnt den Cursor. Safari hebt die Markierung beim Loslassen wieder auf, deshalb
+// das Loslassen direkt nach dem Antippen abfangen und erst danach markieren.
+(() => {
+  const markierbar = (el) => el?.matches?.('input[type=text], input[type=number], input[type=search], input[type=tel], input[type=email], input[type=url], input:not([type])') && !el.readOnly && !el.disabled;
+  const markieren = (el) => {
+    if (document.activeElement !== el || !el.value) return;
+    try { el.setSelectionRange(0, el.value.length); } catch { el.select(); }
+  };
+  window.addEventListener('focusin', (e) => {
+    const el = e.target;
+    if (!markierbar(el) || !el.value) return;
+    const loslassen = (ev) => ev.preventDefault();
+    el.addEventListener('mouseup', loslassen, { once: true });
+    setTimeout(() => el.removeEventListener('mouseup', loslassen), 500);
+    setTimeout(() => markieren(el), 0);
+    setTimeout(() => markieren(el), 80);
   });
 })();
 let objectUrls = [];

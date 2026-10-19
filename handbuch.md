@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.61.0**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.62.0**.
 
 | Was | Wo |
 | --- | --- |
@@ -135,6 +135,8 @@ Baustellen und Personal werden über das Repo auf allen Handys gleich gehalten. 
 
 **Ansicht:** In den Einstellungen unter Allgemein wählst du „Automatisch“ (wie das Handy oder der Computer eingestellt ist), „Hell“ oder „Dunkel“. Die Wahl gilt nur für dieses Gerät und gilt sofort, auch in der Desktop-Version im Browser.
 
+**Felder überschreiben:** Tippst du in ein einzeiliges Feld, in dem schon etwas steht (Name, Zahl, Fläche usw.), ist der Inhalt gleich markiert und wird beim Tippen ersetzt. Ein zweites Antippen setzt den Cursor wie gewohnt. Lange Freitexte (Notizen, Beschreibungen) werden nicht markiert, damit nichts aus Versehen verloren geht.
+
 ## Administrator
 
 Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anmelden“); beim allerersten Mal legt er die PIN fest. Nur Admins dürfen:
@@ -170,6 +172,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 19.10.2026 | 1.62.0 | Antippen eines ausgefüllten Feldes markiert den Inhalt, damit man ihn gleich überschreiben kann (nicht bei Freitexten). |
 | 19.10.2026 | 1.61.0 | Baustellen: Zeitplan für Admins mit Abschnitten, Gewerken, Nur-Gerüst-Aufträgen mit Standzeit, Vorlagen, Verschieben, Plantafel und wöchentlicher Auslastung. Personal: Gewerk und Berufsschultag. |
 | 16.10.2026 | 1.60.0 | Baustellen-Vorschläge auch aus früheren Berichten (Freitext-Baustellen, die nicht gespeichert sind) |
 | 16.10.2026 | 1.59.0 | Berichte: Beim Eintippen einer Baustelle werden passende gespeicherte Baustellen vorgeschlagen |
