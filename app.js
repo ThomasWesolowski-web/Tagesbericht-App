@@ -24,8 +24,13 @@ import {
   STATUS, feiertageBW, feiertag, istWochenende, arbeitstage, monatsRaster, neuerAntrag, zeitraumText, plusTage,
   urlaubLokal, urlaubLokalSpeichern, antragMerken, gehoertZu, arbeitstageOhneBetrieb,
 } from './urlaub.js';
+import {
+  GEWERK_REIHE, gewerkVon, gewerkKurz, gewerkFarbe, TAGE_KURZ, montagVon, kurzDatum, istArbeitstag, tageZwischen, plusArbeitstage, naechsterArbeitstag,
+  arbeitstageIn, neuerAbschnitt, neuerAuftrag, VORLAGEN, abschnitteAusVorlage, abschnitteSortiert, auftragVon, auftragBis, geruestInfo, verschieben,
+  planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
+} from './zeitplan.js';
 
-const APP_VERSION = '1.59.0';
+const APP_VERSION = '1.61.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -167,7 +172,7 @@ async function route() {
   if (hash !== '#/einstellungen') syncEntsperrt = false;
   $$('.tabbar a[data-tab]').forEach((a) => a.classList.toggle('active',
     (a.dataset.tab === 'list' && hash === '#/')
-    || (a.dataset.tab === 'sites' && hash.startsWith('#/baustelle'))
+    || (a.dataset.tab === 'sites' && (hash.startsWith('#/baustelle') || hash.startsWith('#/zeitplan')))
     || (a.dataset.tab === 'hours' && (hash === '#/stunden' || hash === '#/urlaub'))
     || (a.dataset.tab === 'aufmass' && hash === '#/aufmass')
     || (a.dataset.tab === 'settings' && (hash === '#/einstellungen' || hash === '#/personal' || hash === '#/handbuch'))));
@@ -194,7 +199,10 @@ function seiteZeigen(hash) {
   if (m) return renderEditor(decodeURIComponent(m[1]));
   const site = /^#\/baustelle\/(.+)$/.exec(hash);
   if (site) return renderSiteEditor(decodeURIComponent(site[1]));
+  const auftrag = /^#\/zeitplan\/(.+)$/.exec(hash);
+  if (auftrag) return renderAuftragEditor(decodeURIComponent(auftrag[1]));
   if (hash === '#/baustellen') return renderSites();
+  if (hash === '#/zeitplan') return renderZeitplan();
   if (hash === '#/stunden') return renderStunden();
   if (hash === '#/urlaub') return renderUrlaub();
   if (hash === '#/personal') return renderPeople();
@@ -1620,17 +1628,615 @@ async function renderSites() {
   const stats = await siteStats();
   const active = sites.filter((s) => !s.archived);
   const done = sites.filter((s) => s.archived);
+  const umschalter = isAdmin() ? baustellenUmschalter('liste') : '';
   if (!sites.length) {
-    view.innerHTML = `<div class="empty">
+    view.innerHTML = `${umschalter}<div class="empty">
         <h2>Noch keine Baustellen</h2>
         <p>Lege deine Baustellen einmal an. Beim Bericht wählst du sie dann nur noch aus.</p>
         <a class="btn primary" href="#/baustelle/neu">${ICON.plus} Neue Baustelle</a></div>`;
+    baustellenUmschalterBinden();
     return;
   }
-  view.innerHTML = `
+  view.innerHTML = `${umschalter}
     <a class="btn soft block" href="#/baustelle/neu" style="margin:6px 0 14px">${ICON.plus} Neue Baustelle</a>
     ${active.length ? `<div class="month"><span>Aktiv</span><span>${active.length}</span></div><div class="card-list">${active.map((s) => siteCard(s, stats.get(s.id))).join('')}</div>` : ''}
     ${done.length ? `<div class="month"><span>Abgeschlossen</span><span>${done.length}</span></div><div class="card-list">${done.map((s) => siteCard(s, stats.get(s.id))).join('')}</div>` : ''}`;
+  baustellenUmschalterBinden();
+}
+
+// ---------- Baustellen-Zeitplan (nur Administrator) ----------
+// Reiter Baustellen › Zeitplan: Aufträge mit Abschnitten als Balken über die Kalenderwochen
+// (oder Tage), Plantafel je Person und Wochen-Auslastung. Rechnung in zeitplan.js.
+
+const ZP_WOCHEN = 8;
+const ZP_PX = 52 / 7; // eine Woche = 52 px
+let zpAnsicht = 'baustellen';
+let zpRaster = 'kw';
+let zpStart = montagVon(today());
+let zpTagWoche = montagVon(today());
+let zpWoche = 0;
+let zpFolgende = true;
+
+const baustellenUmschalter = (aktiv) => `<div class="seg" id="bs-ansicht" role="radiogroup" aria-label="Ansicht">
+    <button type="button" role="radio" data-ziel="#/baustellen" aria-checked="${aktiv === 'liste'}">Liste</button>
+    <button type="button" role="radio" data-ziel="#/zeitplan" aria-checked="${aktiv === 'zeitplan'}">Zeitplan</button>
+  </div>`;
+function baustellenUmschalterBinden() {
+  $$('#bs-ansicht [data-ziel]').forEach((b) => {
+    b.onclick = () => { if (location.hash !== b.dataset.ziel) location.replace(b.dataset.ziel); };
+  });
+}
+
+const zpTon = (p) => (p > 100 ? 'var(--danger)' : p >= 85 ? 'var(--ok)' : p >= 60 ? 'var(--warn)' : 'var(--ink-3)');
+const zpWort = (p) => (p > 100 ? 'überbucht' : p >= 85 ? 'gut ausgelastet' : p >= 60 ? 'noch Luft' : 'viel Luft');
+const zpProzent = (p) => (p >= 999 ? '–' : `${p} %`);
+const zpZahl = (n) => Number(n || 0).toLocaleString('de-DE', { maximumFractionDigits: 1 });
+const zpName = (a) => a.baustelle || 'Ohne Baustelle';
+// Kürzel für die Plantafel: Anfangsbuchstaben der ersten drei Wörter (MFH Seestraße → MS)
+const zpKuerzel = (a) => (zpName(a).split(/[^A-Za-zÄÖÜäöüß0-9]+/).filter(Boolean).slice(0, 3).map((w) => w[0]).join('') || '?').toUpperCase();
+function zpKw(mo) {
+  return `KW ${kw(mo)}`;
+}
+
+function zpBalkenTeile(a) {
+  const teile = abschnitteSortiert(a).filter((x) => x.von && x.bis);
+  const g = geruestInfo(a);
+  // Nur Gerüst: die Standzeit als eigener (gestreifter) Teil zwischen Auf- und Abbau
+  if (a.art === 'geruest' && g && g.tage > 0) {
+    const i = teile.findIndex((x) => x.typ === 'ab');
+    teile.splice(i < 0 ? teile.length : i, 0, { id: 'stand', name: 'Standzeit', typ: 'stand', von: g.standVon, bis: g.standBis, leute: [] });
+  }
+  return teile;
+}
+
+function zpClip(von, bis, start) {
+  const a = Math.max(0, tageZwischen(start, von));
+  const b = Math.min(ZP_WOCHEN * 7, tageZwischen(start, bis) + 1);
+  return b > a ? { l: a * ZP_PX, w: (b - a) * ZP_PX } : null;
+}
+
+async function renderZeitplan() {
+  if (!isAdmin()) {
+    location.replace('#/baustellen');
+    return;
+  }
+  appbar.innerHTML = '<h1>Baustellen</h1>';
+  const people = await db.allPeople();
+  const auftraege = alleAuftraege();
+  const ansichten = [['baustellen', 'Baustellen'], ['personal', 'Personal'], ['auslastung', 'Auslastung']];
+  let inhalt = '';
+  if (zpAnsicht === 'baustellen' && zpRaster === 'tag') inhalt = zpTagHtml(auftraege, people);
+  else if (zpAnsicht === 'baustellen') inhalt = zpGanttHtml(auftraege, people);
+  else if (zpAnsicht === 'personal') inhalt = zpPersonalHtml(auftraege, people);
+  else inhalt = zpAuslastungHtml(auftraege, people);
+  view.innerHTML = `
+    ${baustellenUmschalter('zeitplan')}
+    <div class="seg three" id="zp-ansicht" role="radiogroup" aria-label="Zeitplan-Ansicht" style="margin-bottom:12px">
+      ${ansichten.map(([id, t]) => `<button type="button" role="radio" data-a="${id}" aria-checked="${zpAnsicht === id}">${t}</button>`).join('')}
+    </div>
+    <a class="btn soft block" href="#/zeitplan/neu" style="margin:0 0 12px">${ICON.plus} Einplanen</a>
+    ${inhalt}`;
+  baustellenUmschalterBinden();
+  $$('#zp-ansicht [data-a]').forEach((b) => { b.onclick = () => { zpAnsicht = b.dataset.a; renderZeitplan(); }; });
+  $$('[data-raster]').forEach((b) => { b.onclick = () => { zpRaster = b.dataset.raster; renderZeitplan(); }; });
+  const nav = (id, fn) => { const b = $(id); if (b) b.onclick = () => { fn(); renderZeitplan(); }; };
+  nav('#zp-prev', () => { zpStart = plusTage(zpStart, -28); });
+  nav('#zp-next', () => { zpStart = plusTage(zpStart, 28); });
+  nav('#zp-heute', () => { zpStart = montagVon(today()); zpTagWoche = zpStart; zpWoche = 0; });
+  nav('#zpt-prev', () => { zpTagWoche = plusTage(zpTagWoche, -7); });
+  nav('#zpt-next', () => { zpTagWoche = plusTage(zpTagWoche, 7); });
+  $$('[data-auftrag]').forEach((el) => { el.onclick = () => zpAuftragZeigen(el.dataset.auftrag); });
+  $$('[data-woche]').forEach((b) => { b.onclick = () => { zpWoche = Number(b.dataset.woche); renderZeitplan(); }; });
+  $('.zp-wochen [aria-pressed="true"]')?.scrollIntoView({ inline: 'center', block: 'nearest' });
+  $$('[data-tagzelle]').forEach((b) => { b.onclick = () => zpTagZeigen(b.dataset.tagzelle, b.dataset.tag, people); });
+  $$('[data-pzelle]').forEach((b) => { b.onclick = () => zpPersonWocheZeigen(b.dataset.pzelle, Number(b.dataset.w), auftraege, people); });
+}
+
+function zpRasterUmschalter() {
+  return `<div class="seg zp-raster" role="radiogroup" aria-label="Zeitraster">
+    <button type="button" role="radio" data-raster="kw" aria-checked="${zpRaster === 'kw'}">KW</button>
+    <button type="button" role="radio" data-raster="tag" aria-checked="${zpRaster === 'tag'}">Tag</button></div>`;
+}
+
+function zpNavHtml(prev, next, titel, unter) {
+  return `<div class="month-nav zp-nav">
+      <button class="icon-btn" id="${prev}" aria-label="Zurück">${ICON.back}</button>
+      <button type="button" class="zp-heute" id="zp-heute"><b>${titel}</b><small>${unter}</small></button>
+      <button class="icon-btn" id="${next}" aria-label="Weiter"><span class="flip">${ICON.back}</span></button>
+    </div>`;
+}
+
+const zpLeer = (text) => `<div class="empty" style="padding:28px 16px"><h2>Noch nichts eingeplant</h2><p style="margin:0">${text}</p></div>`;
+
+function zpGanttHtml(auftraege, people) {
+  const r = planRechnen(auftraege, people, zpStart, ZP_WOCHEN);
+  const kopf = r.wochen.map((w) => `<div class="zp-h"><b>${zpKw(w.montag)}</b>${kurzDatum(w.montag)}</div>`).join('');
+  const zeilen = [...r.aktiv].sort((a, b) => auftragVon(a).localeCompare(auftragVon(b))).map((a) => {
+    const g = geruestInfo(a);
+    const teile = zpBalkenTeile(a);
+    let lane = '';
+    if (g && a.art !== 'geruest') {
+      const c = zpClip(g.von, g.bis, zpStart);
+      if (c) lane += `<div class="zp-gband" style="left:${c.l}px;width:${c.w - 1}px"></div>`;
+    }
+    teile.forEach((t, i) => {
+      const c = zpClip(t.von, t.bis, zpStart);
+      if (!c) return;
+      const vor = teile[i - 1];
+      const nach = teile[i + 1];
+      const erst = !vor || plusTage(vor.bis, 1) < t.von;
+      const letzt = !nach || nach.von > plusTage(t.bis, 1);
+      const kl = ['zp-teil', erst ? 'erst' : '', letzt ? 'letzt' : '', t.typ === 'warten' ? 'warten' : '', t.typ === 'stand' ? 'stand' : '',
+        abschnittKonflikte(t, r).length ? 'konflikt' : ''].filter(Boolean).join(' ');
+      const farbe = t.typ === 'warten' || t.typ === 'stand' ? '' : `background:${gewerkFarbe(t.gewerk)}`;
+      lane += `<div class="${kl}" style="left:${c.l}px;width:${c.w}px;${farbe}" title="${esc(t.name)} ${kurzDatum(t.von)}–${kurzDatum(t.bis)}">${c.w >= 44 ? esc(t.name) : ''}</div>`;
+    });
+    return `<button type="button" class="zp-lbl" data-auftrag="${a.id}"><b>${esc(zpName(a))}</b><small>${a.art === 'geruest' ? '<span class="zp-tag">nur Gerüst</span>' : `${kurzDatum(auftragVon(a))}–${kurzDatum(auftragBis(a))}`}</small></button>
+      <div class="zp-lane" data-auftrag="${a.id}">${lane}</div>`;
+  }).join('');
+  const last = r.wochen.map((w, i) => {
+    const h = Math.max(3, (Math.min(w.prozent, 130) / 130) * 36);
+    return `<div class="zp-lbar" style="left:${i * 52 + 7}px;height:${h}px;background:${zpTon(w.prozent)}"></div><div class="zp-lpct" style="left:${i * 52}px;color:${zpTon(w.prozent)}">${zpProzent(w.prozent)}</div>`;
+  }).join('');
+  return `<div class="section zp-karte">
+    <div class="zp-kopf"><h2>Baustellen</h2>${zpRasterUmschalter()}</div>
+    ${zpNavHtml('zp-prev', 'zp-next', `${zpKw(zpStart)} – ${zpKw(plusTage(zpStart, (ZP_WOCHEN - 1) * 7))}`, 'Antippen: heute')}
+    ${r.aktiv.length ? `<div class="zp-scroll"><div class="zp-gt"><div class="zp-h zp-ecke"></div>${kopf}${zeilen}
+      <div class="zp-lbl zp-fuss"><b>Auslastung</b><small>Plan / verfügbar</small></div><div class="zp-lane zp-last"><div class="zp-100" style="bottom:${6 + 36 * 100 / 130}px"></div>${last}</div>
+    </div></div>
+    <div class="zp-legende">${['Putz', 'Malerarbeiten', 'Trockenbau', 'Gerüstbau'].map((g) => `<span><i style="background:${gewerkFarbe(g)}"></i>${gewerkKurz(g)}</span>`).join('')}
+      <span><i class="warten"></i>Trocknen / ohne Personal</span><span><i class="stand"></i>Gerüst steht</span><span><i class="konflikt"></i>Konflikt</span></div>
+    <p class="hint">Zeile antippen: Abschnitte ansehen, verschieben oder bearbeiten.</p>`
+    : zpLeer('In diesen Wochen ist keine Baustelle eingeplant. Tippe auf „Einplanen“.')}
+  </div>`;
+}
+
+function zpTagHtml(auftraege, people) {
+  const mo = zpTagWoche;
+  const tage = TAGE_KURZ.map((n, i) => ({ n, s: plusTage(mo, i) }));
+  const r = planRechnen(auftraege, people, mo, 1);
+  const zeilen = [...r.aktiv].sort((a, b) => auftragVon(a).localeCompare(auftragVon(b))).map((a) => {
+    const g = geruestInfo(a);
+    const zellen = tage.map(({ s }) => {
+      const ab = abschnitteSortiert(a).find((x) => x.von && x.von <= s && s <= x.bis);
+      if (!istArbeitstag(s)) return `<div class="zp-dc aus"><small>${esc(feiertag(s) || '')}</small></div>`;
+      if (ab?.typ === 'warten') return `<div class="zp-dc warten"><b>${esc(ab.name)}</b></div>`;
+      if (ab) {
+        const konflikt = (ab.leute || []).some((l) => {
+          const p = r.personen.find((x) => x.id === l.personId);
+          return p && r.personTag(p, s).konflikt;
+        });
+        return `<button type="button" class="zp-dc${konflikt ? ' konflikt' : ''}" style="background:${gewerkFarbe(ab.gewerk)}" data-tagzelle="${a.id}" data-tag="${s}"><b>${esc(ab.name)}</b>${(ab.leute || []).length}<small>Pers.</small></button>`;
+      }
+      if (a.art === 'geruest' && g && g.standVon <= s && s <= g.standBis) return '<div class="zp-dc stand"><b>Gerüst</b><small>steht</small></div>';
+      return '<div class="zp-dc leer"></div>';
+    }).join('');
+    return `<button type="button" class="zp-lbl" data-auftrag="${a.id}"><b>${esc(zpName(a))}</b><small>${a.art === 'geruest' ? 'nur Gerüst' : ''}</small></button>${zellen}`;
+  }).join('');
+  const last = tage.map(({ s }) => {
+    const p = istArbeitstag(s) ? r.tagAuslastung(s) : 0;
+    return `<div class="zp-dl" style="color:${zpTon(p)}"><i style="height:${(Math.min(p, 130) / 130) * 28 + 3}px;background:${zpTon(p)}"></i>${istArbeitstag(s) ? zpProzent(p) : ''}</div>`;
+  }).join('');
+  return `<div class="section zp-karte">
+    <div class="zp-kopf"><h2>Baustellen</h2>${zpRasterUmschalter()}</div>
+    ${zpNavHtml('zpt-prev', 'zpt-next', zpKw(mo), `${kurzDatum(mo)}–${kurzDatum(plusTage(mo, 4))}`)}
+    ${r.aktiv.length ? `<div class="zp-dt"><div></div>${tage.map(({ n, s }) => `<div class="zp-h"><b>${n}</b>${kurzDatum(s)}</div>`).join('')}${zeilen}
+      <div class="zp-lbl zp-fuss"><b>Auslastung</b><small>pro Tag</small></div>${last}</div>
+    <p class="hint">Zahl = Personen an dem Tag. Feld antippen: wer ist dort.</p>`
+    : zpLeer('In dieser Woche ist keine Baustelle eingeplant.')}
+  </div>`;
+}
+
+function zpTagZeigen(auftragId, s, people) {
+  const a = alleAuftraege().find((x) => x.id === auftragId);
+  if (!a) return;
+  const ab = abschnitteSortiert(a).find((x) => x.von && x.von <= s && s <= x.bis);
+  const r = planRechnen(alleAuftraege(), people, montagVon(s), 1);
+  const zeilen = (ab?.leute || []).map((l) => {
+    const p = r.personen.find((x) => x.id === l.personId);
+    const k = p ? r.personTag(p, s).konflikt : null;
+    return `<div class="kv"><span>${esc(l.name)}${k ? ` <b class="zp-rot">${k === 'urlaub' ? 'Urlaub' : 'doppelt'}</b>` : ''}</span><b>${zpZahl(l.stunden)} h</b></div>`;
+  }).join('');
+  const { sheet, close } = openSheet(`<h2>${esc(zpName(a))}</h2>
+    <p class="hint" style="margin:-6px 0 12px">${weekday(s)}, ${formatDate(s)} · ${esc(ab?.name || '')}</p>
+    <div class="section">${zeilen || '<p class="hint" style="margin:0">Niemand eingeteilt.</p>'}</div>
+    <div class="attach-actions"><button type="button" class="btn ghost" id="zt-zu">Schließen</button><button type="button" class="btn soft" id="zt-auftrag">Baustelle öffnen</button></div>`);
+  $('#zt-zu', sheet).onclick = close;
+  $('#zt-auftrag', sheet).onclick = () => { close(); setTimeout(() => zpAuftragZeigen(a.id), 220); };
+}
+
+function zpPersonalHtml(auftraege, people) {
+  const r = planRechnen(auftraege, people, zpStart, ZP_WOCHEN);
+  if (!r.personen.length) return `<div class="section">${zpLeer('Lege zuerst unter Einstellungen › Personal deine Leute an und gib ihnen ein Gewerk.')}</div>`;
+  const kopf = r.wochen.map((w) => `<div class="zp-h">${zpKw(w.montag)}</div>`).join('');
+  let zeilen = '';
+  for (const g of GEWERK_REIHE) {
+    const ps = r.personen.filter((p) => gewerkVon(p) === g).sort((a, b) => a.name.localeCompare(b.name, 'de'));
+    if (!ps.length) continue;
+    zeilen += `<div class="zp-grp" style="color:${gewerkFarbe(g)}">${gewerkKurz(g)}</div>`;
+    for (const p of ps) {
+      zeilen += `<div class="zp-plbl">${esc(p.name)}</div>`;
+      r.wochen.forEach((w, i) => {
+        const x = w.proPerson.find((y) => y.person.id === p.id);
+        const ganzUrlaub = x.urlaubTage >= 5 || (x.frei === 0 && !x.plan);
+        const kl = ['zp-zelle', x.plan ? 'belegt' : 'frei', ganzUrlaub && !x.plan ? 'urlaub' : '', x.konflikte.length ? 'konflikt' : ''].filter(Boolean).join(' ');
+        const kz = x.auftraege.length > 2 ? `${x.auftraege.length} Bst.` : x.auftraege.map(zpKuerzel).join('·');
+        const text = x.plan ? `<small>${esc(kz)}</small>${zpZahl(x.plan)}` : (ganzUrlaub ? 'U' : '–');
+        zeilen += `<button type="button" class="${kl}" style="${x.plan ? `background:${gewerkFarbe(g)}` : ''}" data-pzelle="${p.id}" data-w="${i}" title="${esc(p.name)}: ${zpZahl(x.plan)} h von ${zpZahl(x.frei)} h">${text}</button>`;
+      });
+    }
+  }
+  return `<div class="section zp-karte">
+    <div class="zp-kopf"><h2>Plantafel</h2><span class="hint" style="margin:0">Stunden je Woche</span></div>
+    ${zpNavHtml('zp-prev', 'zp-next', `${zpKw(zpStart)} – ${zpKw(plusTage(zpStart, (ZP_WOCHEN - 1) * 7))}`, 'Antippen: heute')}
+    <div class="zp-scroll"><div class="zp-pt"><div class="zp-h zp-ecke"></div>${kopf}${zeilen}</div></div>
+    <div class="zp-legende"><span><i class="urlaub"></i>Urlaub</span><span><i class="konflikt"></i>Konflikt</span></div>
+    <p class="hint">Im Feld stehen das Kürzel der Baustelle und die Stunden der Woche. Feld antippen für Einzelheiten. Das Gewerk stellst du unter Einstellungen › Personal ein.</p>
+  </div>`;
+}
+
+function zpPersonWocheZeigen(personId, w, auftraege, people) {
+  const r = planRechnen(auftraege, people, zpStart, ZP_WOCHEN);
+  const woche = r.wochen[w];
+  const x = woche?.proPerson.find((y) => y.person.id === personId);
+  if (!x) return;
+  const tage = woche.tage.map((s) => {
+    const t = r.personTag(x.person, s);
+    const wo = t.eintraege.map((e) => `${esc(zpName(e.auftrag))} · ${esc(e.abschnitt.name)} (${zpZahl(e.stunden)} h)`).join('<br>');
+    const status = !istArbeitstag(s) ? esc(feiertag(s) || 'frei') : t.abwesend === 'urlaub' ? 'Urlaub' : t.abwesend === 'schule' ? 'Berufsschule' : '';
+    return `<div class="kv zp-kv"><span><b>${weekday(s)} ${kurzDatum(s)}</b>${status ? ` <small>${status}</small>` : ''}${t.konflikt ? ' <b class="zp-rot">Konflikt</b>' : ''}<br>${wo || '<small>nicht eingeplant</small>'}</span></div>`;
+  }).join('');
+  const { sheet, close } = openSheet(`<h2>${esc(x.person.name)}</h2>
+    <p class="hint" style="margin:-6px 0 12px">${zpKw(woche.montag)} · ${zpZahl(x.plan)} h von ${zpZahl(x.frei)} h verfügbar</p>
+    <div class="section">${tage}</div>
+    <button type="button" class="btn ghost block" id="zw-zu">Schließen</button>`);
+  $('#zw-zu', sheet).onclick = close;
+}
+
+function zpAuslastungHtml(auftraege, people) {
+  const r = planRechnen(auftraege, people, zpStart, ZP_WOCHEN);
+  zpWoche = Math.min(zpWoche, ZP_WOCHEN - 1);
+  const w = r.wochen[zpWoche];
+  const chips = r.wochen.map((x, i) => `<button type="button" class="chip" data-woche="${i}" aria-pressed="${i === zpWoche}">${zpKw(x.montag)}</button>`).join('');
+  const gewerke = GEWERK_REIHE.filter((g) => w.nachGewerk[g]).map((g) => {
+    const v = w.nachGewerk[g];
+    const p = v.frei ? Math.round((v.plan / v.frei) * 100) : (v.plan ? 999 : 0);
+    return `<div class="kv"><span><i class="zp-punkt" style="background:${gewerkFarbe(g)}"></i>${gewerkKurz(g)} <small>(${v.personen})</small></span><b style="color:${zpTon(p)}">${zpZahl(v.plan)} / ${zpZahl(v.frei)} h · ${zpProzent(p)}</b></div>`;
+  }).join('');
+  const balken = r.wochen.map((x, i) => {
+    const h = Math.round((Math.min(x.prozent, 130) / 130) * 124);
+    const stapel = GEWERK_REIHE.filter((g) => x.nachGewerk[g]?.plan).map((g) => `<i style="flex:${x.nachGewerk[g].plan};background:${gewerkFarbe(g)}"></i>`).join('');
+    return `<button type="button" class="zp-saeule${i === zpWoche ? ' gewaehlt' : ''}" data-woche="${i}" aria-label="${zpKw(x.montag)}: ${zpProzent(x.prozent)}"><span class="zp-stapel" style="height:${h}px">${stapel}</span><small>${kw(x.montag)}</small></button>`;
+  }).join('');
+  const konflikte = w.proPerson.flatMap((x) => (x.konflikte.length ? [{ x, k: x.konflikte }] : []));
+  const frei = w.proPerson.filter((x) => x.frei - x.plan >= 16);
+  return `
+    <div class="chips zp-wochen">${chips}</div>
+    <div class="section">
+      <h2>${zpKw(w.montag)} <span class="h-right hint" style="margin:0">${kurzDatum(w.montag)}–${kurzDatum(w.tage[4])}</span></h2>
+      <div class="zp-gross"><b style="color:${zpTon(w.prozent)}">${zpProzent(w.prozent)}</b><span>${w.frei || w.plan ? zpWort(w.prozent) : 'niemand verfügbar'}</span></div>
+      <div class="meter"><div style="height:100%;width:${Math.min(100, w.prozent)}%;background:${zpTon(w.prozent)}"></div></div>
+      <p class="hint" style="margin:0">${zpZahl(w.plan)} h geplant von ${zpZahl(w.frei)} h verfügbar (${STUNDEN_TAG} h pro Arbeitstag, ohne Urlaub und Feiertage)</p>
+    </div>
+    <div class="section"><h2>Nach Gewerk</h2>${gewerke || '<p class="hint" style="margin:0">Noch kein Personal angelegt.</p>'}</div>
+    <div class="section"><h2>Gerüst draußen <span class="h-right">${w.geruest.length} ${w.geruest.length === 1 ? 'Baustelle' : 'Baustellen'}</span></h2>
+      <div class="zp-gross"><b>${zpZahl(w.geruestFlaeche)}</b><span>m²</span></div>
+      ${w.geruest.map(({ a }) => `<div class="kv"><span>${esc(zpName(a))}${a.art === 'geruest' ? ' <span class="zp-tag">nur Gerüst</span>' : ''}</span><b>${a.flaeche ? `${esc(String(a.flaeche))} m²` : 'm² fehlt'}</b></div>`).join('')}</div>
+    <div class="section"><h2>${ZP_WOCHEN} Wochen im Überblick</h2>
+      <div class="zp-chart"><div class="zp-ref" style="bottom:${Math.round(16 + (100 / 130) * 124)}px"><span>100 %</span></div>${balken}</div></div>
+    <div class="section"><h2>Konflikte</h2>${konflikte.length ? konflikte.map(({ x, k }) => `<div class="zp-alarm"><b>${esc(x.person.name)}</b> ${k[0].art === 'urlaub' ? 'hat Urlaub, ist aber eingeplant' : 'ist doppelt eingeplant'} (${kurzDatum(k[0].tag)}${k.length > 1 ? `–${kurzDatum(k[k.length - 1].tag)}` : ''})</div>`).join('') : '<div class="zp-alarm ok">Keine Konflikte in dieser Woche.</div>'}</div>
+    <div class="section"><h2>Noch frei</h2>${frei.length ? frei.map((x) => `<div class="kv"><span>${esc(x.person.name)} <small>${gewerkKurz(gewerkVon(x.person))}</small></span><b>${zpZahl(x.frei - x.plan)} h</b></div>`).join('') : '<p class="hint" style="margin:0">Niemand hat mehr als 2 Tage frei.</p>'}</div>
+    <div class="section"><h2>Material für diese Woche <span class="h-right">${w.material.length}</span></h2>${w.material.length ? w.material.map((m) => `<div class="kv"><span>${esc(m.text)}<br><small>${esc(zpName(m.auftrag))} · ${esc(m.abschnitt.name)}</small></span><b>${esc(String(m.menge || ''))} ${esc(m.einheit || '')}</b></div>`).join('') : '<p class="hint" style="margin:0">In dieser Woche wird kein Material gebraucht.</p>'}</div>`;
+}
+
+// Auftrag ansehen: Abschnitte, Konflikte, verschieben (z. B. bei Regen)
+async function zpAuftragZeigen(id) {
+  const people = await db.allPeople();
+  const a = alleAuftraege().find((x) => x.id === id);
+  if (!a) return;
+  const { sheet, close } = openSheet('<div id="za" class="zp-sheet"></div>');
+  const zeichnen = () => {
+    const akt = alleAuftraege().find((x) => x.id === id) || a;
+    const von = auftragVon(akt);
+    const r = planRechnen(alleAuftraege(), people, montagVon(von || today()), Math.max(1, Math.ceil((tageZwischen(montagVon(von || today()), auftragBis(akt) || von || today()) + 1) / 7)));
+    const g = geruestInfo(akt);
+    $('#za', sheet).innerHTML = `<h2>${esc(zpName(akt))}${akt.art === 'geruest' ? ' <span class="zp-tag">nur Gerüst</span>' : ''}</h2>
+      <p class="hint" style="margin:-6px 0 12px">${kurzDatum(von)}–${kurzDatum(auftragBis(akt))}${akt.auftraggeber ? ` · Auftraggeber: ${esc(akt.auftraggeber)}` : ''}</p>
+      ${g ? `<div class="zp-info"><b>Gerüst${akt.flaeche ? ` ${esc(String(akt.flaeche))} m²` : ''}</b> · steht ${kurzDatum(g.von)}–${kurzDatum(g.bis)}<br>Standzeit ${kurzDatum(g.standVon)}–${kurzDatum(g.standBis)} = <b>${zpZahl(g.wochen)} Wochen</b>${akt.art === 'geruest' ? ` · Grundstandzeit ${g.grund} Wochen · <b style="color:${g.verlaengerung ? 'var(--warn)' : 'var(--ok)'}">${g.verlaengerung ? `${g.verlaengerung} ${g.verlaengerung === 1 ? 'Woche' : 'Wochen'} Verlängerung` : 'keine Verlängerung'}</b>` : ''}</div>` : ''}
+      ${akt.notiz ? `<p class="hint" style="margin:0 0 10px">${esc(akt.notiz)}</p>` : ''}
+      <div class="toggle" style="margin-bottom:6px"><span><b>Folgende Abschnitte mitverschieben</b><small>z. B. bei Regen alles eine Woche später</small></span>
+        <label class="switch"><input type="checkbox" id="za-folgende" ${zpFolgende ? 'checked' : ''}><i></i></label></div>
+      <div class="section">${abschnitteSortiert(akt).map((ab) => {
+        const k = abschnittKonflikte(ab, r);
+        return `<div class="zp-ab"><i class="zp-punkt${ab.typ === 'warten' ? ' warten' : ''}" style="${ab.typ === 'warten' ? '' : `background:${gewerkFarbe(ab.gewerk)}`}"></i>
+          <span><b>${esc(ab.name || 'Abschnitt')}</b><small>${kurzDatum(ab.von)}–${kurzDatum(ab.bis)} · ${ab.typ === 'warten' ? 'ohne Personal' : `${(ab.leute || []).length} Pers.`}${(ab.material || []).length ? ` · ${ab.material.length} Material` : ''}</small>
+          ${k.map((x) => `<small class="zp-rot">${esc(konfliktText(x))}</small>`).join('')}</span>
+          <span class="zp-schieben"><button type="button" class="chip" data-schieb="${ab.id}" data-tage="-7" aria-label="Eine Woche früher">−1 Wo</button><button type="button" class="chip" data-schieb="${ab.id}" data-tage="7" aria-label="Eine Woche später">+1 Wo</button></span></div>`;
+      }).join('')}</div>
+      <div class="attach-actions"><button type="button" class="btn ghost" id="za-zu">Schließen</button><a class="btn primary" href="#/zeitplan/${encodeURIComponent(akt.id)}" id="za-edit">${ICON.pencil} Bearbeiten</a></div>`;
+    $('#za-zu', sheet).onclick = close;
+    $('#za-edit', sheet).onclick = () => close();
+    $('#za-folgende', sheet).onchange = (e) => { zpFolgende = e.target.checked; };
+    $$('[data-schieb]', sheet).forEach((b) => {
+      b.onclick = () => {
+        const tage = Number(b.dataset.tage);
+        const neu = verschieben(alleAuftraege().find((x) => x.id === id), b.dataset.schieb, tage, zpFolgende);
+        auftragSpeichern(neu);
+        scheduleAutoSync(1500);
+        toast(tage > 0 ? 'Eine Woche später gelegt.' : 'Eine Woche früher gelegt.');
+        zeichnen();
+        if (location.hash === '#/zeitplan') renderZeitplan();
+      };
+    });
+  };
+  zeichnen();
+}
+
+// ---------- Auftrag einplanen / bearbeiten ----------
+
+async function renderAuftragEditor(id) {
+  if (!isAdmin()) {
+    location.replace('#/baustellen');
+    return;
+  }
+  const isNew = id === 'neu';
+  const vorhanden = isNew ? null : zeitplanLokal().auftraege[id];
+  if (!isNew && (!vorhanden || vorhanden.geloescht)) {
+    location.replace('#/zeitplan');
+    return;
+  }
+  const people = await db.allPeople();
+  let x = isNew ? null : JSON.parse(JSON.stringify(vorhanden));
+  let vorlage = 'wdvs';
+  let beginn = isNew ? naechsterArbeitstag(plusTage(today(), -1)) : auftragVon(x);
+  const ausVorlage = () => {
+    const v = VORLAGEN.find((y) => y.id === vorlage);
+    const alt = x || neuerAuftrag();
+    x = { ...alt, art: v.art || 'baustelle', abschnitte: abschnitteAusVorlage(v, beginn) };
+  };
+  if (isNew) ausVorlage();
+
+  appbar.innerHTML = `
+    <button class="icon-btn" id="back" aria-label="Zurück">${ICON.back}</button>
+    <h1 class="small">${isNew ? 'Baustelle einplanen' : esc(zpName(x))}</h1>`;
+  $('#back').onclick = () => (location.hash = '#/zeitplan');
+
+  const standBox = () => {
+    const g = geruestInfo(x);
+    return g ? `<div class="zp-info">Standzeit ${kurzDatum(g.standVon)}–${kurzDatum(g.standBis)} = <b>${zpZahl(g.wochen)} Wochen</b>${x.art === 'geruest' ? `<br>Grundstandzeit ${g.grund} Wochen · <b style="color:${g.verlaengerung ? 'var(--warn)' : 'var(--ok)'}">${g.verlaengerung ? `${g.verlaengerung} ${g.verlaengerung === 1 ? 'Woche' : 'Wochen'} Verlängerung abrechnen` : 'keine Verlängerung'}</b>` : ''}<br><small>In der Standzeit ist kein eigenes Personal eingeplant.</small></div>` : '';
+  };
+  const zeichnen = () => {
+    const von = auftragVon(x) || beginn;
+    const r = planRechnen(alleAuftraege().filter((y) => y.id !== x.id).concat([x]), people, montagVon(von), Math.max(1, Math.ceil((tageZwischen(montagVon(von), auftragBis(x) || von) + 1) / 7)));
+    const hatGeruest = (x.abschnitte || []).some((ab) => ab.typ === 'auf' || ab.typ === 'ab');
+    view.innerHTML = `
+      ${isNew ? `<div class="section"><h2>Vorlage</h2>
+        <div class="chips" id="ae-vorlagen">${VORLAGEN.map((v) => `<button type="button" class="chip" data-v="${v.id}" aria-pressed="${v.id === vorlage}">${esc(v.name)}</button>`).join('')}</div>
+        <label class="field" style="margin-top:12px"><span>Beginn</span><input type="date" id="ae-beginn" value="${beginn}"></label>
+        <p class="hint">Die Vorlage legt alle Abschnitte ab dem Beginn hintereinander. Danach kannst du jeden Abschnitt ändern.</p></div>` : ''}
+      <div class="section"><h2>${x.art === 'geruest' ? 'Gerüst für Fremdgewerk' : 'Baustelle'}</h2>
+        <button type="button" class="site-pick" id="ae-site">${ICON.pin}<span><b>${x.baustelle ? esc(x.baustelle) : 'Baustelle wählen'}</b><small>${x.baustelle ? 'Antippen zum Ändern' : 'aus den Baustellen oder frei eintragen'}</small></span>${ICON.chevron}</button>
+        ${x.art === 'geruest' ? `<label class="field" style="margin-top:12px"><span>Auftraggeber (Fremdgewerk)</span><input type="text" id="ae-ag" value="${esc(x.auftraggeber)}" placeholder="z. B. Dachdecker, Zimmerei"></label>` : ''}
+        ${hatGeruest ? `<div class="row" style="margin-top:12px">
+          <label class="field"><span>Gerüstfläche m²</span><input type="text" inputmode="decimal" id="ae-flaeche" value="${esc(String(x.flaeche || ''))}" placeholder="z. B. 280"></label>
+          ${x.art === 'geruest' ? `<label class="field"><span>Grundstandzeit Wo.</span><input type="number" min="0" step="1" inputmode="numeric" id="ae-grund" value="${esc(String(x.grundWochen ?? GRUND_WOCHEN))}"></label>` : '<div></div>'}</div>` : ''}
+        <div id="ae-stand">${standBox()}</div>
+        <label class="field" style="margin-top:12px"><span>Notiz</span><input type="text" id="ae-notiz" value="${esc(x.notiz)}" placeholder="z. B. Abbau nach Freigabe"></label>
+      </div>
+      <div class="section"><h2>Abschnitte <span class="h-right hint" style="margin:0">antippen zum Ändern</span></h2>
+        ${abschnitteSortiert(x).map((ab) => {
+          const k = abschnittKonflikte(ab, r);
+          return `<button type="button" class="zp-ab knopf" data-ab="${ab.id}"><i class="zp-punkt${ab.typ === 'warten' ? ' warten' : ''}" style="${ab.typ === 'warten' ? '' : `background:${gewerkFarbe(ab.gewerk)}`}"></i>
+            <span><b>${esc(ab.name || 'Abschnitt')}</b><small>${ab.von ? `${kurzDatum(ab.von)}–${kurzDatum(ab.bis)} · ${arbeitstageIn(ab.von, ab.bis)} Arbeitstage` : 'Datum fehlt'} · ${ab.typ === 'warten' ? 'ohne Personal' : (ab.leute || []).length ? `${ab.leute.length} Pers.` : '<span class="zp-rot">noch niemand eingeteilt</span>'}${(ab.material || []).length ? ` · ${ab.material.length} Material` : ''}</small>
+            ${k.map((y) => `<small class="zp-rot">${esc(konfliktText(y))}</small>`).join('')}</span>${ICON.chevron}</button>`;
+        }).join('') || '<p class="hint" style="margin:0 0 8px">Noch keine Abschnitte.</p>'}
+        <button type="button" class="btn ghost block" id="ae-neu-ab" style="margin-top:8px">${ICON.plus} Abschnitt hinzufügen</button>
+      </div>
+      <div class="attach-actions" style="margin-top:4px">
+        <button type="button" class="btn ghost" id="ae-abbrechen">Abbrechen</button>
+        <button type="button" class="btn primary" id="ae-speichern">Speichern</button>
+      </div>
+      ${isNew ? '' : `<button type="button" class="btn danger del" id="ae-loeschen" style="margin-top:12px">${ICON.trash} Aus dem Zeitplan löschen</button>`}`;
+
+    const felder = () => {
+      const ag = $('#ae-ag');
+      if (ag) x.auftraggeber = ag.value.trim();
+      const fl = $('#ae-flaeche');
+      if (fl) x.flaeche = fl.value.trim();
+      const gr = $('#ae-grund');
+      if (gr) x.grundWochen = Number(gr.value) >= 0 && gr.value !== '' ? Number(gr.value) : GRUND_WOCHEN;
+      x.notiz = $('#ae-notiz').value.trim();
+    };
+    $$('#ae-vorlagen [data-v]').forEach((b) => {
+      b.onclick = () => { felder(); vorlage = b.dataset.v; ausVorlage(); zeichnen(); };
+    });
+    const bg = $('#ae-beginn');
+    if (bg) bg.onchange = () => { if (!bg.value) return; felder(); beginn = bg.value; ausVorlage(); zeichnen(); };
+    $('#ae-site').onclick = () => {
+      felder();
+      openSitePicker(x.baustelleId, (site) => {
+        x.baustelleId = site.id || null;
+        x.baustelle = site.name;
+        zeichnen();
+      }, x.baustelleId ? '' : x.baustelle);
+    };
+    // Nur den Kasten mit der Standzeit neu zeichnen, damit der nächste Tipp (z. B. auf Speichern) nicht ins Leere geht
+    const gr = $('#ae-grund');
+    if (gr) gr.oninput = () => { felder(); $('#ae-stand').innerHTML = standBox(); };
+    $$('[data-ab]').forEach((b) => {
+      b.onclick = () => { felder(); zpAbschnittBearbeiten(x, x.abschnitte.find((ab) => ab.id === b.dataset.ab), people, zeichnen); };
+    });
+    $('#ae-neu-ab').onclick = () => {
+      felder();
+      const letzt = auftragBis(x);
+      const von = letzt ? naechsterArbeitstag(letzt) : beginn;
+      zpAbschnittBearbeiten(x, neuerAbschnitt({ von, bis: plusArbeitstage(von, 5) }), people, zeichnen, true);
+    };
+    $('#ae-abbrechen').onclick = () => (location.hash = '#/zeitplan');
+    $('#ae-speichern').onclick = () => {
+      felder();
+      if (!x.baustelle) {
+        toast('Bitte zuerst die Baustelle wählen.');
+        return;
+      }
+      if (!x.abschnitte.length || x.abschnitte.some((ab) => !ab.von || !ab.bis)) {
+        toast('Jeder Abschnitt braucht ein Von- und Bis-Datum.');
+        return;
+      }
+      auftragSpeichern(x);
+      scheduleAutoSync(1500);
+      toast('Im Zeitplan gespeichert.');
+      zpStart = montagVon(auftragVon(x));
+      zpTagWoche = zpStart;
+      location.hash = '#/zeitplan';
+    };
+    const del = $('#ae-loeschen');
+    if (del) del.onclick = () => {
+      if (!confirm(`${zpName(x)} aus dem Zeitplan löschen? Die Baustelle selbst und die Berichte bleiben.`)) return;
+      auftragLoeschen(x.id);
+      scheduleAutoSync(1500);
+      location.hash = '#/zeitplan';
+    };
+  };
+  zeichnen();
+}
+
+// Ein Abschnitt: Name, Gewerk, Art, Zeitraum, Leute mit Stunden pro Tag, Material
+function zpAbschnittBearbeiten(auftrag, abschnitt, people, fertig, isNew = false) {
+  const ab = JSON.parse(JSON.stringify(abschnitt));
+  const personen = planPersonen(people).sort((a, b) => GEWERK_REIHE.indexOf(gewerkVon(a)) - GEWERK_REIHE.indexOf(gewerkVon(b)) || a.name.localeCompare(b.name, 'de'));
+  const TYPEN_AB = [['arbeit', 'Arbeit'], ['auf', 'Gerüst aufbauen'], ['ab', 'Gerüst abbauen'], ['warten', 'Ohne Personal']];
+  const { sheet, close } = openSheet('<div id="sa" class="zp-sheet"></div>');
+  const box = () => $('#sa', sheet);
+  const lesen = () => {
+    const b = box();
+    ab.name = $('#sa-name', b).value.trim();
+    ab.von = $('#sa-von', b).value;
+    ab.bis = $('#sa-bis', b).value;
+    ab.leute = $$('.zp-person', b).filter((z) => $('input[type=checkbox]', z).checked).map((z) => {
+      const p = personen.find((y) => y.id === z.dataset.p);
+      const h = Number(String($('.zp-h-in', z).value).replace(',', '.'));
+      return { personId: p.id, name: p.name, stunden: h > 0 ? Math.min(h, 12) : STUNDEN_TAG };
+    });
+    ab.material = $$('.zp-mat', b).map((z) => ({
+      text: $('.m-text', z).value.trim(), menge: $('.m-menge', z).value.trim(), einheit: $('.m-einheit', z).value.trim(), kw: Number($('.m-kw', z).value) || (ab.von ? kw(ab.von) : ''),
+    })).filter((m) => m.text);
+  };
+  const zeichnen = () => {
+    // Belegung der Leute im Zeitraum durch andere Aufträge und Abschnitte
+    const andere = alleAuftraege().filter((y) => y.id !== auftrag.id).concat([{ ...auftrag, abschnitte: auftrag.abschnitte.filter((y) => y.id !== ab.id) }]);
+    const gueltig = ab.von && ab.bis && ab.bis >= ab.von;
+    const r = gueltig ? planRechnen(andere, people, montagVon(ab.von), Math.ceil((tageZwischen(montagVon(ab.von), ab.bis) + 1) / 7)) : null;
+    const hinweis = (p) => {
+      if (!r) return '';
+      const urlaub = [];
+      const belegt = new Set();
+      for (let s = ab.von; s <= ab.bis; s = plusTage(s, 1)) {
+        const t = r.personTag(p, s);
+        if (t.abwesend === 'urlaub') urlaub.push(s);
+        t.eintraege.forEach((e) => belegt.add(zpName(e.auftrag)));
+      }
+      const teile = [];
+      if (urlaub.length) teile.push(`<span class="zp-rot">Urlaub ${kurzDatum(urlaub[0])}${urlaub.length > 1 ? `–${kurzDatum(urlaub[urlaub.length - 1])}` : ''}</span>`);
+      if (belegt.size) teile.push(`<span class="zp-gelb">auch bei ${esc([...belegt].join(', '))}</span>`);
+      return teile.join(' · ');
+    };
+    const gewerkeChips = GEWERKE.map((g) => `<button type="button" class="chip" data-g="${g}" aria-pressed="${ab.gewerk === g}">${gewerkKurz(g)}</button>`).join('');
+    const mitLeuten = ab.typ !== 'warten';
+    let gruppe = null;
+    const leute = personen.map((p) => {
+      const l = (ab.leute || []).find((y) => y.personId === p.id);
+      const g = gewerkVon(p);
+      const kopf = g !== gruppe ? `<div class="zp-grp" style="color:${gewerkFarbe(g)}">${gewerkKurz(g)}</div>` : '';
+      gruppe = g;
+      return `${kopf}<label class="zp-person" data-p="${p.id}"><input type="checkbox" ${l ? 'checked' : ''}>
+        <span><b>${esc(p.name)}</b><small>${esc(kategorieOf(p))}${hinweis(p) ? ` · ${hinweis(p)}` : ''}</small></span>
+        <span class="zp-h-box"><input class="zp-h-in" type="text" inputmode="decimal" value="${zpZahl(l ? l.stunden : STUNDEN_TAG)}" aria-label="Stunden pro Tag"> h</span></label>`;
+    }).join('');
+    const material = (ab.material || []).map((m, i) => `<div class="zp-mat" data-i="${i}">
+        <input class="m-text" type="text" value="${esc(m.text)}" placeholder="Material, z. B. Oberputz 2 mm">
+        <input class="m-menge" type="text" inputmode="decimal" value="${esc(String(m.menge || ''))}" placeholder="Menge">
+        <input class="m-einheit" type="text" value="${esc(m.einheit || '')}" placeholder="Einheit" list="zp-einheiten">
+        <input class="m-kw" type="number" inputmode="numeric" value="${esc(String(m.kw || ''))}" placeholder="KW" aria-label="Kalenderwoche">
+        <button type="button" class="icon-btn m-weg" aria-label="Material entfernen">${ICON.x}</button></div>`).join('');
+    box().innerHTML = `<h2>${isNew ? 'Neuer Abschnitt' : 'Abschnitt bearbeiten'}</h2>
+      <div class="section">
+        <label class="field"><span>Name</span><input type="text" id="sa-name" value="${esc(ab.name)}" placeholder="z. B. Oberputz"></label>
+        <div class="field"><span>Art</span><div class="chips" id="sa-typ">${TYPEN_AB.map(([id, t]) => `<button type="button" class="chip" data-t="${id}" aria-pressed="${ab.typ === id}">${t}</button>`).join('')}</div></div>
+        ${mitLeuten ? `<div class="field"><span>Gewerk</span><div class="chips" id="sa-gewerk">${gewerkeChips}</div></div>` : '<p class="hint" style="margin:0 0 12px">Ohne Personal: z. B. Trocknen oder Standzeit. Verlängert die Baustelle, zählt aber nicht zur Auslastung.</p>'}
+        <div class="row">
+          <label class="field"><span>Von</span><input type="date" id="sa-von" value="${ab.von}"></label>
+          <label class="field"><span>Bis</span><input type="date" id="sa-bis" value="${ab.bis}"></label>
+        </div>
+        <p class="hint" style="margin:-4px 0 0">${gueltig ? `${arbeitstageIn(ab.von, ab.bis)} Arbeitstage (Mo–Fr ohne Feiertage)` : '<span class="zp-rot">Bis darf nicht vor Von liegen.</span>'}</p>
+      </div>
+      ${mitLeuten ? `<div class="section"><h2>Leute <span class="h-right hint" style="margin:0">Stunden pro Tag</span></h2>${leute || '<p class="hint" style="margin:0">Noch kein Personal angelegt (Einstellungen › Personal).</p>'}</div>` : ''}
+      <div class="section"><h2>Material</h2>${material}
+        <datalist id="zp-einheiten">${['m²', 'lfm', 'm³', 'Stk', 'Sack', 'Eimer', 'Rolle', 'Palette', 'kg', 'l'].map((e) => `<option value="${e}">`).join('')}</datalist>
+        <button type="button" class="btn ghost block" id="sa-mat">${ICON.plus} Material hinzufügen</button></div>
+      <div class="attach-actions">
+        <button type="button" class="btn ghost" id="sa-abbrechen">Abbrechen</button>
+        <button type="button" class="btn primary" id="sa-ok">Übernehmen</button>
+      </div>
+      ${isNew ? '' : `<button type="button" class="btn danger del" id="sa-loeschen" style="margin-top:12px">${ICON.trash} Abschnitt entfernen</button>`}`;
+    const b = box();
+    $$('#sa-typ [data-t]', b).forEach((c) => {
+      c.onclick = () => {
+        lesen();
+        ab.typ = c.dataset.t;
+        if (ab.typ === 'auf' || ab.typ === 'ab') {
+          ab.gewerk = 'Gerüstbau';
+          if (!ab.name) ab.name = ab.typ === 'auf' ? 'Gerüst aufbauen' : 'Gerüst abbauen';
+        }
+        if (ab.typ === 'warten') { ab.gewerk = ''; ab.leute = []; if (!ab.name) ab.name = 'Trocknen'; }
+        zeichnen();
+      };
+    });
+    $$('#sa-gewerk [data-g]', b).forEach((c) => { c.onclick = () => { lesen(); ab.gewerk = ab.gewerk === c.dataset.g ? '' : c.dataset.g; zeichnen(); }; });
+    ['#sa-von', '#sa-bis'].forEach((sel) => {
+      $(sel, b).onchange = () => {
+        const alt = ab.von;
+        lesen();
+        // Von verschoben: Bis um gleich viel mitnehmen, damit die Dauer bleibt
+        if (sel === '#sa-von' && alt && ab.von && ab.bis) {
+          const dauer = tageZwischen(alt, ab.bis);
+          if (dauer >= 0) ab.bis = plusTage(ab.von, dauer);
+        }
+        zeichnen();
+      };
+    });
+    $('#sa-mat', b).onclick = () => { lesen(); ab.material.push({ text: '', menge: '', einheit: '', kw: ab.von ? kw(ab.von) : '' }); zeichnen(); $$('.zp-mat .m-text', box()).pop()?.focus(); };
+    $$('.m-weg', b).forEach((c) => {
+      c.onclick = () => {
+        lesen();
+        const i = Number(c.closest('.zp-mat').dataset.i);
+        ab.material = $$('.zp-mat', box()).map((z) => ({ text: $('.m-text', z).value.trim(), menge: $('.m-menge', z).value.trim(), einheit: $('.m-einheit', z).value.trim(), kw: Number($('.m-kw', z).value) || '' })).filter((_, j) => j !== i);
+        zeichnen();
+      };
+    });
+    $('#sa-abbrechen', b).onclick = close;
+    $('#sa-ok', b).onclick = () => {
+      lesen();
+      if (!ab.von || !ab.bis || ab.bis < ab.von) {
+        toast('Bitte Von und Bis richtig wählen.');
+        return;
+      }
+      if (!ab.name) ab.name = ab.typ === 'warten' ? 'Trocknen' : 'Abschnitt';
+      if (ab.typ === 'warten') ab.leute = [];
+      const i = auftrag.abschnitte.findIndex((y) => y.id === ab.id);
+      if (i >= 0) auftrag.abschnitte[i] = ab; else auftrag.abschnitte.push(ab);
+      close();
+      fertig();
+    };
+    const del = $('#sa-loeschen', b);
+    if (del) del.onclick = () => {
+      if (!confirm(`Abschnitt „${ab.name || 'Abschnitt'}“ entfernen?`)) return;
+      auftrag.abschnitte = auftrag.abschnitte.filter((y) => y.id !== ab.id);
+      close();
+      fertig();
+    };
+  };
+  zeichnen();
 }
 
 function siteFields(site) {
@@ -1952,11 +2558,21 @@ function baustellenVorschlag(input, box, sites, onPick) {
 // ---------- Personal ----------
 
 function personFields(p) {
+  const gewerk = gewerkVon(p);
+  const schultag = p.schultag ?? '';
   return `
     <label class="field"><span>Name *</span><input type="text" name="name" value="${esc(p.name)}" placeholder="Vor- und Nachname" autocapitalize="words"></label>
     <div class="field"><span>Kategorie</span>
       <input type="hidden" name="kategorie" value="${esc(kategorieOf(p))}">
       <div class="chips kat-chips">${KATEGORIEN.map((k) => `<button type="button" class="chip" data-kat="${k}" aria-pressed="${kategorieOf(p) === k}">${k}</button>`).join('')}</div>
+    </div>
+    <div class="field"><span>Gewerk</span>
+      <input type="hidden" name="gewerk" value="${esc(gewerk)}">
+      <div class="chips wahl-chips">${['', ...GEWERKE].map((g) => `<button type="button" class="chip" data-wert="${g}" aria-pressed="${gewerk === g}">${g || 'Ohne'}</button>`).join('')}</div>
+    </div>
+    <div class="field schultag-feld" ${kategorieOf(p) === 'Lehrling' ? '' : 'hidden'}><span>Berufsschultag</span>
+      <input type="hidden" name="schultag" value="${esc(String(schultag))}">
+      <div class="chips wahl-chips">${['', 0, 1, 2, 3, 4].map((t) => `<button type="button" class="chip" data-wert="${t}" aria-pressed="${String(schultag) === String(t)}">${t === '' ? 'Keiner' : TAGE_KURZ[t]}</button>`).join('')}</div>
     </div>`;
 }
 
@@ -1966,9 +2582,22 @@ function bindKategorie(root) {
       const box = chip.closest('.field');
       $('[name=kategorie]', box).value = chip.dataset.kat;
       $$('.chip', box).forEach((c) => c.setAttribute('aria-pressed', c === chip));
+      const st = $('.schultag-feld', box.parentElement);
+      if (st) st.hidden = chip.dataset.kat !== 'Lehrling';
+    };
+  });
+  // Gewerk und Berufsschultag (für den Baustellen-Zeitplan)
+  $$('.wahl-chips .chip', root).forEach((chip) => {
+    chip.onclick = () => {
+      const box = chip.closest('.field');
+      $('input[type=hidden]', box).value = chip.dataset.wert;
+      $$('.chip', box).forEach((c) => c.setAttribute('aria-pressed', c === chip));
     };
   });
 }
+
+// Felder für den Zeitplan auch bei Personen, die vor 1.61.0 angelegt wurden
+const mitPlanFeldern = (p) => Object.assign(p, { gewerk: p.gewerk || '', schultag: p.schultag ?? '' });
 
 // Unterschrift mit dem Finger auf einer Zeichenfläche.
 function openSignature(name, onDone) {
@@ -2106,7 +2735,7 @@ async function openPeoplePicker(takenIds, onDone) {
   };
   $('#person-cancel', sheet).onclick = resetForm;
   $('#person-save', sheet).onclick = async () => {
-    const person = readSiteFields($('#person-form', sheet), newPerson());
+    const person = readSiteFields($('#person-form', sheet), mitPlanFeldern(newPerson()));
     if (!person.name) {
       toast('Bitte einen Namen eingeben.');
       return;
@@ -2151,7 +2780,7 @@ async function renderPeople() {
     <button class="btn soft block" id="add-person" style="margin:6px 0 14px">${ICON.plus} Neue Person</button>
     ${people.length ? `<div class="card-list">${people.map((p) => `<button type="button" class="scard person ${p.archived ? 'archived' : ''}" data-id="${p.id}">
         <div class="sicon avatar">${esc(p.name.trim().split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase())}</div>
-        <div class="body"><div class="title">${esc(p.name)}</div><div class="meta">${esc(kategorieOf(p))}${p.archived ? ' · Ausgeschieden' : ''}</div></div>
+        <div class="body"><div class="title">${esc(p.name)}</div><div class="meta">${esc(kategorieOf(p))}${gewerkVon(p) ? ` · ${esc(gewerkVon(p))}` : ''}${p.archived ? ' · Ausgeschieden' : ''}</div></div>
         ${ICON.chevron}</button>`).join('')}</div>`
       : '<div class="empty"><h2>Noch kein Personal</h2><p>Lege deine Leute einmal an. Im Bericht wählst du sie dann nur noch aus.</p></div>'}`;
   const edit = (person, isNew) => {
@@ -2170,7 +2799,8 @@ async function renderPeople() {
     bindKategorie(sheet);
     $('#pf-cancel', sheet).onclick = close;
     $('#pf-save', sheet).onclick = async () => {
-      readSiteFields($('#pf', sheet), person);
+      readSiteFields($('#pf', sheet), mitPlanFeldern(person));
+      if (person.kategorie !== 'Lehrling') person.schultag = '';
       if (!person.name) {
         toast('Bitte einen Namen eingeben.');
         return;
@@ -3654,6 +4284,8 @@ async function runSync(manual) {
     if (location.hash === '#/baustellen') renderSites();
     else if (location.hash === '#/personal') renderPeople();
   }
+  if (location.hash === '#/zeitplan' && !document.querySelector('.sheet-backdrop')) renderZeitplan();
+  if (manual && result.abrechnungError) toast(`Abgleich: ${result.abrechnungError}`, 4000);
 }
 
 // ---------- Start ----------
