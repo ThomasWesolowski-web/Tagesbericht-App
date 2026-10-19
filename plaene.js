@@ -37,6 +37,38 @@ export async function pdfSeiten(blob) {
   return n;
 }
 
+// Alle Seiten eines PDFs als kleinere Bilder zum Durchblättern. bild(seite, breite) zeichnet eine
+// Seite in der gewünschten Breite (Bildpunkte) und liefert sie als JPEG.
+export async function pdfDokument(blob) {
+  const lib = await loadPdfJs();
+  const pdf = await lib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
+  const bild = async (seite, breite) => {
+    const page = await pdf.getPage(seite);
+    const base = page.getViewport({ scale: 1 });
+    // auch bei sehr langen Seiten unter der Speichergrenze bleiben
+    const scale = Math.min(breite / base.width, Math.sqrt(KACHEL_MAX / (base.width * base.height)));
+    const vp = page.getViewport({ scale });
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(vp.width));
+    c.height = Math.max(1, Math.round(vp.height));
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, c.width, c.height);
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    const b = await new Promise((resolve) => c.toBlob(resolve, 'image/jpeg', 0.85));
+    c.width = 0;
+    c.height = 0;
+    page.cleanup();
+    return { blob: b, w: Math.round(vp.width), h: Math.round(vp.height) };
+  };
+  // Seitenverhältnis vorab, damit die Liste beim Nachladen nicht springt
+  const format = async (seite) => {
+    const v = (await pdf.getPage(seite)).getViewport({ scale: 1 });
+    return v.height / v.width;
+  };
+  return { n: pdf.numPages, bild, format, schliessen: () => pdf.destroy() };
+}
+
 // Plan (Bild oder PDF-Seite) als Bild mit fester Größe, damit Markierungen beim erneuten
 // Öffnen wieder genau passen. Bei PDFs liefert kachel(x, y, w, h, k) einen scharf gezeichneten
 // Ausschnitt (Angaben in Bildpunkten des Plan-Bildes, k = Bildschirmpunkte je Bildpunkt).

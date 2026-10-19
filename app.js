@@ -16,7 +16,7 @@ import {
 } from './sync.js';
 import { startI18n, SPRACHEN } from './i18n.js';
 import { openMarkup } from './markup.js';
-import { planReportId, planTauglich, istPdf, pdfSeiten, planQuelle, formenSkalieren, pinNummern } from './plaene.js';
+import { planReportId, planTauglich, istPdf, pdfSeiten, pdfDokument, planQuelle, formenSkalieren, pinNummern } from './plaene.js';
 import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from './fotoaufmass.js';
 import { raumKurz } from './raumgeometrie.js';
 import { istAbgerechnet, abgerechnetSetzen, abrechnungLokal } from './abrechnung.js';
@@ -30,7 +30,7 @@ import {
   planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
 } from './zeitplan.js';
 
-const APP_VERSION = '1.63.0';
+const APP_VERSION = '1.64.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -1332,9 +1332,8 @@ async function renderEditor(id) {
         if (istPdf(plan)) {
           const n = await pdfSeiten(plan.datei.blob).catch(() => 1);
           if (n > 1) {
-            const s = prompt(`„${plan.name}“ hat ${n} Seiten. Welche Seite?`, '1');
-            if (s === null) return;
-            seite = Math.min(n, Math.max(1, parseInt(s, 10) || 1));
+            seite = await pdfSeitenAnsicht(plan.datei, { hinweis: 'Seite antippen, die im Bericht markiert werden soll.', onSeite: () => true });
+            if (!seite) return;
           }
         }
         close();
@@ -2396,17 +2395,97 @@ async function planListeBinden(site) {
   zeichnen();
 }
 
-// Plan in voller Schärfe ansehen: verschieben und zoomen, bei PDFs mit Seitenwahl
+// Plan in voller Schärfe ansehen: verschieben und zoomen. Mehrseitige PDFs zeigen erst alle
+// Seiten untereinander; eine angetippte Seite öffnet sich groß, danach geht es zurück zur Liste.
 async function planAnsehen(f) {
-  let seite = 1;
   if (istPdf(f)) {
     const n = await pdfSeiten(f.blob).catch(() => 1);
     if (n > 1) {
-      const s = prompt(`„${f.name}“ hat ${n} Seiten. Welche Seite?`, '1');
-      if (s === null) return;
-      seite = Math.min(n, Math.max(1, parseInt(s, 10) || 1));
+      await pdfSeitenAnsicht(f, { hinweis: 'Seite antippen, um sie groß anzusehen und zu zoomen.', onSeite: async (s) => { await planSeiteAnsehen(f, s); return false; } });
+      return;
     }
   }
+  await planSeiteAnsehen(f, 1);
+}
+
+// Alle Seiten eines PDFs untereinander zum Blättern. Die Bilder werden erst gezeichnet, wenn
+// sie in die Nähe des Bildschirms kommen (Speicher auf dem iPhone). onSeite(seite) wird beim
+// Antippen aufgerufen; gibt sie true zurück, schließt die Ansicht und liefert die Seite, sonst null.
+async function pdfSeitenAnsicht(f, { hinweis = '', onSeite }) {
+  let doc;
+  try {
+    doc = await pdfDokument(f.blob);
+  } catch (err) {
+    toast(`Der Plan lässt sich nicht öffnen (${err.message}).`, 4000);
+    return null;
+  }
+  const formate = await Promise.all(Array.from({ length: doc.n }, (_, i) => doc.format(i + 1).catch(() => 1.414)));
+  const view = document.createElement('div');
+  view.className = 'ps-view';
+  view.innerHTML = `
+    <div class="mk-top">
+      <button type="button" class="btn ghost ps-zu">Schließen</button>
+      <b>${esc(f.name.replace(/\.[^.]+$/, ''))}</b>
+      <span class="ps-anzahl">${doc.n} <span>Seiten</span></span>
+    </div>
+    ${hinweis ? `<p class="ps-hinweis">${esc(hinweis)}</p>` : ''}
+    <div class="ps-liste">${formate.map((v, i) => `<button type="button" class="ps-seite" data-s="${i + 1}">
+      <div class="ps-bild" style="aspect-ratio: 1 / ${v.toFixed(4)}"></div>
+      <span><span>Seite</span> ${i + 1} / ${doc.n}</span>
+    </button>`).join('')}</div>`;
+  document.body.appendChild(view);
+  const urls = [];
+  const breite = Math.min(1400, Math.round(Math.min(window.innerWidth, 720) * Math.min(2, window.devicePixelRatio || 1)));
+  // eine Seite nach der anderen zeichnen, damit der Speicher nicht vollläuft
+  const warteschlange = [];
+  let zeichnet = false;
+  let offen = true;
+  const weiter = async () => {
+    if (zeichnet) return;
+    zeichnet = true;
+    while (offen && warteschlange.length) {
+      const el = warteschlange.shift();
+      try {
+        const b = await doc.bild(Number(el.dataset.s), breite);
+        if (!offen || !b.blob?.size) continue;
+        const url = URL.createObjectURL(b.blob);
+        urls.push(url);
+        $('.ps-bild', el).innerHTML = `<img src="${url}" alt="">`;
+      } catch {
+        $('.ps-bild', el).textContent = 'Seite lässt sich nicht anzeigen';
+      }
+    }
+    zeichnet = false;
+  };
+  const beobachter = new IntersectionObserver((eintraege) => {
+    eintraege.forEach((e) => {
+      if (!e.isIntersecting) return;
+      beobachter.unobserve(e.target);
+      warteschlange.push(e.target);
+    });
+    weiter();
+  }, { root: $('.ps-liste', view), rootMargin: '600px 0px' });
+  $$('.ps-seite', view).forEach((el) => beobachter.observe(el));
+  return new Promise((resolve) => {
+    const zu = (ergebnis) => {
+      offen = false;
+      beobachter.disconnect();
+      view.remove();
+      urls.forEach((u) => URL.revokeObjectURL(u));
+      doc.schliessen();
+      resolve(ergebnis);
+    };
+    $('.ps-zu', view).onclick = () => zu(null);
+    $$('.ps-seite', view).forEach((el) => {
+      el.onclick = async () => {
+        const s = Number(el.dataset.s);
+        if (await onSeite(s)) zu(s);
+      };
+    });
+  });
+}
+
+async function planSeiteAnsehen(f, seite) {
   let q;
   try {
     q = await planQuelle(f, seite);
