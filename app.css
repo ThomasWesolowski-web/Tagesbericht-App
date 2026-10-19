@@ -1000,3 +1000,14 @@ button.zp-dc { cursor: pointer; }
 .zp-mat .m-text { grid-column: 1 / -1; }
 .zp-mat input { width: 100%; min-width: 0; border: 1px solid var(--line); background: var(--surface-2); border-radius: 10px; padding: 9px 6px; }
 .zp-sheet > h2:first-child { padding-left: 46px; min-height: 36px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+
+/* Alle Seiten eines PDFs untereinander */
+.ps-view { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; background: #16191d; color: #fff; }
+.ps-view .mk-top b { flex: 1; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ps-anzahl { font-size: .85rem; color: rgba(255,255,255,.7); white-space: nowrap; }
+.ps-hinweis { margin: 0 16px 8px; font-size: .9rem; color: rgba(255,255,255,.85); }
+.ps-liste { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; padding: 4px 12px calc(16px + var(--safe-b, 0px)); display: grid; gap: 14px; align-content: start; justify-items: center; }
+.ps-seite { width: 100%; max-width: 720px; background: none; border: 0; padding: 0; color: inherit; cursor: pointer; display: grid; gap: 6px; }
+.ps-bild { width: 100%; background: #fff; border-radius: 4px; overflow: hidden; display: flex; align-items: center; justify-content: center; color: #666; font-size: .85rem; }
+.ps-bild img { width: 100%; height: 100%; display: block; object-fit: contain; }
+.ps-seite > span { font-size: .85rem; color: rgba(255,255,255,.75); }
