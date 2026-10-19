@@ -666,6 +666,8 @@ const WORT = {
   genehmigt: { pl: 'został zatwierdzony', ro: 'a fost aprobat', mk: 'е одобрен', sq: 'u miratua' },
   abgelehnt: { pl: 'został odrzucony', ro: 'a fost respins', mk: 'е одбиен', sq: 'u refuzua' },
   deinUrlaub: { pl: 'Twój urlop', ro: 'Concediul tău', mk: 'Твојот одмор', sq: 'Pushimi yt' },
+  gibtSchon: { pl: 'już istnieje. Mimo to dodać jako nową osobę?', ro: 'există deja. Totuși adaugi ca persoană nouă?', mk: 'веќе постои. Сепак да се додаде како нова личност?', sq: 'ekziston tashmë. Ta shtoj gjithsesi si person të ri?' },
+  ausgewaehlt: { pl: 'wybrano', ro: 'selectat', mk: 'избрано', sq: 'u zgjodh' },
   schonEntschieden: { pl: 'był już rozpatrzony i zostaje', ro: 'era deja decis și rămâne', mk: 'веќе беше решен и останува', sq: 'ishte vendosur tashmë dhe mbetet' },
 };
 
@@ -711,6 +713,8 @@ function muster(s) {
   }
   if ((m = /^Dein Urlaub (.+) wurde (genehmigt|abgelehnt)\.$/.exec(s))) return `${WORT.deinUrlaub[lang]} ${m[1]} ${WORT[m[2]][lang]}.`;
   if ((m = /^Der Urlaub (.+) war schon entschieden und bleibt\.$/.exec(s))) return `${WORT.deinUrlaub[lang]} ${m[1]} ${WORT.schonEntschieden[lang]}.`;
+  if ((m = /^(„.+“) gibt es schon\. Trotzdem als neue Person anlegen\?$/.exec(s))) return `${m[1]} ${WORT.gibtSchon[lang]}`;
+  if ((m = /^(„.+“) ausgewählt\.$/.exec(s))) return `${m[1]} – ${WORT.ausgewaehlt[lang]}.`;
   if ((m = /^von (.+)$/.exec(s))) return `${WORT.von[lang]} ${m[1]}`;
   return null;
 }

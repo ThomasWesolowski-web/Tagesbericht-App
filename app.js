@@ -30,7 +30,7 @@ import {
   planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
 } from './zeitplan.js';
 
-const APP_VERSION = '1.62.0';
+const APP_VERSION = '1.63.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -2618,6 +2618,12 @@ function bindKategorie(root) {
 }
 
 // Felder für den Zeitplan auch bei Personen, die vor 1.61.0 angelegt wurden
+// Gibt es die Person schon (gleiche Namensteile, auch vertauscht wie „Max Muster“ / „Muster Max“)?
+async function gleichePerson(name, eigeneId) {
+  return (await db.allPeople()).find((x) => x.id !== eigeneId && gehoertZu({ name: x.name }, { name }));
+}
+const trotzdemNeu = (x) => confirm(`„${x.name}“ gibt es schon. Trotzdem als neue Person anlegen?`);
+
 const mitPlanFeldern = (p) => Object.assign(p, { gewerk: p.gewerk || '', schultag: p.schultag ?? '' });
 
 // Unterschrift mit dem Finger auf einer Zeichenfläche.
@@ -2761,6 +2767,18 @@ async function openPeoplePicker(takenIds, onDone) {
       toast('Bitte einen Namen eingeben.');
       return;
     }
+    const gleich = await gleichePerson(person.name);
+    if (gleich && !trotzdemNeu(gleich)) {
+      // statt eines zweiten Eintrags die vorhandene Person nehmen
+      if (!takenIds.includes(gleich.id)) {
+        if (!people.some((x) => x.id === gleich.id)) people = sortCrew([...people, gleich]);
+        chosen.add(gleich.id);
+        toast(`„${gleich.name}“ ausgewählt.`);
+      }
+      resetForm();
+      draw();
+      return;
+    }
     await db.putPerson(person);
     people = sortCrew([...people, person]);
     chosen.add(person.id);
@@ -2826,6 +2844,8 @@ async function renderPeople() {
         toast('Bitte einen Namen eingeben.');
         return;
       }
+      const gleich = await gleichePerson(person.name, person.id);
+      if (gleich && !trotzdemNeu(gleich)) return;
       const box = $('#p-archived', sheet);
       if (box) person.archived = box.checked ? 1 : 0;
       await db.putPerson(person);

@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.62.0**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.63.0**.
 
 | Was | Wo |
 | --- | --- |
@@ -121,7 +121,7 @@ Die Ansicht zeigt einen Balkenplan pro Woche (KW) oder pro Tag. Ein Auftrag läs
 
 **Plantafel und Auslastung:** Die Plantafel zeigt je Person und Woche die eingeplanten Stunden. Die Auslastung zeigt pro Woche geplante gegen freie Stunden je Gewerk, die m² Gerüst draußen und das Material der Woche. Gerechnet wird mit 8 Stunden pro Arbeitstag ohne Wochenenden und Feiertage. Genehmigter Urlaub und Betriebsurlaub zählen nicht als frei, der Berufsschultag eines Lehrlings ebenfalls nicht, Büro-Personen gar nicht. Rot markiert wird, wer im Urlaub eingeplant ist oder an einem Tag mehr als 8 Stunden hat. Der Plan liegt im Repo unter planung/zeitplan.json.
 
-**Personal:** In den Einstellungen unter „Personal verwalten“: Name und Kategorie (Meister, Facharbeiter, Helfer, Lehrling, Büro), dazu das Gewerk (Putz, Maler, Trockenbau, Gerüstbau oder ohne) für den Zeitplan und bei Lehrlingen der Berufsschultag. Anlegen darf jeder, löschen nur der Admin.
+**Personal:** In den Einstellungen unter „Personal verwalten“: Name und Kategorie (Meister, Facharbeiter, Helfer, Lehrling, Büro), dazu das Gewerk (Putz, Maler, Trockenbau, Gerüstbau oder ohne) für den Zeitplan und bei Lehrlingen der Berufsschultag. Anlegen darf jeder, löschen nur der Admin. Gibt es den Namen schon (auch mit vertauschtem Vor- und Nachnamen oder anderer Schreibweise von Akzenten), fragt die App nach; im Bericht wird dann statt eines zweiten Eintrags die vorhandene Person ausgewählt.
 
 Baustellen und Personal werden über das Repo auf allen Handys gleich gehalten. Bei gleichzeitigen Änderungen gewinnt die neuere.
 
@@ -172,6 +172,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 19.10.2026 | 1.63.0 | Personal: Warnung, wenn eine Person mit gleichem Namen (auch vertauscht) schon existiert; im Bericht wird die vorhandene ausgewählt. |
 | 19.10.2026 | 1.62.0 | Antippen eines ausgefüllten Feldes markiert den Inhalt, damit man ihn gleich überschreiben kann (nicht bei Freitexten). |
 | 19.10.2026 | 1.61.0 | Baustellen: Zeitplan für Admins mit Abschnitten, Gewerken, Nur-Gerüst-Aufträgen mit Standzeit, Vorlagen, Verschieben, Plantafel und wöchentlicher Auslastung. Personal: Gewerk und Berufsschultag. |
 | 16.10.2026 | 1.60.0 | Baustellen-Vorschläge auch aus früheren Berichten (Freitext-Baustellen, die nicht gespeichert sind) |
