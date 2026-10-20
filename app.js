@@ -32,7 +32,7 @@ import {
   planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
 } from './zeitplan.js';
 
-const APP_VERSION = '1.66.0';
+const APP_VERSION = '1.67.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -4378,6 +4378,8 @@ async function renderSettings() {
       </div>
       <label class="field"><span>Zugangs-Token</span><input type="password" data-set="token" value="${esc(s.token)}" placeholder="github_pat_…" autocapitalize="off" spellcheck="false"></label>
       </fieldset>
+      ${isAdmin() && syncEntsperrt && s.token ? `<div class="row" style="margin-bottom:12px"><button type="button" class="btn ghost" id="token-show">Token anzeigen</button><button type="button" class="btn ghost" id="token-copy">Token kopieren</button></div>
+        <p class="hint" style="margin-top:-6px">Zum Einrichten eines weiteren eigenen Geräts. Den Token nur an dich selbst schicken.</p>` : ''}
       <div class="toggle" style="margin:4px 0 14px">
         <span><b>Automatisch hochladen</b><small>Sobald Netz da ist, nach jeder Änderung</small></span>
         <label class="switch"><input type="checkbox" data-set="autoSync" ${s.autoSync ? 'checked' : ''}><i></i></label>
@@ -4414,6 +4416,23 @@ async function renderSettings() {
   if (unlock) unlock.onclick = () => syncEntsperren();
   const lock = $('#sync-lock');
   if (lock) lock.onclick = () => { syncEntsperrt = false; renderSettings(); };
+  // Nur Admin bei entsperrten Einstellungen: eigenen Token für ein weiteres Gerät kopieren.
+  const tokenShow = $('#token-show');
+  if (tokenShow) tokenShow.onclick = () => {
+    const inp = $('input[data-set="token"]');
+    const zeigen = inp.type === 'password';
+    inp.type = zeigen ? 'text' : 'password';
+    tokenShow.textContent = zeigen ? 'Token verbergen' : 'Token anzeigen';
+  };
+  const tokenCopy = $('#token-copy');
+  if (tokenCopy) tokenCopy.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(settings.token);
+      toast('Token kopiert. Am anderen Gerät in den Einstellungen einfügen.', 3500);
+    } catch {
+      window.prompt('Token markieren und kopieren:', settings.token);
+    }
+  };
   $('#lang-select').onchange = (e) => {
     settings.lang = e.target.value;
     db.saveSettings(settings);
