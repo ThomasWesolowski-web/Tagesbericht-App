@@ -8,6 +8,7 @@ import {
 import { slug } from './media.js';
 import { planElemente, gruppeElemente, massstabFuer, grenzen, berechne as raumBerechne, fmt2 as raumZahl } from './raumgeometrie.js';
 import { sortStunden, summe, kw, hatZeiten, stundenOf, typLabel, monatLabel, tage } from './stunden.js';
+import { zahlText, einheitText, mengeText } from './verbrauch.js';
 
 let loading;
 function loadJsPdf() {
@@ -1000,5 +1001,134 @@ export async function buildSammelPdf({ titel, von, bis, items, author }) {
   doc.text(`${formatDate(von)} bis ${formatDate(bis)} · ${arten} · Einzelberichte ab Seite ${deckblattBis + 1}`, M, seiteHinweis.y);
   fusszeilen(doc, ranges);
   doc.setProperties({ title: `Zusammenfassung ${titel}`, author: author || '' });
+  return doc.output('blob');
+}
+
+export function materialPdfName(titel, von, bis) {
+  return `Materialliste_${slug(titel) || 'baustelle'}_${von}_bis_${bis}.pdf`;
+}
+
+// Materialliste aus Rapporten: Summe je Material (nach Gruppen), Aufstellung je Datum,
+// Erwähnungen ohne Menge. liste aus materialListe() in verbrauch.js.
+export async function buildMaterialPdf({ titel, von, bis, anzahl, liste, author }) {
+  const { jsPDF } = await loadJsPdf();
+  const doc = neuesPdf(jsPDF);
+  const W = 210;
+  const H = 297;
+  const M = 16;
+  const CW = W - 2 * M;
+  const BOTTOM = H - 18;
+  const color = (c) => doc.setTextColor(...c);
+  const font = (style = 'normal', size = 10) => { doc.setFont('helvetica', style); doc.setFontSize(size); };
+  let y = await briefkopf(doc, { W, M, font, color });
+  const newPage = () => { doc.addPage(); y = M + 4; };
+  const kurz = (d) => formatDate(d).slice(0, 6);
+
+  y += 10;
+  font('bold', 20); color(INK);
+  const kopf = doc.splitTextToSize(`Materialliste – ${titel}`, CW);
+  doc.text(kopf, M, y);
+  y += 7 * kopf.length;
+  font('normal', 10.5); color(MUTED);
+  doc.text(`Verbautes und verbrauchtes Material aus ${anzahl} ${anzahl === 1 ? 'Rapport' : 'Rapporten'} · ${formatDate(von)} bis ${formatDate(bis)}`, M, y);
+  y += 8;
+
+  const heading = (text, need = 30) => {
+    if (y + need > BOTTOM) newPage();
+    y += 4;
+    font('bold', 12); color(ACCENT);
+    doc.text(text, M, y);
+    y += 2;
+    doc.setDrawColor(...ACCENT);
+    doc.setLineWidth(0.4);
+    doc.line(M, y, M + CW, y);
+    doc.setLineWidth(0.2);
+    y += 6;
+  };
+
+  // rows: Array aus Zellen oder { gruppe } für eine Zwischenzeile
+  const table = (cols, rows) => {
+    const head = () => {
+      doc.setFillColor(...SOFT);
+      doc.rect(M, y - 4.6, CW, 6.6, 'F');
+      font('bold', 8); color(MUTED);
+      let x = M;
+      for (const c of cols) {
+        doc.text(c.label, c.align === 'right' ? x + c.w - 2 : x + 2, y, { align: c.align === 'right' ? 'right' : 'left' });
+        x += c.w;
+      }
+      y += 6.6;
+    };
+    head();
+    rows.forEach((row, ri) => {
+      if (row.gruppe) {
+        // Gruppe nicht allein unten auf der Seite
+        if (y + 14 > BOTTOM) { newPage(); head(); }
+        font('bold', 9); color(FIRMEN_GRUEN);
+        doc.text(row.gruppe, M + 2, y + 0.6);
+        y += 6;
+        return;
+      }
+      font('normal', 9);
+      const cells = row.map((cell, ci) => doc.splitTextToSize(String(cell ?? ''), cols[ci].w - 4).slice(0, 6));
+      const h = Math.max(1, ...cells.map((c) => c.length)) * 4.2 + 2.4;
+      if (y + h > BOTTOM) { newPage(); head(); font('normal', 9); }
+      color(INK);
+      let x = M;
+      cells.forEach((lines, ci) => {
+        const c = cols[ci];
+        doc.text(lines, c.align === 'right' ? x + c.w - 2 : x + 2, y, { align: c.align === 'right' ? 'right' : 'left' });
+        x += c.w;
+      });
+      doc.setDrawColor(...LINE);
+      doc.line(M, y + h - 4.2, M + CW, y + h - 4.2);
+      y += h;
+      if (rows[ri + 1]?.gruppe) y += 1;
+    });
+    y += 2;
+  };
+
+  const { summen, eintraege, ohneMenge } = liste;
+  heading('Zusammenfassung nach Material');
+  if (summen.length) {
+    const rows = [];
+    let gruppe = null;
+    for (const s of summen) {
+      if (s.gruppe !== gruppe) { gruppe = s.gruppe; rows.push({ gruppe }); }
+      rows.push([s.name + (s.hinweis ? ` (${s.hinweis})` : ''), zahlText(s.menge), einheitText(s.menge, s.einheit),
+        s.daten.map((d) => `${kurz(d.datum)} (${zahlText(d.menge)})`).join(', ')]);
+    }
+    table([{ label: 'Material', w: 64 }, { label: 'Menge', w: 18, align: 'right' }, { label: 'Einheit', w: 18 }, { label: 'Datum (Menge)', w: CW - 100 }], rows);
+  } else {
+    font('normal', 10); color(MUTED);
+    doc.text('In diesen Rapporten ist kein Material mit Menge eingetragen.', M, y);
+    y += 8;
+  }
+
+  if (eintraege.length) {
+    heading('Aufstellung je Datum');
+    let letztes = '';
+    const rows = eintraege.map((e) => {
+      const d = e.datum !== letztes ? formatDate(e.datum) : '';
+      letztes = e.datum;
+      return [d, e.original, e.name + (e.hinweis ? ` (${e.hinweis})` : ''), mengeText(e.menge, e.einheit)];
+    });
+    table([{ label: 'Datum', w: 22 }, { label: 'Eintrag im Rapport', w: 64 }, { label: 'Material', w: CW - 110 }, { label: 'Menge', w: 24, align: 'right' }], rows);
+  }
+
+  if (ohneMenge.length) {
+    heading('Erwähnt, aber ohne Mengenangabe', 24);
+    table([{ label: 'Datum', w: 22 }, { label: 'Eintrag im Rapport', w: CW - 22 }], ohneMenge.map((e) => [formatDate(e.datum), e.original]));
+  }
+
+  if (y + 16 > BOTTOM) newPage();
+  y += 4;
+  font('normal', 8.5); color(MUTED);
+  const hinweis = doc.splitTextToSize('Zusammengestellt aus dem Feld „Material und Geräte“ der Rapporte. Mengen und Schreibweisen werden von der App erkannt und vereinheitlicht; '
+    + 'der Originaltext steht in der Aufstellung je Datum. Bitte bei ungewöhnlichen Einträgen kurz gegenprüfen.', CW);
+  doc.text(hinweis, M, y);
+
+  fusszeilen(doc, [{ von: 1, bis: doc.getNumberOfPages(), text: `Materialliste ${titel} · ${formatDate(von)} – ${formatDate(bis)}` }]);
+  doc.setProperties({ title: `Materialliste ${titel}`, author: author || '' });
   return doc.output('blob');
 }

@@ -6,8 +6,9 @@ import {
   ABRECHNUNG, MASCHINEN_VORSCHLAEGE, maschinenStunden, today, newId, GEWERKE, gewerkeText,
 } from './report.js';
 import {
-  buildPdf, pdfFileName, buildStundenPdf, stundenPdfName, buildStundenAllePdf, stundenAllePdfName, buildSammelPdf, sammelPdfName,
+  buildPdf, pdfFileName, buildStundenPdf, stundenPdfName, buildStundenAllePdf, stundenAllePdfName, buildSammelPdf, sammelPdfName, buildMaterialPdf, materialPdfName,
 } from './pdf.js';
+import { materialListe, materialXlsx, mengeText } from './verbrauch.js';
 import {
   TYPEN, typLabel, hatZeiten, newStunde, stundenOf, personKey, kw, summe, sortStunden, monatLabel, shiftMonth,
 } from './stunden.js';
@@ -31,7 +32,7 @@ import {
   planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
 } from './zeitplan.js';
 
-const APP_VERSION = '1.65.0';
+const APP_VERSION = '1.66.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -2402,6 +2403,7 @@ async function renderSiteEditor(id) {
     </section>
     <button class="btn primary block" id="save-site">${isNew ? 'Baustelle speichern' : 'Änderungen speichern'}</button>
     ${reports.length ? `<button class="btn soft block" id="site-sum" style="margin-top:10px">${ICON.doc} Zusammenfassung als PDF</button>` : ''}
+    ${reports.some((r) => r.art === 'rapport') ? `<button class="btn soft block" id="site-mat" style="margin-top:10px">${ICON.doc} Materialliste</button>` : ''}
     ${reports.length ? `<div class="month"><span>Berichte</span><span>${formatHours(reports.reduce((s, r) => s + (workedHours(r) || 0), 0))}</span></div>
       <div class="card-list">${reports.map((r) => `<a class="rcard" href="#/bericht/${encodeURIComponent(r.id)}">
         <div class="date"><b>${parseDate(r.datum).getDate()}</b><span>${weekday(r.datum).slice(0, 2)}</span></div>
@@ -2413,6 +2415,8 @@ async function renderSiteEditor(id) {
 
   const siteSum = $('#site-sum');
   if (siteSum) siteSum.onclick = () => openZusammenfassung({ baustelleId: site.id });
+  const siteMat = $('#site-mat');
+  if (siteMat) siteMat.onclick = () => openMaterialliste({ baustelleId: site.id });
   if (!isNew) planListeBinden(site);
   $('#save-site').onclick = async () => {
     readSiteFields($('#site-form'), site);
@@ -3210,8 +3214,10 @@ async function openZusammenfassung(preset = {}) {
     </div>
     <div class="crew-sum" id="z-info"></div>
     <button type="button" class="btn primary block" id="z-ok">${ICON.share} PDF erstellen</button>
+    <button type="button" class="btn soft block" id="z-mat" style="margin-top:10px">${ICON.doc} Materialliste</button>
     <p class="hint" style="text-align:center">Enthält die Berichte, die auf diesem Handy gespeichert sind.</p>`);
 
+  $('#z-mat', sheet).onclick = () => { close(); openMaterialliste({ baustelleId: f.baustelleId, von: f.gesamt ? '' : f.von, bis: f.gesamt ? '' : f.bis }); };
   const auswahl = () => reports.filter((r) => (!f.baustelleId || siteKey(r) === f.baustelleId)
     && (!f.art || (r.art || 'tagesbericht') === f.art) && abrPasst(r) && r.datum >= f.von && r.datum <= f.bis);
   const draw = () => {
@@ -3275,6 +3281,99 @@ async function openZusammenfassung(preset = {}) {
     close();
     const rapporte = isAdmin() ? l.filter((r) => r.art === 'rapport').map((r) => r.id) : [];
     await sharePdfFile(file, `Zusammenfassung ${titel}`, [], { abrechnen: rapporte });
+  };
+}
+
+// ---------- Materialliste ----------
+// Verbautes und verbrauchtes Material aus den Rapporten einer Baustelle: Summe je Material
+// (verbrauch.js liest das Freitextfeld „Material und Geräte“), als PDF und Excel.
+
+async function openMaterialliste(preset = {}) {
+  const reports = (await db.allReports()).filter((r) => r.art === 'rapport');
+  if (!reports.length) { toast('Es gibt noch keine Rapporte.'); return; }
+  const sites = await db.allSites();
+  const f = { baustelleId: preset.baustelleId || '', von: preset.von || '', bis: preset.bis || '', gesamt: !preset.von };
+  const gesamt = () => {
+    const d = reports.filter((r) => !f.baustelleId || siteKey(r) === f.baustelleId).map((r) => r.datum).sort();
+    if (d.length) { f.von = d[0]; f.bis = d[d.length - 1]; }
+  };
+  if (f.gesamt) gesamt();
+  const siteName = (id) => sites.find((x) => x.id === id)?.name || reports.find((r) => siteKey(r) === id)?.baustelle || '';
+  const siteIds = [...new Set(reports.map(siteKey).filter(Boolean))].sort((a, b) => siteName(a).localeCompare(siteName(b), 'de'));
+  if (f.baustelleId && !siteIds.includes(f.baustelleId)) f.baustelleId = '';
+  const { sheet, close } = openSheet(`
+    <h2>Materialliste</h2>
+    <label class="field"><span>Baustelle</span><select id="m-site">
+      <option value="">Alle Baustellen</option>
+      ${siteIds.map((id) => `<option value="${esc(id)}" ${id === f.baustelleId ? 'selected' : ''}>${esc(siteName(id))}</option>`).join('')}
+    </select></label>
+    <div class="field"><span>Zeitraum</span><div class="chips" id="m-quick">
+      <button type="button" class="chip" data-q="alle">Gesamter Zeitraum</button>
+      <button type="button" class="chip" data-q="0">Dieser Monat</button>
+      <button type="button" class="chip" data-q="-1">Letzter Monat</button></div></div>
+    <div class="row">
+      <label class="field"><span>Von</span><input type="date" id="m-von" value="${f.von}"></label>
+      <label class="field"><span>Bis</span><input type="date" id="m-bis" value="${f.bis}"></label>
+    </div>
+    <div class="crew-sum" id="m-info"></div>
+    <div id="m-liste" class="mat-liste"></div>
+    <button type="button" class="btn primary block" id="m-ok">${ICON.share} PDF und Excel erstellen</button>
+    <p class="hint" style="text-align:center">Nur Rapporte, die auf diesem Handy gespeichert sind.</p>`);
+
+  const auswahl = () => reports.filter((r) => (!f.baustelleId || siteKey(r) === f.baustelleId) && r.datum >= f.von && r.datum <= f.bis);
+  const draw = () => {
+    if (f.gesamt) gesamt();
+    $('#m-von', sheet).value = f.von;
+    $('#m-bis', sheet).value = f.bis;
+    $$('#m-quick .chip', sheet).forEach((c) => c.setAttribute('aria-pressed', c.dataset.q === 'alle' ? f.gesamt : !f.gesamt && monatsGrenzen(Number(c.dataset.q)).join() === `${f.von},${f.bis}`));
+    const l = auswahl();
+    const liste = materialListe(l);
+    $('#m-info', sheet).innerHTML = l.length
+      ? `<div class="kv total" style="border:0;margin:0;padding-top:4px"><span><span>${l.length}</span> <span>${l.length === 1 ? 'Rapport' : 'Rapporte'}</span></span><b><span>${liste.summen.length}</span> <span>Materialien</span></b></div>`
+      : '<div class="kv"><span>Keine Rapporte in dieser Auswahl.</span></div>';
+    let gruppe = null;
+    $('#m-liste', sheet).innerHTML = !l.length ? '' : liste.summen.length ? liste.summen.map((s) => {
+      const kopf = s.gruppe !== gruppe ? `<div class="mat-gruppe">${esc(s.gruppe)}</div>` : '';
+      gruppe = s.gruppe;
+      return `${kopf}<div class="kv"><span>${esc(s.name)}</span><b>${esc(mengeText(s.menge, s.einheit))}</b></div>`;
+    }).join('') : '<p class="hint">Kein Material mit Menge eingetragen.</p>';
+    $('#m-ok', sheet).disabled = !l.length;
+  };
+  $('#m-site', sheet).onchange = (e) => { f.baustelleId = e.target.value; draw(); };
+  $$('#m-quick .chip', sheet).forEach((c) => {
+    c.onclick = () => {
+      f.gesamt = c.dataset.q === 'alle';
+      if (!f.gesamt) [f.von, f.bis] = monatsGrenzen(Number(c.dataset.q));
+      draw();
+    };
+  });
+  $('#m-von', sheet).onchange = (e) => { f.gesamt = false; f.von = e.target.value; draw(); };
+  $('#m-bis', sheet).onchange = (e) => { f.gesamt = false; f.bis = e.target.value; draw(); };
+  draw();
+
+  $('#m-ok', sheet).onclick = async () => {
+    const l = auswahl();
+    if (!l.length) return;
+    const btn = $('#m-ok', sheet);
+    btn.disabled = true;
+    btn.textContent = 'Materialliste wird erstellt …';
+    const titel = f.baustelleId ? siteName(f.baustelleId) : 'Alle Baustellen';
+    let pdf;
+    let xlsx;
+    try {
+      const liste = materialListe(l);
+      const blob = await buildMaterialPdf({ titel, von: f.von, bis: f.bis, anzahl: l.length, liste, author: settings.author });
+      const name = materialPdfName(titel, f.von, f.bis);
+      pdf = new File([blob], name, { type: 'application/pdf' });
+      xlsx = new File([materialXlsx(liste, titel)], name.replace(/\.pdf$/, '.xlsx'), { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    } catch (err) {
+      toast(`PDF konnte nicht erstellt werden: ${err.message}`, 4000);
+      btn.disabled = false;
+      btn.innerHTML = `${ICON.share} PDF und Excel erstellen`;
+      return;
+    }
+    close();
+    await sharePdfFile(pdf, `Materialliste ${titel}`, [xlsx]);
   };
 }
 

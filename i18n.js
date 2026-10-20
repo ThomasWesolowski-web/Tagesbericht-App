@@ -221,6 +221,14 @@ const ROWS = [
   ['Teilen oder speichern', 'Udostępnij lub zapisz', 'Trimite sau salvează', 'Сподели или зачувај', 'Ndaj ose ruaj'],
   ['PDF ist fertig', 'PDF jest gotowy', 'PDF-ul este gata', 'PDF е готов', 'PDF është gati'],
   ['Ansehen', 'Pokaż', 'Vezi', 'Погледни', 'Shiko'],
+  ['Materialliste', 'Lista materiałów', 'Lista de materiale', 'Листа на материјали', 'Lista e materialeve'],
+  ['Materialien', 'Materiały', 'Materiale', 'Материјали', 'Materiale'],
+  ['Keine Rapporte in dieser Auswahl.', 'Brak raportów robót w tym wyborze.', 'Niciun raport de lucru în această selecție.', 'Нема работни извештаи во овој избор.', 'Asnjë raport pune në këtë përzgjedhje.'],
+  ['PDF und Excel erstellen', 'Utwórz PDF i Excel', 'Creează PDF și Excel', 'Направи PDF и Excel', 'Krijo PDF dhe Excel'],
+  ['Nur Rapporte, die auf diesem Handy gespeichert sind.', 'Tylko raporty robót zapisane w tym telefonie.', 'Doar rapoartele de lucru salvate pe acest telefon.', 'Само работните извештаи зачувани на овој телефон.', 'Vetëm raportet e punës të ruajtura në këtë telefon.'],
+  ['Kein Material mit Menge eingetragen.', 'Brak materiałów z podaną ilością.', 'Niciun material cu cantitate.', 'Нема внесен материјал со количина.', 'Asnjë material me sasi.'],
+  ['Materialliste wird erstellt …', 'Tworzenie listy materiałów …', 'Se creează lista de materiale …', 'Се прави листата на материјали …', 'Po krijohet lista e materialeve …'],
+  ['Es gibt noch keine Rapporte.', 'Nie ma jeszcze raportów robót.', 'Încă nu există rapoarte de lucru.', 'Сè уште нема работни извештаи.', 'Ende nuk ka raporte pune.'],
 
   // Stunden
   ['Stundennachweis', 'Ewidencja godzin', 'Pontaj', 'Евиденција на часови', 'Evidenca e orëve'],

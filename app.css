@@ -474,6 +474,11 @@ body.editing .toast { bottom: calc(96px + var(--safe-b)); }
 .pick.check[aria-pressed="true"] .box::after { content: ""; width: 10px; height: 6px; border: solid var(--accent-ink); border-width: 0 0 2.5px 2.5px; transform: translateY(-1px) rotate(-45deg); }
 .crew-sum { border-radius: 12px; background: var(--accent-soft); padding: 8px 12px; margin-bottom: 12px; }
 .crew-sum:empty { display: none; }
+.mat-liste { margin-bottom: 12px; }
+.mat-liste:empty { display: none; }
+.mat-liste .kv { border-bottom: 1px solid var(--line); gap: 12px; }
+.mat-liste .kv b { white-space: nowrap; }
+.mat-gruppe { font-size: .8rem; font-weight: 700; color: var(--accent); margin: 10px 0 2px; }
 .crew-sum .kv { color: var(--ink); }
 .crew-sum .kv small { color: var(--ink-3); }
 .crew-sum .kv.total { border-top: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); margin-top: 4px; padding-top: 8px; color: var(--accent); font-weight: 700; }
