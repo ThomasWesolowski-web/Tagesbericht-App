@@ -32,7 +32,7 @@ import {
   planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
 } from './zeitplan.js';
 
-const APP_VERSION = '1.67.0';
+const APP_VERSION = '1.68.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -2145,9 +2145,10 @@ async function renderAuftragEditor(id) {
       <div class="section"><h2>Abschnitte <span class="h-right hint" style="margin:0">antippen zum Ändern</span></h2>
         ${abschnitteSortiert(x).map((ab) => {
           const k = abschnittKonflikte(ab, r);
-          return `<button type="button" class="zp-ab knopf" data-ab="${ab.id}"><i class="zp-punkt${ab.typ === 'warten' ? ' warten' : ''}" style="${ab.typ === 'warten' ? '' : `background:${gewerkFarbe(ab.gewerk)}`}"></i>
+          return `<div class="zp-ab-zeile"><button type="button" class="zp-ab knopf" data-ab="${ab.id}"><i class="zp-punkt${ab.typ === 'warten' ? ' warten' : ''}" style="${ab.typ === 'warten' ? '' : `background:${gewerkFarbe(ab.gewerk)}`}"></i>
             <span><b>${esc(ab.name || 'Abschnitt')}</b><small>${ab.von ? `${kurzDatum(ab.von)}–${kurzDatum(ab.bis)} · ${arbeitstageIn(ab.von, ab.bis)} Arbeitstage` : 'Datum fehlt'} · ${ab.typ === 'warten' ? 'ohne Personal' : (ab.leute || []).length ? `${ab.leute.length} Pers.` : '<span class="zp-rot">noch niemand eingeteilt</span>'}${(ab.material || []).length ? ` · ${ab.material.length} Material` : ''}</small>
-            ${k.map((y) => `<small class="zp-rot">${esc(konfliktText(y))}</small>`).join('')}</span>${ICON.chevron}</button>`;
+            ${k.map((y) => `<small class="zp-rot">${esc(konfliktText(y))}</small>`).join('')}</span>${ICON.chevron}</button>
+            <button type="button" class="icon-btn zp-ab-weg" data-weg="${ab.id}" aria-label="Abschnitt entfernen" title="Abschnitt entfernen">${ICON.x}</button></div>`;
         }).join('') || '<p class="hint" style="margin:0 0 8px">Noch keine Abschnitte.</p>'}
         <button type="button" class="btn ghost block" id="ae-neu-ab" style="margin-top:8px">${ICON.plus} Abschnitt hinzufügen</button>
       </div>
@@ -2184,6 +2185,16 @@ async function renderAuftragEditor(id) {
     if (gr) gr.oninput = () => { felder(); $('#ae-stand').innerHTML = standBox(); };
     $$('[data-ab]').forEach((b) => {
       b.onclick = () => { felder(); zpAbschnittBearbeiten(x, x.abschnitte.find((ab) => ab.id === b.dataset.ab), people, zeichnen); };
+    });
+    // X hinter dem Abschnitt: entfernt ihn nur hier im Dialog, wirksam erst mit Speichern
+    $$('[data-weg]').forEach((b) => {
+      b.onclick = () => {
+        const ab = x.abschnitte.find((y) => y.id === b.dataset.weg);
+        if (!ab || !confirm(`Abschnitt „${ab.name || 'Abschnitt'}“ entfernen?`)) return;
+        felder();
+        x.abschnitte = x.abschnitte.filter((y) => y.id !== ab.id);
+        zeichnen();
+      };
     });
     $('#ae-neu-ab').onclick = () => {
       felder();

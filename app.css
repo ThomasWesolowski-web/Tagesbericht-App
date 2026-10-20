@@ -993,6 +993,11 @@ button.zp-dc { cursor: pointer; }
 .zp-ab small.zp-rot { color: var(--danger); }
 .zp-ab.knopf { all: unset; box-sizing: border-box; width: 100%; cursor: pointer; display: grid; grid-template-columns: 14px minmax(0, 1fr) 20px; gap: 8px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); }
 .zp-ab.knopf svg { width: 18px; height: 18px; color: var(--ink-3); }
+.zp-ab-zeile { display: flex; align-items: center; gap: 2px; border-bottom: 1px solid var(--line); }
+.zp-ab-zeile .zp-ab.knopf { flex: 1; min-width: 0; border-bottom: 0; }
+.zp-ab-zeile .zp-ab-weg { flex: none; width: 36px; height: 36px; margin-right: -6px; color: var(--ink-3); }
+.zp-ab-zeile .zp-ab-weg svg { width: 16px; height: 16px; }
+.zp-ab-zeile .zp-ab-weg:hover { color: var(--danger); }
 .zp-schieben { display: flex; gap: 4px; }
 .zp-schieben .chip { padding: 5px 8px; font-size: .76rem; }
 .zp-person { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--line); cursor: pointer; }

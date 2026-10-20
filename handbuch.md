@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.66.0**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.68.0**.
 
 | Was | Wo |
 | --- | --- |
@@ -28,7 +28,7 @@ Der Chef legt für jeden Mitarbeiter einen eigenen Token an (Anleitung im PDF ob
 6. Zugangs-Token einfügen. Die anderen GitHub-Felder sind schon richtig ausgefüllt.
 7. „Verbindung testen“ tippen. Erscheint „Verbunden mit …“, ist alles fertig.
 
-Ist der Token einmal eingetragen, sind die GitHub-Felder gesperrt, damit niemand aus Versehen etwas verstellt. Entsperren geht nur mit der Admin-PIN.
+Ist der Token einmal eingetragen, sind die GitHub-Felder gesperrt, damit niemand aus Versehen etwas verstellt. Entsperren geht nur mit der Admin-PIN. Der Admin sieht bei entsperrten Feldern zusätzlich „Token anzeigen“ und „Token kopieren“, um ein weiteres eigenes Gerät (z. B. den Firmen-PC) mit demselben Token einzurichten. Den Token nur an sich selbst schicken.
 
 ## Berichte und Rapporte schreiben
 
@@ -119,6 +119,8 @@ Zoomen mit zwei Fingern oder dem Mausrad, Verschieben mit zwei Fingern (am Compu
 
 Die Ansicht zeigt einen Balkenplan pro Woche (KW) oder pro Tag. Ein Auftrag lässt sich mit −1/+1 Woche verschieben; mit „Folgende mitverschieben“ wandern die späteren Abschnitte mit. Bei Gerüst-Aufträgen rechnet die App die Standzeit zwischen Aufbau und Abbau selbst und zeigt, wie viele Wochen über der Grundstandzeit (Vorgabe 4 Wochen) liegen.
 
+Nicht gebrauchte Abschnitte entfernst du im Dialog mit dem kleinen X hinten in der Zeile (nach kurzer Rückfrage). Die Änderung gilt erst, wenn du auf „Speichern“ tippst; mit „Abbrechen“ bleibt alles wie vorher.
+
 **Plantafel und Auslastung:** Die Plantafel zeigt je Person und Woche die eingeplanten Stunden. Die Auslastung zeigt pro Woche geplante gegen freie Stunden je Gewerk, die m² Gerüst draußen und das Material der Woche. Gerechnet wird mit 8 Stunden pro Arbeitstag ohne Wochenenden und Feiertage. Genehmigter Urlaub und Betriebsurlaub zählen nicht als frei, der Berufsschultag eines Lehrlings ebenfalls nicht, Büro-Personen gar nicht. Rot markiert wird, wer im Urlaub eingeplant ist oder an einem Tag mehr als 8 Stunden hat. Der Plan liegt im Repo unter planung/zeitplan.json.
 
 **Personal:** In den Einstellungen unter „Personal verwalten“: Name und Kategorie (Meister, Facharbeiter, Helfer, Lehrling, Büro), dazu das Gewerk (Putz, Maler, Trockenbau, Gerüstbau oder ohne) für den Zeitplan und bei Lehrlingen der Berufsschultag. Anlegen darf jeder, löschen nur der Admin. Gibt es den Namen schon (auch mit vertauschtem Vor- und Nachnamen oder anderer Schreibweise von Akzenten), fragt die App nach; im Bericht wird dann statt eines zweiten Eintrags die vorhandene Person ausgewählt.
@@ -147,6 +149,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 - die Stunden aller Mitarbeiter sehen und bearbeiten
 - alle Berichte aller Mitarbeiter aufs Handy holen
 - die gesperrten GitHub-Felder entsperren
+- den eigenen Token anzeigen und kopieren (für ein weiteres eigenes Gerät)
 
 **Wer hat die App eingerichtet?** (Einstellungen, Bereich Administrator): Liste aller Handys mit Name, iPhone oder Android, Sprache, App-Version und ob die App installiert ist. Darunter stehen die Leute aus der Personal-Liste, die sich noch nicht gemeldet haben. Der Name muss zu mindestens 90 % übereinstimmen. Ein Handy erscheint, sobald dort der Token eingetragen ist und einmal abgeglichen wurde. Ein Zeitpunkt der letzten Nutzung wird bewusst nicht gespeichert.
 
@@ -174,6 +177,8 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 20.10.2026 | 1.68.0 | Zeitplan: kleines X hinter jedem Abschnitt zum Entfernen (wirksam mit Speichern) |
+| 20.10.2026 | 1.67.0 | Admin kann den eigenen Token anzeigen und kopieren (weiteres Gerät ohne neuen Token) |
 | 20.10.2026 | 1.66.0 | Materialliste: Material aus den Rapporten einer Baustelle mit Summe und Einheit, als PDF und Excel (Knopf auf der Baustelle und in der Zusammenfassung). |
 | 19.10.2026 | 1.65.0 | Excel- und CSV-Dateien an Baustellen und Berichten werden in der App als Tabelle angezeigt; andere Dateien über „In anderer App öffnen“. |
 | 19.10.2026 | 1.64.1 | Mehrseitige PDFs: direkt in der Seitenliste mit zwei Fingern zoomen, ohne Seite erst antippen zu müssen. |
