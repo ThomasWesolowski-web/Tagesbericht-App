@@ -34,8 +34,8 @@ test('Verbrauch: Hinweise für ca., Verschnitt und zweite Menge', () => {
 });
 
 test('Verbrauch: unbekanntes Material bleibt mit eigenem Namen, ohne Menge extra', () => {
-  const m = materialLesen('2 Sack Sondermörtel XY');
-  assert.deepEqual([m.name, m.menge, m.einheit, m.gruppe], ['Sondermörtel XY', 2, 'Sack', 'Sonstiges']);
+  const m = materialLesen('2 Sack Spezialmischung XY');
+  assert.deepEqual([m.name, m.menge, m.einheit, m.gruppe], ['Spezialmischung XY', 2, 'Sack', 'Sonstiges']);
   const l = materialListe([{ id: 'a', datum: '2026-01-02', material: 'Dichtband und Gewebe' }]);
   assert.equal(l.summen.length, 0);
   assert.equal(l.ohneMenge.length, 1);
@@ -53,4 +53,25 @@ test('Verbrauch: gleiche Materialien werden über mehrere Rapporte addiert', () 
   assert.deepEqual(gkb.daten.map((d) => d.datum), ['2026-01-02', '2026-01-05', '2026-01-07']);
   assert.equal(l.summen.find((s) => s.name === 'Fugenfüller').menge, 15);
   assert.equal(l.summen[0].gruppe, 'Trockenbau');
+});
+
+test('Verbrauch: erweiterte Stichwortliste ordnet genaue Begriffe vor allgemeinen zu', () => {
+  const g = (t) => { const m = materialLesen(t); return [m.name, m.gruppe]; };
+  assert.deepEqual(g('3 m Gewebeeckwinkel'), ['Gewebeeckwinkel', 'Profile und Gewebe']);
+  assert.deepEqual(g('5 Stück Eckschiene'), ['Eckschutzschienen', 'Profile und Gewebe']);
+  assert.deepEqual(g('2 Rollen Gewebeband'), ['Klebeband', 'Maler und Hilfsstoffe']);
+  assert.deepEqual(g('1 Rolle Fugendeckstreifen'), ['Fugen- und Trennstreifen', 'Profile und Gewebe']);
+  assert.deepEqual(g('25 kg Fliesenkleber'), ['Fliesenkleber', 'Mörtel und Kleber']);
+  assert.deepEqual(g('5 kg Betonkontakt'), ['Haftbrücke', 'Maler und Hilfsstoffe']);
+  assert.deepEqual(g('30 kg MP 75'), ['Gipsputz (Maschinenputz)', 'Putz und Spachtel']);
+  assert.deepEqual(g('3 Sack Sanierputz'), ['Sanierputz', 'Putz und Spachtel']);
+  assert.deepEqual(g('20 kg Silikonharzputz 2 mm'), ['Silikonharzputz', 'Putz und Spachtel']);
+  assert.deepEqual(g('25 kg Fließspachtel'), ['Estrich / Ausgleichsmasse', 'Mörtel und Kleber']);
+  assert.deepEqual(g('12 m CW 50 Profil'), ['Trockenbauprofile', 'Profile und Gewebe']);
+  assert.deepEqual(g('1 Paket Schnellbauschrauben'), ['Schrauben', 'Befestigung']);
+  assert.deepEqual(g('40 Stück Tellerdübel'), ['Dämmstoffdübel', 'Dämmung']);
+  assert.deepEqual(g('8 m² Mineralwolle Lamellen'), ['Mineralwolle', 'Dämmung']);
+  assert.deepEqual(g('2 m² Aquapanel'), ['Zementbauplatten (Aquapanel)', 'Trockenbau']);
+  assert.deepEqual(g('1 Eimer Dichtschlämme'), ['Abdichtung (Schlämme / flüssig)', 'Abdichtung']);
+  assert.deepEqual(g('2 m³ Gipsabfall'), ['Gipsabfall (Entsorgung)', 'Entsorgung']);
 });

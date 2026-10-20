@@ -2,7 +2,7 @@
 // („20 kg Kalkglätte, 3 m² GKB“) und fasst gleiche Materialien mit Summe und Einheit zusammen.
 // Ohne Netz, ohne KI: Zahlen, Einheiten und eine kleine Liste bekannter Materialien.
 
-export const GRUPPEN = ['Trockenbau', 'Putz und Spachtel', 'Dämmung', 'Profile und Gewebe', 'Maler und Hilfsstoffe', 'Entsorgung', 'Sonstiges'];
+export const GRUPPEN = ['Trockenbau', 'Putz und Spachtel', 'Mörtel und Kleber', 'Dämmung', 'Profile und Gewebe', 'Befestigung', 'Abdichtung', 'Maler und Hilfsstoffe', 'Entsorgung', 'Sonstiges'];
 
 const ZAHLWORTE = {
   ein: 1, eine: 1, einen: 1, einer: 1, eins: 1, zwei: 2, drei: 3, vier: 4, fünf: 5, fuenf: 5, sechs: 6, sieben: 7,
@@ -35,46 +35,124 @@ const EINHEITEN = [
 // Abmessungen gehören zum Namen (EPS 120 mm), nicht zur Menge
 const ABMESSUNG = /^(mm|cm)$/i;
 
-// Bekannte Materialien: Suchmuster → Name und Gruppe. Die erste passende Zeile gewinnt.
+// Bekannte Materialien: Suchmuster → Name und Gruppe. Die erste passende Zeile gewinnt, darum
+// stehen genaue Begriffe vor allgemeinen („Gewebeeckwinkel“ vor „Eckwinkel“, „Fliesenkleber“ vor „Kleber“).
+// Begriffe nach Herstellerkatalogen (Knauf, Protektor), WDVS-Leitfaden (KEIM) und Putz-Lexika.
 const BEKANNT = [
+  // Entsorgung
+  [/gipsabfall|gipsschutt/i, 'Gipsabfall (Entsorgung)', 'Entsorgung'],
+  [/dämmstoffabfall|daemmstoffabfall|styroporabfall|kmf-?abfall/i, 'Dämmstoffabfall (Entsorgung)', 'Entsorgung'],
+  [/altholz/i, 'Altholz (Entsorgung)', 'Entsorgung'],
+  [/container|mulde|big-?\s?bag/i, 'Container / Big Bag (Entsorgung)', 'Entsorgung'],
   [/schutt|abbruch|entsorg|müll|muell|abfall/i, 'Bauschutt (Entsorgung)', 'Entsorgung'],
-  [/fermacell/i, 'Fermacell-Platten', 'Trockenbau'],
-  [/wedi/i, 'Wedi-Platten', 'Trockenbau'],
-  [/osb/i, 'OSB-Platten', 'Trockenbau'],
-  [/\bgkfi\b/i, 'Gipskartonplatten GKFI', 'Trockenbau'],
-  [/\bgkbi\b|imprägniert/i, 'Gipskartonplatten GKBI', 'Trockenbau'],
-  [/\bgkf\b|feuerschutz/i, 'Gipskartonplatten GKF', 'Trockenbau'],
-  [/\bgkb\b|gipskarton|rigips/i, 'Gipskartonplatten GKB', 'Trockenbau'],
-  [/\b(cw|uw|ua|cd|ud)[- ]?profil|ständerprofil|staenderprofil/i, 'Trockenbauprofile', 'Profile und Gewebe'],
-  [/fugenfüller|fugenfueller|fugenspachtel|uniflott/i, 'Fugenfüller', 'Putz und Spachtel'],
-  [/kalkglätte|kalkglaette|kalkspachtel/i, 'Kalkglätte', 'Putz und Spachtel'],
-  [/haftputz|\bhp\s*100\b|rotband/i, 'Haftputz HP 100', 'Putz und Spachtel'],
-  [/kalk-?zement|kalkzement/i, 'Kalkzement-Leichtputz', 'Putz und Spachtel'],
-  [/armierung\w*\s*spachtel|armierungsmörtel|armierungsmoertel|klebe-?\s*und\s*armier/i, 'Armierungsspachtel', 'Putz und Spachtel'],
-  [/streichputz/i, 'Streichputz', 'Putz und Spachtel'],
-  [/oberputz|scheibenputz|reibeputz|kratzputz/i, 'Oberputz', 'Putz und Spachtel'],
-  [/grundputz|maschinenputz|gipsputz|kalkputz|leichtputz/i, 'Grundputz', 'Putz und Spachtel'],
-  [/flächenspachtel|flaechenspachtel|feinspachtel|spachtelmasse|fertigspachtel/i, 'Spachtelmasse', 'Putz und Spachtel'],
-  [/kleber|klebemörtel|klebemoertel/i, 'Kleber', 'Putz und Spachtel'],
-  [/\beps\b|styropor/i, 'EPS-Dämmplatten', 'Dämmung'],
-  [/\bxps\b/i, 'XPS-Dämmplatten', 'Dämmung'],
-  [/mineralwolle|steinwolle|glaswolle|klemmfilz/i, 'Mineralwolle', 'Dämmung'],
-  [/pu[- ]?schaum|bauschaum|montageschaum/i, 'PU-Schaum', 'Dämmung'],
-  [/dübel|duebel/i, 'Dämmstoffdübel', 'Dämmung'],
+
+  // Profile und Gewebe (vor Platten und Putzen, weil Namen wie „Gewebeeckwinkel“ oder „Putzprofil“ beides enthalten)
+  [/gewebe-?\s*(eck)?winkel|gewebeeck|eckwinkel\s*mit\s*gewebe/i, 'Gewebeeckwinkel', 'Profile und Gewebe'],
   [/alu\w*\s*-?\s*(eck)?winkel|aluminium\w*winkel|alu-?eck/i, 'Alu-Eckwinkel', 'Profile und Gewebe'],
-  [/kantenschutz|eckschutz|eckschiene|eckwinkel/i, 'Eckschutzschienen', 'Profile und Gewebe'],
-  [/sockelprofil|sockelschiene/i, 'Sockelprofile', 'Profile und Gewebe'],
+  [/kantenschutzstreifen|eckenschutzstreifen|papier-?kantenschutz/i, 'Kantenschutzstreifen', 'Profile und Gewebe'],
+  [/kantenschutz|eckschutz|eckschiene|eckwinkel|eckprofil/i, 'Eckschutzschienen', 'Profile und Gewebe'],
+  [/sockelprofil|sockelschiene|sockelabschluss/i, 'Sockelprofile', 'Profile und Gewebe'],
   [/anputz|apu-?leiste|fensteranschluss/i, 'Anputzleisten', 'Profile und Gewebe'],
-  [/gewebe/i, 'Armierungsgewebe', 'Profile und Gewebe'],
-  [/dichtband|fugendichtband|kompriband/i, 'Dichtband', 'Profile und Gewebe'],
-  [/tiefgrund|grundierung|putzgrund|haftgrund|aufbrennsperre/i, 'Grundierung', 'Maler und Hilfsstoffe'],
-  [/kalkfarbe/i, 'Kalkfarbe', 'Maler und Hilfsstoffe'],
-  [/farbe|dispersion|anstrich/i, 'Farbe', 'Maler und Hilfsstoffe'],
-  [/acryl|silikon/i, 'Acryl / Silikon', 'Maler und Hilfsstoffe'],
+  [/tropfkante|tropfprofil|tropfnase/i, 'Tropfkantenprofile', 'Profile und Gewebe'],
+  [/dehnfuge|bewegungsfuge|dilatation/i, 'Dehnfugenprofile', 'Profile und Gewebe'],
+  [/abschlussprofil|abschlussschiene|putzabschluss|putzprofil|putzleiste|putzschiene|einputzprofil/i, 'Putzabschlussprofile', 'Profile und Gewebe'],
+  [/laibungsprofil|leibungsprofil/i, 'Laibungsprofile', 'Profile und Gewebe'],
+  [/putzträger|putztraeger|streckmetall|ziegeldraht|rabitz|schilfrohr|putzlatte/i, 'Putzträger', 'Profile und Gewebe'],
+  [/\b(cw|uw|ua|cd|ud)\s*-?\s*profil|\b(cw|uw|ua|cd|ud)\s*\d{2,3}\b|ständerprofil|staenderprofil|wandprofil|deckenprofil|aussteifungsprofil|anschlussprofil/i, 'Trockenbauprofile', 'Profile und Gewebe'],
+  [/hutprofil|hut-?deckenprofil|federschiene|rostwinkel|wandwinkel/i, 'Hut- und Winkelprofile', 'Profile und Gewebe'],
+  [/fugendeckstreifen|fugenstreifen|bewehrungsstreifen|fugenband|glasfaser-?\s*gewebeband|trennwandband|trennstreifen|dämmstreifen|daemmstreifen/i, 'Fugen- und Trennstreifen', 'Profile und Gewebe'],
+  [/gewebe(?!band)|armierungsnetz|glasfaser-?gitter|gittermatte/i, 'Armierungsgewebe', 'Profile und Gewebe'],
+
+  // Abdichtung (vor Klebeband und Folie)
+  [/dichtband|fugendichtband|dichtecke|dichtmanschette|kompriband|fensterband/i, 'Dichtband', 'Abdichtung'],
+  [/dichtschlämme|dichtschlaemme|flüssigabdichtung|fluessigabdichtung|flüssigfolie|fluessigfolie|verbundabdichtung|bitumen|kmb\b/i, 'Abdichtung (Schlämme / flüssig)', 'Abdichtung'],
+  [/dampfbremse|dampfsperre|dampfbrems|luftdicht/i, 'Dampfbremse', 'Abdichtung'],
+
+  // Trockenbau
+  [/fermacell|gipsfaser/i, 'Gipsfaserplatten (Fermacell)', 'Trockenbau'],
+  [/wedi|bauplatte\s*xps|hartschaum-?bauplatte/i, 'Wedi-Platten', 'Trockenbau'],
+  [/aquapanel|zementplatte|zementgebunden|zementbauplatte/i, 'Zementbauplatten (Aquapanel)', 'Trockenbau'],
+  [/lehmbauplatte|lehmplatte/i, 'Lehmbauplatten', 'Trockenbau'],
+  [/akustikplatte|lochplatte|schlitzplatte|cleaneo/i, 'Akustikplatten', 'Trockenbau'],
+  [/mineralfaserplatte|rasterdecke|deckenplatte|odenwald/i, 'Mineralfaser-Deckenplatten', 'Trockenbau'],
+  [/brandschutzplatte|silikatplatte|fireboard|promat/i, 'Brandschutzplatten', 'Trockenbau'],
+  [/osb/i, 'OSB-Platten', 'Trockenbau'],
+  [/spanplatte|holzwerkstoff|mdf|sperrholz/i, 'Holzwerkstoffplatten', 'Trockenbau'],
+  [/\bgkfi\b|\bgm-?fh?1?\b|feuchtraum-?\s*feuerschutz/i, 'Gipskartonplatten GKFI', 'Trockenbau'],
+  [/\bgkbi\b|imprägniert|impraegniert|\bh2\b|grüne\s*platte|gruene\s*platte/i, 'Gipskartonplatten GKBI', 'Trockenbau'],
+  [/\bgkf\b|feuerschutzplatte|\bdf\b-?platte/i, 'Gipskartonplatten GKF', 'Trockenbau'],
+  [/\bgkb\b|gipskarton|rigips|gipsplatte|\bgk-?platte|trockenputz/i, 'Gipskartonplatten GKB', 'Trockenbau'],
+  [/revisionsklappe|revisionsöffnung|revisionsoeffnung/i, 'Revisionsklappen', 'Trockenbau'],
+
+  // Putz und Spachtel (genaue Putze vor allgemeinen)
+  [/fugenfüller|fugenfueller|fugenspachtel|uniflott|fugenfüll/i, 'Fugenfüller', 'Putz und Spachtel'],
+  [/kalkglätte|kalkglaette|kalkspachtel|marmorputz|tadelakt|stucco|stuckmarmor/i, 'Kalkglätte', 'Putz und Spachtel'],
+  [/haftputz|\bhp\s*100\b|rotband|haftputzgips/i, 'Haftputz HP 100', 'Putz und Spachtel'],
+  [/\bmp\s*75\b|maschinenputz|gipsputz|gips-?kalk-?putz|gipskalkputz/i, 'Gipsputz (Maschinenputz)', 'Putz und Spachtel'],
+  [/sanierputz|wtA-?putz|salzspeicher/i, 'Sanierputz', 'Putz und Spachtel'],
+  [/wärmedämmputz|waermedaemmputz|dämmputz|daemmputz|perlite-?putz/i, 'Wärmedämmputz', 'Putz und Spachtel'],
+  [/lehmputz|lehm-?edelputz|lehmfeinputz|lehmoberputz/i, 'Lehmputz', 'Putz und Spachtel'],
+  [/kalk-?\s*zement|kalkzement/i, 'Kalkzement-Leichtputz', 'Putz und Spachtel'],
+  [/zementputz|sockelputz/i, 'Zementputz', 'Putz und Spachtel'],
+  [/kalkputz|naturkalkputz|kalkfeinputz|kalk-?grundputz/i, 'Kalkputz', 'Putz und Spachtel'],
+  [/armierung\w*\s*spachtel|armierungsmörtel|armierungsmoertel|klebe-?\s*und\s*armier|spachtelmörtel|spachtelmoertel/i, 'Armierungsspachtel', 'Putz und Spachtel'],
+  [/streichputz|rollputz/i, 'Streichputz', 'Putz und Spachtel'],
+  [/silikonharzputz|siliconharzputz/i, 'Silikonharzputz', 'Putz und Spachtel'],
+  [/silikatputz/i, 'Silikatputz', 'Putz und Spachtel'],
+  [/kunstharzputz|dispersionsputz|buntsteinputz|mosaikputz/i, 'Kunstharzputz', 'Putz und Spachtel'],
+  [/oberputz|edelputz|scheibenputz|reibeputz|kratzputz|rauputz|strukturputz|filzputz|dekorputz|modellierputz/i, 'Oberputz', 'Putz und Spachtel'],
+  [/grundputz|unterputz|leichtputz|fertigputz|innenputz|außenputz|aussenputz/i, 'Grundputz', 'Putz und Spachtel'],
+  [/flächenspachtel|flaechenspachtel|feinspachtel|spachtelmasse|fertigspachtel|füllspachtel|fuellspachtel|reparaturspachtel|finish|q[234]-?spachtel|(?<!fließ|fliess)spachtel/i, 'Spachtelmasse', 'Putz und Spachtel'],
+  [/ansetzgips|ansetzbinder|perlfix/i, 'Ansetzgips', 'Putz und Spachtel'],
+  [/stuckgips|modellgips|alabaster|\bgips\b/i, 'Gips (Stuckgips)', 'Putz und Spachtel'],
+
+  // Mörtel und Kleber
+  [/fliesenkleber|flexkleber|flexmörtel|flexmoertel|dünnbettmörtel|duennbettmoertel/i, 'Fliesenkleber', 'Mörtel und Kleber'],
+  [/fugenmörtel|fugenmoertel|fugmasse|fliesenfug/i, 'Fugenmörtel (Fliesen)', 'Mörtel und Kleber'],
+  [/klebemörtel|klebemoertel|dämmplattenkleber|daemmplattenkleber|wdvs-?kleber|klebeschaum/i, 'Klebemörtel (WDVS)', 'Mörtel und Kleber'],
+  [/kleber/i, 'Kleber', 'Mörtel und Kleber'],
+  [/estrich|ausgleichsmasse|nivelliermasse|bodenausgleich|fließspachtel|fliessspachtel/i, 'Estrich / Ausgleichsmasse', 'Mörtel und Kleber'],
+  [/mauermörtel|mauermoertel|mörtel|moertel|reparaturmörtel/i, 'Mörtel', 'Mörtel und Kleber'],
+  [/beton(?!kontakt)/i, 'Beton', 'Mörtel und Kleber'],
+  [/zement/i, 'Zement', 'Mörtel und Kleber'],
+  [/\bsand\b|quarzsand|estrichsand/i, 'Sand', 'Mörtel und Kleber'],
+
+  // Dämmung
+  [/dämmstoffdübel|daemmstoffduebel|tellerdübel|tellerduebel|schraubdübel|schraubduebel|wdvs-?dübel|dübelteller/i, 'Dämmstoffdübel', 'Dämmung'],
+  [/\beps\b|styropor|polystyrol/i, 'EPS-Dämmplatten', 'Dämmung'],
+  [/\bxps\b|perimeter/i, 'XPS-Dämmplatten', 'Dämmung'],
+  [/holzfaser|steico|pavatex|gutex/i, 'Holzfaser-Dämmplatten', 'Dämmung'],
+  [/\bpir\b|\bpur\b-?\s*(dämm|platte)|polyurethan/i, 'PIR/PUR-Dämmplatten', 'Dämmung'],
+  [/mineraldämmplatte|mineraldaemmplatte|multipor|calciumsilikat|kalziumsilikat|klimaplatte|innendämm|innendaemm/i, 'Mineraldämmplatten (Innendämmung)', 'Dämmung'],
+  [/lamelle|mineralwolle|steinwolle|glaswolle|klemmfilz|dämmfilz|daemmfilz|\bmw\b|rockwool|isover/i, 'Mineralwolle', 'Dämmung'],
+  [/trittschall|randdämmstreifen|randdaemmstreifen/i, 'Trittschall- und Randdämmung', 'Dämmung'],
+  [/hanf|zellulose|flachs|schafwolle|kork/i, 'Naturdämmstoff', 'Dämmung'],
+  [/pu[- ]?schaum|bauschaum|montageschaum|pistolenschaum|fensterschaum/i, 'PU-Schaum', 'Dämmung'],
+
+  // Befestigung
+  [/schnellbauschraube|trockenbauschraube|\bsn\s*\d|\btn\s*\d|blechschraube|bohrschraube|schraube/i, 'Schrauben', 'Befestigung'],
+  [/direktabhänger|direktabhaenger|noniusabhänger|nonius|schnellspannabhänger|abhänger|abhaenger|abhängedraht|ösendraht|oesendraht|ankerhänger|ankerhaenger/i, 'Abhänger', 'Befestigung'],
+  [/kreuzverbinder|längsverbinder|laengsverbinder|ankerwinkel|verbinder/i, 'Profilverbinder', 'Befestigung'],
+  [/deckennagel|nageldübel|nagelduebel|schlagdübel|schlagduebel|hohlraumdübel|hohlraumduebel|klappdübel|klappduebel|dübel|duebel|nägel|naegel|nagel/i, 'Dübel und Nägel', 'Befestigung'],
+  [/klammer|tacker/i, 'Klammern', 'Befestigung'],
+
+  // Maler und Hilfsstoffe
+  [/tiefgrund|tiefengrund|grundierung|sperrgrund|isoliergrund|haftgrund/i, 'Grundierung', 'Maler und Hilfsstoffe'],
+  [/putzgrund|quarzgrund|aufbrennsperre|kornputzgrund/i, 'Putzgrund', 'Maler und Hilfsstoffe'],
+  [/haftbrücke|haftbruecke|betonkontakt|haftemulsion|vorspritz|spritzbewurf/i, 'Haftbrücke', 'Maler und Hilfsstoffe'],
+  [/kalkfarbe|sumpfkalk/i, 'Kalkfarbe', 'Maler und Hilfsstoffe'],
+  [/silikatfarbe|dispersionssilikat/i, 'Silikatfarbe', 'Maler und Hilfsstoffe'],
+  [/fassadenfarbe|siliconharzfarbe|silikonharzfarbe/i, 'Fassadenfarbe', 'Maler und Hilfsstoffe'],
+  [/farbe|dispersion|anstrich|lasur|lack/i, 'Farbe', 'Maler und Hilfsstoffe'],
+  [/acryl|silikon|dichtstoff|fugenmasse/i, 'Acryl / Silikon', 'Maler und Hilfsstoffe'],
+  [/tapetenentferner|tapetenlöser|tapetenloeser|ablöser|abloeser/i, 'Tapetenentferner', 'Maler und Hilfsstoffe'],
+  [/tapete|raufaser|malervlies|glasvlies|renoviervlies/i, 'Tapete / Malervlies', 'Maler und Hilfsstoffe'],
+  [/kleister/i, 'Kleister', 'Maler und Hilfsstoffe'],
   [/vlies/i, 'Abdeckvlies', 'Maler und Hilfsstoffe'],
-  [/folie/i, 'Abdeckfolie', 'Maler und Hilfsstoffe'],
-  [/goldband|kreppband|klebeband|malerband|gewebeband|abklebeband/i, 'Klebeband', 'Maler und Hilfsstoffe'],
-  [/tapetenentferner|tapetenlöser|tapetenloeser/i, 'Tapetenentferner', 'Maler und Hilfsstoffe'],
+  [/abdeckpapier|abdeckpappe|schutzpappe|malerpappe/i, 'Abdeckpappe', 'Maler und Hilfsstoffe'],
+  [/folie|abdeckplane|\bplane\b/i, 'Abdeckfolie', 'Maler und Hilfsstoffe'],
+  [/goldband|kreppband|klebeband|malerband|putzerband|abklebeband|tesa|gewebeband/i, 'Klebeband', 'Maler und Hilfsstoffe'],
+  [/schleifpapier|schleifgitter|schleifscheibe|schleifmittel/i, 'Schleifmittel', 'Maler und Hilfsstoffe'],
 ];
 
 const ZAHL = /^\d+(?:[.,]\d+)?$/;
