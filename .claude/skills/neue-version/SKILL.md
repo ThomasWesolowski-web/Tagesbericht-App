@@ -37,6 +37,7 @@ der Tagesbericht-App bleiben dann gleich.
 - Die App zeigt eine Kopie davon (Einstellungen › Handbuch zur App): das Doc als Markdown
   exportieren, die Zeile „Stand … · @…“ entfernen und als `handbuch.md` speichern.
   Keine echten Mitarbeiter- oder Kundennamen hineinschreiben (Repo ist öffentlich).
+- Neue Funktion? Dann in `mindmap.js` beim passenden Ast eine Zeile ergänzen (Mindmap in der App).
 
 ## 4. Veröffentlichen
 

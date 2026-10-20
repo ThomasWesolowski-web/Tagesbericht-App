@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.69.0**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.70.0**.
 
 | Was | Wo |
 | --- | --- |
@@ -163,7 +163,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 ## Updates, Datenschutz und Grenzen
 
-**Updates kommen von selbst:** Beim Öffnen lädt die App eine neue Version im Hintergrund und lädt sich neu, sobald niemand gerade einen Bericht bearbeitet. Die Version steht unten in den Einstellungen. Dort öffnet „Handbuch zur App“ dieses Handbuch direkt in der App, auch ohne Netz (immer auf Deutsch).
+**Updates kommen von selbst:** Beim Öffnen lädt die App eine neue Version im Hintergrund und lädt sich neu, sobald niemand gerade einen Bericht bearbeitet. Die Version steht unten in den Einstellungen. Dort öffnet „Handbuch zur App“ dieses Handbuch direkt in der App, auch ohne Netz (immer auf Deutsch). Daneben zeigt „Mindmap der App“ alle Funktionen als Bild: Ast antippen, dann klappen die Funktionen dahinter auf.
 
 **Gut zu wissen:**
 
@@ -177,6 +177,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 20.10.2026 | 1.70.0 | Einstellungen › Mindmap der App: alle Funktionen als Mindmap, Äste zum Aufklappen |
 | 20.10.2026 | 1.69.0 | Zeitplan › Auslastung: zusätzlich Auslastung je Tag (Mo–Fr) für die gewählte Woche |
 | 20.10.2026 | 1.68.0 | Zeitplan: kleines X hinter jedem Abschnitt zum Entfernen (wirksam mit Speichern) |
 | 20.10.2026 | 1.67.0 | Admin kann den eigenen Token anzeigen und kopieren (weiteres Gerät ohne neuen Token) |

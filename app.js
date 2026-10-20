@@ -1,5 +1,6 @@
 import * as db from './db.js';
 import { handbuchLaden } from './handbuch.js';
+import { mindmapZeigen } from './mindmap.js';
 import { prepareFile, formatBytes, MAX_FILE_BYTES, slug } from './media.js';
 import {
   WETTER, newReport, newSite, newPerson, crewOf, entryHours, KATEGORIEN, kategorieOf, sortCrew, hoursByKategorie, workedHours, formatHours, formatDate, weekday, monthLabel, parseDate, toMarkdown, ARTEN, artLabel, EINHEITEN, einheitLabel, newPosition, newZeile, normPosition, zeileMenge, zeileLeer, positionSumme, positionLeer, positionMenge, aufmassSummen, formatMenge,
@@ -32,7 +33,7 @@ import {
   planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
 } from './zeitplan.js';
 
-const APP_VERSION = '1.69.0';
+const APP_VERSION = '1.70.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -155,6 +156,7 @@ const ICON = {
   camera: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.5-2.5h7L17 8h3v11H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
   clip: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5l-7.8 7.8a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   pencil: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l4-1 11-11-3-3L5 16l-1 4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
+  mindmap: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="4.5" cy="5" r="2" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="19.5" cy="5" r="2" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="4.5" cy="19" r="2" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="19.5" cy="19" r="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M9.8 10 6 6.4M14.2 10 18 6.4M9.8 14 6 17.6M14.2 14 18 17.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
   doc: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l5 5v13H7z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M14 3v5h5" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>',
   lock: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
   x: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>',
@@ -198,7 +200,7 @@ async function route() {
     || (a.dataset.tab === 'sites' && (hash.startsWith('#/baustelle') || hash.startsWith('#/zeitplan')))
     || (a.dataset.tab === 'hours' && (hash === '#/stunden' || hash === '#/urlaub'))
     || (a.dataset.tab === 'aufmass' && hash === '#/aufmass')
-    || (a.dataset.tab === 'settings' && (hash === '#/einstellungen' || hash === '#/personal' || hash === '#/handbuch'))));
+    || (a.dataset.tab === 'settings' && (hash === '#/einstellungen' || hash === '#/personal' || hash === '#/handbuch' || hash === '#/mindmap'))));
 
   if (hash === '#/aufmass/neu') {
     const r = { ...newReport(), art: 'aufmass' };
@@ -231,6 +233,7 @@ function seiteZeigen(hash) {
   if (hash === '#/personal') return renderPeople();
   if (hash === '#/einstellungen') return renderSettings();
   if (hash === '#/handbuch') return renderHandbuch();
+  if (hash === '#/mindmap') return renderMindmap();
   if (hash === '#/aufmass') return renderList({ aufmass: true });
   return renderList();
 }
@@ -3105,6 +3108,16 @@ async function renderHandbuch() {
   }
 }
 
+// Mindmap aller Funktionen (mindmap.js, auf Deutsch wie das Handbuch)
+function renderMindmap() {
+  appbar.innerHTML = `
+    <button class="icon-btn" id="back" aria-label="Zurück">${ICON.back}</button>
+    <h1 class="small">Mindmap</h1>`;
+  $('#back').onclick = () => (location.hash = '#/einstellungen');
+  mindmapZeigen(view, APP_VERSION);
+  window.scrollTo(0, 0);
+}
+
 async function renderPeople() {
   appbar.innerHTML = `
     <button class="icon-btn" id="back" aria-label="Zurück">${ICON.back}</button>
@@ -4420,6 +4433,11 @@ async function renderSettings() {
     <a class="scard" href="#/handbuch" style="margin-bottom:12px">
       <div class="sicon">${ICON.doc}</div>
       <div class="body"><div class="title">Handbuch zur App</div><div class="meta">Was die App kann und wie man sie bedient</div></div>
+      ${ICON.chevron}</a>
+
+    <a class="scard" href="#/mindmap" style="margin-bottom:12px">
+      <div class="sicon">${ICON.mindmap}</div>
+      <div class="body"><div class="title">Mindmap der App</div><div class="meta">Alle Funktionen auf einen Blick</div></div>
       ${ICON.chevron}</a>
 
     <section class="section">
