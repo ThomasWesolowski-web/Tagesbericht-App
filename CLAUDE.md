@@ -28,6 +28,7 @@ Veröffentlicht über GitHub Pages aus `main` (Root): https://thomaswesolowski-w
 | `i18n.js` | Oberflächen-Sprachen DE/PL/RO/MK/SQ |
 | `translate.js` | Freitexte beim Hochladen ins Deutsche übersetzen (MyMemory) |
 | `zeitplan.js` | Baustellen-Zeitplan (nur Admin): Aufträge mit Abschnitten, Gerüst-Standzeit, Auslastung; Repo `planung/zeitplan.json` |
+| `verbrauch.js` | Materialliste aus Rapporten: Mengen im Freitext „Material und Geräte“ erkennen, je Material summieren, Excel-Datei (`tests/verbrauch.test.mjs`) |
 | `abrechnung.js` | Merker „Abgerechnet“ für Rapporte (nur Admin; Repo: `abrechnung/abgerechnet.json`) |
 | `fachwoerter.js` | Fachwörterliste RO/PL/MK/SQ → Deutsch, vor dem Übersetzer angewandt |
 | `handbuch.js`, `handbuch.md` | Handbuch in der App (Kopie des Claude Docs) |
