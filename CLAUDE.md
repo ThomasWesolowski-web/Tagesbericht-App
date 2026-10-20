@@ -32,6 +32,7 @@ Veröffentlicht über GitHub Pages aus `main` (Root): https://thomaswesolowski-w
 | `abrechnung.js` | Merker „Abgerechnet“ für Rapporte (nur Admin; Repo: `abrechnung/abgerechnet.json`) |
 | `fachwoerter.js` | Fachwörterliste RO/PL/MK/SQ → Deutsch, vor dem Übersetzer angewandt |
 | `handbuch.js`, `handbuch.md` | Handbuch in der App (Kopie des Claude Docs) |
+| `mindmap.js` | Mindmap aller Funktionen (Einstellungen › Mindmap der App); bei neuen Funktionen den passenden Ast ergänzen |
 | `sw.js` | Offline-Cache (`CACHE`, Liste `SHELL`) |
 | `vendor/` | jsPDF und pdf.js, nicht von Hand ändern |
 

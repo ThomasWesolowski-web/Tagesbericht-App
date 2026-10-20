@@ -1039,3 +1039,29 @@ button.zp-dc { cursor: pointer; }
 .tab-tabelle thead th { top: 0; }
 .tab-tabelle tbody th { left: 0; }
 .tab-tabelle thead th:first-child { left: 0; z-index: 2; }
+
+/* Mindmap der App */
+.mindmap .hint { margin: 0 0 6px; }
+.mm-karte { max-width: 560px; margin: 0 auto; }
+.mm-karte svg { width: 100%; height: auto; display: block; overflow: visible; }
+.mm-ast { cursor: pointer; outline: none; }
+.mm-ast.aktiv rect, .mm-ast:focus-visible rect { stroke: var(--ink); stroke-width: 2.5; }
+.mm-name { font-size: 14px; font-weight: 700; pointer-events: none; }
+.mm-zahl { font-size: 11px; font-weight: 700; pointer-events: none; }
+.mm-mitte { font-size: 16px; font-weight: 800; }
+.mm-version { font-size: 13px; font-weight: 600; opacity: .9; }
+.mm-knoepfe { justify-content: center; margin: 10px 0 14px; }
+.mm-baeume { display: grid; gap: 14px; }
+.mm-baum { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; min-width: 0; scroll-margin-top: 70px; }
+.mm-kopf { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mm-pill { background: var(--mm-farbe); color: #fff; font-weight: 700; padding: 4px 12px; border-radius: 999px; }
+.mm-nb { color: var(--ink-2); font-size: .85rem; }
+.mm-zu { margin-left: auto; border: none; background: none; color: var(--ink-2); font-size: 1.4rem; line-height: 1; padding: 4px 8px; cursor: pointer; }
+.mm-zweige { list-style: none; margin: 10px 0 0 14px; padding: 0; }
+.mm-zweige > li { position: relative; padding: 5px 0 5px 22px; }
+.mm-zweige > li::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; border-left: 2px solid var(--mm-farbe); opacity: .6; }
+.mm-zweige > li:last-child::before { bottom: auto; height: 20px; }
+.mm-zweige > li::after { content: ""; position: absolute; left: 0; top: 20px; width: 16px; border-top: 2px solid var(--mm-farbe); opacity: .6; }
+.mm-blatt { display: inline-block; border: 1.5px solid var(--mm-farbe); border-radius: 10px; padding: 5px 10px; background: color-mix(in srgb, var(--mm-farbe) 8%, var(--surface)); }
+.mm-blatt small { display: block; color: var(--ink-2); font-size: .85rem; line-height: 1.35; }
+.mm-tag { display: inline-block; font-size: .68rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-2); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; margin-left: 6px; vertical-align: 2px; }
