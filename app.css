@@ -950,6 +950,9 @@ button.zp-dc { cursor: pointer; }
 .zp-dc.aus { background: transparent; color: var(--ink-3); }
 .zp-dl { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 2px; font-size: .68rem; font-weight: 700; padding: 6px 0 4px; height: 56px; }
 .zp-dl i { display: block; width: 60%; border-radius: 4px 4px 2px 2px; }
+.zp-tage { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-top: 10px; }
+.zp-tage .zp-dl { height: 72px; }
+.zp-tage .zp-dl small { color: var(--ink-3); font-weight: 500; font-size: .66rem; white-space: nowrap; }
 /* Plantafel */
 .zp-pt { display: grid; grid-template-columns: 104px repeat(8, 48px); font-variant-numeric: tabular-nums; }
 .zp-grp { grid-column: 1 / -1; font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; font-weight: 750; padding: 10px 0 4px; }

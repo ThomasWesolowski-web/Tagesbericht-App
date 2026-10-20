@@ -32,7 +32,7 @@ import {
   planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
 } from './zeitplan.js';
 
-const APP_VERSION = '1.68.0';
+const APP_VERSION = '1.69.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -2027,6 +2027,11 @@ function zpAuslastungHtml(auftraege, people) {
     const stapel = GEWERK_REIHE.filter((g) => x.nachGewerk[g]?.plan).map((g) => `<i style="flex:${x.nachGewerk[g].plan};background:${gewerkFarbe(g)}"></i>`).join('');
     return `<button type="button" class="zp-saeule${i === zpWoche ? ' gewaehlt' : ''}" data-woche="${i}" aria-label="${zpKw(x.montag)}: ${zpProzent(x.prozent)}"><span class="zp-stapel" style="height:${h}px">${stapel}</span><small>${kw(x.montag)}</small></button>`;
   }).join('');
+  // Die Woche zählt alle fünf Tage; damit ein voll belegter einzelner Tag sichtbar ist, jeden Tag mit eigener Auslastung
+  const tageZeile = w.tage.map((s, i) => {
+    const p = istArbeitstag(s) ? r.tagAuslastung(s) : 0;
+    return `<div class="zp-dl" style="color:${zpTon(p)}"><i style="height:${(Math.min(p, 130) / 130) * 28 + 3}px;background:${zpTon(p)}"></i>${istArbeitstag(s) ? zpProzent(p) : '–'}<small>${TAGE_KURZ[i]} ${kurzDatum(s)}</small></div>`;
+  }).join('');
   const konflikte = w.proPerson.flatMap((x) => (x.konflikte.length ? [{ x, k: x.konflikte }] : []));
   const frei = w.proPerson.filter((x) => x.frei - x.plan >= 16);
   return `
@@ -2036,6 +2041,7 @@ function zpAuslastungHtml(auftraege, people) {
       <div class="zp-gross"><b style="color:${zpTon(w.prozent)}">${zpProzent(w.prozent)}</b><span>${w.frei || w.plan ? zpWort(w.prozent) : 'niemand verfügbar'}</span></div>
       <div class="meter"><div style="height:100%;width:${Math.min(100, w.prozent)}%;background:${zpTon(w.prozent)}"></div></div>
       <p class="hint" style="margin:0">${zpZahl(w.plan)} h geplant von ${zpZahl(w.frei)} h verfügbar (${STUNDEN_TAG} h pro Arbeitstag, ohne Urlaub und Feiertage)</p>
+      <div class="zp-tage">${tageZeile}</div>
     </div>
     <div class="section"><h2>Nach Gewerk</h2>${gewerke || '<p class="hint" style="margin:0">Noch kein Personal angelegt.</p>'}</div>
     <div class="section"><h2>Gerüst draußen <span class="h-right">${w.geruest.length} ${w.geruest.length === 1 ? 'Baustelle' : 'Baustellen'}</span></h2>
