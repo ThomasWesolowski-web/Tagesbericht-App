@@ -12,7 +12,7 @@ import {
   neueOeffnung, aendereOeffnung, loescheOeffnung, planElemente, elementeAlsSvg, richtungsText, richtungAusrichten,
   Verlauf, laengeLesen, wandName, fmt2, alsSvg, alsDxf, winkelVon, punkteVon, massstabFuer,
   schraegeWerte, setzeSchraege, SCHRAEGE_STANDARD, dachflaechenVonNachbarn, schraegeWieNachbar, neuesDachfenster, aendereDachfenster, loescheDachfenster,
-  dachfensterEcken, punktInnen, raumAnbauen, andocken, anNachbarnSchliessen, verschiebeRaum, raumMitte, pruefeGruppe, grundrissAbgleichen,
+  dachfensterEcken, punktInnen, raumAnbauen, andocken, anNachbarnSchliessen, verschiebeRaum, dreheRaum, raumMitte, pruefeGruppe, grundrissAbgleichen,
   naechsterName, neuerRaum, neuerKoerper, neueTreppe, istTreppe, aendereKoerper, loescheKoerper, koerperEcken, KOERPER_NAMEN, grenzen, ergibtSich,
 } from './raumgeometrie.js';
 import { laserMoeglich, laserVerbinden, laserName, laserEmpfaenger, laserStatus } from './laser.js';
@@ -52,7 +52,7 @@ const IC = {
 const HINWEIS = {
   zeichnen: 'Raum grob mit dem Finger nachfahren. Ecken müssen nicht genau sein, die App macht gerade Wände daraus.',
   auswahl: 'Wand, Ecke, Tür, Fenster, Körper oder Treppe antippen zum Ändern. Ziehen verschiebt; Wände mit Maß bleiben fest. Auf leerer Fläche ziehen verschiebt die Ansicht.',
-  gruppe: 'Wand, Ecke, Tür, Fenster, Körper oder Treppe antippen zum Ändern. Einen grauen Raum antippen, um ihn zu bearbeiten.',
+  gruppe: 'Wand, Ecke, Tür, Fenster, Körper oder Treppe antippen zum Ändern. Einen grauen Raum antippen, um ihn zu bearbeiten. Ganzen Raum verschieben: in den Raum tippen, dann im Raum ziehen.',
   mass: 'Wand antippen und ihre echte Länge eingeben.',
   tuer: 'Auf eine Wand tippen, um dort eine Tür einzusetzen.',
   fenster: 'Auf eine Wand tippen, um dort ein Fenster einzusetzen.',
@@ -835,13 +835,15 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
   const raumPanel = () => {
     panelAuf(`
       <div class="fa-panel-kopf"><b>${escH(d.name)} · ${d.massstabGesetzt ? '' : '≈ '}${fmt2(berechne(d).bodenflaeche)} m²</b><button type="button" class="btn primary ra-p-ok">Fertig</button></div>
-      <p class="fa-klein">${d.fest ? 'Der Raum ist festgemacht: er lässt sich nicht verschieben, Ecken und Wände bleiben, wo sie sind. Maße lassen sich weiter eingeben.' : 'Am blauen Punkt ziehen: Raum frei verschieben, nah an einem anderen Raum rastet er Wand an Wand oder Ecke an Ecke ein. Schloss daneben: festmachen.'}</p>
+      <p class="fa-klein">${d.fest ? 'Der Raum ist festgemacht: er lässt sich nicht verschieben, Ecken und Wände bleiben, wo sie sind. Maße lassen sich weiter eingeben.' : 'Irgendwo im Raum (oder am blauen Punkt) ziehen: der ganze Raum lässt sich verschieben, auch weg von den anderen Räumen. Nah an einem anderen Raum rastet er wieder Wand an Wand oder Ecke an Ecke ein. Schloss: festmachen.'}</p>
       <label class="fa-feld"><span>Raumname</span><input type="text" data-name value="${escH(d.name)}"></label>
-      <div class="fa-vorschlaege"><button type="button" class="chip" data-tun="schloss">${d.fest ? 'Schloss lösen' : 'Festmachen (Schloss)'}</button><button type="button" class="chip" data-tun="weiter">Weiteren Raum zeichnen</button></div>
+      <div class="fa-vorschlaege"><button type="button" class="chip" data-tun="schloss">${d.fest ? 'Schloss lösen' : 'Festmachen (Schloss)'}</button>${d.fest ? '' : '<button type="button" class="chip" data-tun="drehen">Raum drehen 90°</button>'}<button type="button" class="chip" data-tun="weiter">Weiteren Raum zeichnen</button></div>
       <p class="fa-klein">Zum Anbauen eine Wand antippen.</p>`, () => {
       panel.querySelector('[data-name]').onchange = (e) => { const r = kopie(d); r.name = e.target.value.trim() || d.name; uebernehme({ raum: r }); raumPanel(); };
       panel.querySelector('[data-tun="weiter"]').onclick = weitererRaum;
       panel.querySelector('[data-tun="schloss"]').onclick = schlossUmschalten;
+      const dr = panel.querySelector('[data-tun="drehen"]');
+      if (dr) dr.onclick = () => { if (uebernehme(dreheRaum(d), { still: true })) { hinweis('Raum um 90° gedreht. Jetzt an die richtige Stelle ziehen.'); auswaehlen({ art: 'raum' }); } };
     });
     // Schiebepunkt und Schloss nicht unter dem Fenster verstecken: Ansicht etwas nach oben schieben
     if (geschlossen(d)) {
@@ -1509,6 +1511,8 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
       if (ko) { zug = { art: 'koerper', id: ko.id, start: kopie(d), sp, bewegt: false }; return; }
       const w = trefferWand(sp);
       if (w) { zug = { art: 'wand', id: w.id, start: kopie(d), sp, bewegt: false, t: w.t }; return; }
+      // ausgewählter Raum: irgendwo im Raum ziehen verschiebt ihn ganz
+      if (auswahl?.art === 'raum' && geschlossen(d) && !d.fest && punktInnen(p, punkteVon(d))) { zug = { art: 'raum', start: kopie(d), sp, bewegt: false }; return; }
       zug = { art: 'pan', sp, ox: ansicht.ox, oy: ansicht.oy, leer: true };
       return;
     }

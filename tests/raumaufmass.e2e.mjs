@@ -397,6 +397,24 @@ async function ablauf(b, { touch }) {
   await p.waitForSelector('.ra-panel [data-tun="weiter"]');
   assert.ok(await p.locator('.ra-griff').count());
   await shot(p, `${art}-14-gewechselt`);
+  // ausgewählten Raum irgendwo im Raum ziehen: weg vom Wohnzimmer, dann wieder heran, rastet Wand an Wand ein
+  const ziehe = async (pts) => (touch ? zeichneTouch(p, await ctx.newCDPSession(p), pts) : zeichneMaus(p, pts));
+  const r2 = await textPunkt('Raum 2');
+  const wegPunkte = [0, 1, 2, 3, 4, 5, 6].map((k) => [r2[0] + 4, r2[1] + 12 - k * 10]);
+  await ziehe(wegPunkte);
+  const r2weg = await textPunkt('Raum 2');
+  assert.ok(r2[1] - r2weg[1] > 50, `Raum 2 verschoben: ${r2} → ${r2weg}`);
+  assert.ok(await p.locator('.ra-panel [data-tun="drehen"]').count(), 'Raum bleibt ausgewählt');
+  const weg = r2[1] - r2weg[1];
+  const r2vor = await textPunkt('Raum 2'); // die Ansicht kann sich fürs Raum-Fenster verschoben haben
+  await ziehe([0, 1, 2, 3, 4, 5, 6].map((k) => [r2vor[0] + 4, r2vor[1] + 12 + (k * (weg - 4)) / 6]));
+  const r2zurueck = await textPunkt('Raum 2');
+  assert.ok(Math.abs(r2zurueck[1] - r2vor[1] - weg) < 1.5 && Math.abs(r2zurueck[0] - r2vor[0]) < 1.5, `wieder angedockt: ${r2vor} → ${r2zurueck}, ${weg}`);
+  // Raum drehen: viermal 90° ergibt wieder die alte Lage
+  for (let i = 0; i < 4; i++) await p.click('.ra-panel [data-tun="drehen"]');
+  const r2gedreht = await textPunkt('Raum 2');
+  assert.ok(Math.abs(r2gedreht[1] - r2zurueck[1]) < 1.5, `viermal gedreht: ${r2zurueck} → ${r2gedreht}`);
+  assert.match(await werte(p), /^18,00 m²/);
   // Festmachen (Schloss): kein Schiebepunkt mehr, geschlossenes Schloss; lösen und wieder festmachen
   await p.click('.ra-panel [data-tun="schloss"]');
   await p.waitForFunction(() => document.querySelector('.ra-panel [data-tun="schloss"]')?.textContent.includes('Schloss lösen'));
