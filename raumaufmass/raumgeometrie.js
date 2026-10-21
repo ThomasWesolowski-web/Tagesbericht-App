@@ -47,8 +47,13 @@ export function wandName(i) {
 }
 
 // Längeneingabe: „5,42“, „5.42 m“, „542 cm“, „5420 mm“ → Meter (oder null)
+// Auch diktiert („3,45 Meter“, „345 Zentimeter“, „3 Meter 45“) oder vom Laser im Tastatur-Modus getippt.
 export function laengeLesen(text) {
-  const m = /^\s*([0-9]+(?:[.,][0-9]*)?)\s*(m|cm|mm)?\s*$/i.exec(String(text ?? ''));
+  const t = String(text ?? '').toLowerCase().trim().replace(/\.$/, '')
+    .replace(/millimeter/g, 'mm').replace(/zentimeter/g, 'cm').replace(/meter/g, 'm').replace(/\s*komma\s*/g, ',');
+  const mz = /^\s*([0-9]+)\s*m\s+([0-9]{1,2})\s*$/.exec(t);
+  if (mz) return Number(mz[1]) + Number(mz[2]) / 100;
+  const m = /^\s*([0-9]+(?:[.,][0-9]*)?)\s*(m|cm|mm)?\s*$/i.exec(t);
   if (!m) return null;
   const n = Number(m[1].replace(',', '.'));
   if (!Number.isFinite(n) || n <= 0) return null;
