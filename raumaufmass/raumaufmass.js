@@ -12,7 +12,7 @@ import {
   neueOeffnung, aendereOeffnung, loescheOeffnung, planElemente, elementeAlsSvg, richtungsText, richtungAusrichten,
   Verlauf, laengeLesen, wandName, fmt2, alsSvg, alsDxf, winkelVon, punkteVon, massstabFuer,
   schraegeWerte, setzeSchraege, SCHRAEGE_STANDARD, dachflaechenVonNachbarn, schraegeWieNachbar, neuesDachfenster, aendereDachfenster, loescheDachfenster,
-  dachfensterEcken, punktInnen, raumAnbauen, andocken, verschiebeRaum, raumMitte, pruefeGruppe, grundrissAbgleichen,
+  dachfensterEcken, punktInnen, raumAnbauen, andocken, anNachbarnSchliessen, verschiebeRaum, raumMitte, pruefeGruppe, grundrissAbgleichen,
   naechsterName, neuerRaum, neuerKoerper, neueTreppe, istTreppe, aendereKoerper, loescheKoerper, koerperEcken, KOERPER_NAMEN, grenzen, ergibtSich,
 } from './raumgeometrie.js';
 import { laserMoeglich, laserVerbinden, laserName, laserEmpfaenger, laserStatus } from './laser.js';
@@ -378,7 +378,10 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
   };
 
   const konturSchliessen = (punkte) => {
-    const e = offeneKontur(punkte, true);
+    // im Grundriss mit anderen Räumen: Enden an die Nachbarwände heften und dort entlang schließen
+    const offen = gruppenMassstab() ? offeneKontur(punkte, false) : null;
+    const geheftet = offen ? anNachbarnSchliessen(offen.ecken, andere, { fang: Math.max(0.4, 30 / ansicht.s) }) : null;
+    const e = geheftet ? { ecken: geheftet, geschlossen: true } : offeneKontur(punkte, true);
     if (!e || !e.geschlossen) { hinweis('Daraus lässt sich kein Raum schließen. Bitte mindestens drei Wände zeichnen.'); zeichne(); return; }
     const vorher = d;
     d = raumAusEcken(d, e.ecken);
@@ -393,7 +396,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     auswahl = null;
     merken();
     zeichne();
-    hinweis(`Raum mit ${d.waende.length} Wänden erkannt${an ? `, an ${an} angedockt` : ''}. Jetzt eine Wand antippen und ihre echte Länge eingeben.`);
+    hinweis(`Raum mit ${d.waende.length} Wänden erkannt${geheftet ? ', an die Nachbarräume geheftet' : an ? `, an ${an} angedockt` : ''}. Jetzt eine Wand antippen und ihre echte Länge eingeben.`);
   };
 
   // ---------- Dialoge ----------
@@ -1335,6 +1338,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
   const strichFertig = async () => {
     const s = strich;
     strich = null;
+    meldung = ''; // ein alter Hinweis soll „Schließen“ nicht verdecken
     const alle = s.alle();
     d.skizze = d.skizze || { striche: [], faktor: 1 };
     const neuerStrich = s.punkte.map((q) => [Math.round(q[0] * 1000) / 1000, Math.round(q[1] * 1000) / 1000]);

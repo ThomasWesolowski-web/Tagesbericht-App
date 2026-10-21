@@ -1383,6 +1383,78 @@ export function andocken(raum, nachbarn, o = {}) {
   return { raum: verschiebeRaum(raum, schub).raum, an: erst.nb.name || 'Raum', schub };
 }
 
+// Offen gezeichnete Wände an vorhandene Räume heften: Beginnt und endet der Zug an der Wand eines
+// Nachbarraums, laufen die erste und letzte Wand bis an diese Wand, und der Raum wird an den Wänden
+// des Nachbarn entlang geschlossen (U an einer Wand, L um eine Ecke). Enden die beiden Enden an
+// verschiedenen Räumen, wird nur bis an die Wände verlängert und gerade geschlossen.
+// ecken: offene Kontur [[x, y], …] in Metern. Ergebnis: geschlossene Ecken oder null (nichts angeheftet).
+export function anNachbarnSchliessen(ecken, nachbarn, { fang = 0.4 } = {}) {
+  if (!ecken || ecken.length < 2) return null;
+  const raeume = (nachbarn || []).filter((nb) => geschlossen(nb));
+  if (!raeume.length) return null;
+  // Ende p (mit Vorgänger q) entlang seiner Wand bis an die nächste Nachbarwand verlängern oder kürzen
+  const treffer = (p, q) => {
+    const r = sub(p, q);
+    const lr = Math.hypot(...r);
+    if (lr < 1e-9) return null;
+    let best = null;
+    for (const nb of raeume) {
+      const pts = punkteVon(nb);
+      pts.forEach((a, i) => {
+        const b = pts[(i + 1) % pts.length];
+        const s = sub(b, a);
+        const ls = Math.hypot(...s);
+        const nenner = kreuz(r, s);
+        if (Math.abs(nenner) / (lr * ls) < 0.05) return; // parallel: nicht verlängern
+        const t = kreuz(sub(a, q), s) / nenner;
+        if (t < 0.2) return; // die eigene Wand würde verschwinden oder umklappen
+        const u = dot(sub(add(q, mul(r, t)), a), s) / (ls * ls);
+        if (u < -0.01 || u > 1.01) return;
+        const x = add(a, mul(s, Math.min(Math.max(u, 0), 1)));
+        const ab = abst(x, p);
+        if (ab <= fang && (!best || ab < best.ab)) best = { ab, x, nb, i };
+      });
+    }
+    return best;
+  };
+  const n = ecken.length;
+  const ende = treffer(ecken[n - 1], ecken[n - 2]);
+  const anfang = treffer(ecken[0], ecken[1]);
+  if (!ende && !anfang) return null;
+  const mitte = ecken.slice(1, n - 1).map((q) => [q[0], q[1]]);
+  const x0 = anfang ? anfang.x : ecken[0];
+  const x1 = ende ? ende.x : ecken[n - 1];
+  let poly = [x0, ...mitte, x1];
+  if (anfang && ende && anfang.nb === ende.nb) {
+    // an den Wänden des Nachbarn entlang zurück zum Anfang; von beiden Wegen den mit der kleineren
+    // Fläche (der andere liefe um den Nachbarraum herum)
+    const pts = punkteVon(ende.nb);
+    const m = pts.length;
+    const vor = [];
+    for (let k = ende.i; k !== anfang.i; k = (k + 1) % m) vor.push(pts[(k + 1) % m]);
+    const rueck = [];
+    for (let k = ende.i; k !== anfang.i; k = (k - 1 + m) % m) rueck.push(pts[k]);
+    const a1 = [...poly, ...vor];
+    const a2 = [...poly, ...rueck];
+    poly = Math.abs(flaecheMitVorzeichen(a1)) <= Math.abs(flaecheMitVorzeichen(a2)) ? a1 : a2;
+  }
+  // doppelte und in einer Linie liegende Punkte entfernen
+  const rund = (q) => [Math.round(q[0] * 1000) / 1000, Math.round(q[1] * 1000) / 1000];
+  let p = poly.map(rund).filter((q, i, arr) => abst(q, arr[(i + 1) % arr.length]) > 0.005);
+  let weg = true;
+  while (weg && p.length > 3) {
+    weg = false;
+    for (let i = 0; i < p.length; i++) {
+      const a = p[(i - 1 + p.length) % p.length];
+      const b = p[i];
+      const c = p[(i + 1) % p.length];
+      if (Math.abs(kreuz(sub(b, a), sub(c, b))) < 1e-6 && dot(sub(b, a), sub(c, b)) > 0) { p.splice(i, 1); weg = true; break; }
+    }
+  }
+  if (p.length < 3 || Math.abs(flaecheMitVorzeichen(p)) < 0.01) return null;
+  return p;
+}
+
 // Überschneiden sich zwei Räume? (Berühren an einer Wand zählt nicht)
 export function ueberschneiden(r1, r2) {
   if (!geschlossen(r1) || !geschlossen(r2)) return false;
