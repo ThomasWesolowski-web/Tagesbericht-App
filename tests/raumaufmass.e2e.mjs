@@ -72,6 +72,8 @@ const pdfHolen = (p) => p.evaluate(async () => {
 async function neuesAufmass(p) {
   await p.goto(URL0);
   await p.click('#neu');
+  // Blatt „Baustelle wählen“: hier ohne Baustelle weiter
+  await p.click('.ra-bs-ohne');
   await p.waitForSelector('#name');
   await p.fill('#name', 'Musterbaustelle');
   await p.press('#name', 'Tab');

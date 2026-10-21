@@ -6,12 +6,13 @@ import { openRaumAufmass } from './raumaufmass.js';
 import { zeige3d } from './ansicht3d.js';
 import { materialPlaner, systemListe, systemEditor, systemSpeicherSetzen, alleSysteme } from './material-ui.js';
 import { bedarf, KNAUF_STAND } from './material.js';
+import { baustelleWaehlen, verbunden, tokenSpeichern, abgleichen } from './baustellen.js';
 import {
   neuerRaum, berechne, raumKurz, alsSvg, massstabFuer, grenzen, planElemente, gruppeElemente, geschlossen,
   naechsterName, fmt2, verschiebeRaum, grundrissAbgleichen,
 } from './raumgeometrie.js';
 
-const RA_VERSION = '1.10.0';
+const RA_VERSION = '1.11.0';
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -117,11 +118,34 @@ async function liste() {
       <div class="knoepfe"><button type="button" class="btn primary block" id="neu">${ICON.plus} Neues Aufmaß</button>
         <button type="button" class="btn ghost block" id="systeme">${ICON.schichten} Systeme für Material (Knauf, eigene)</button></div>
       <p class="hint">Räume skizzieren, eine Wand messen, Türen, Fenster, Dachschrägen und Körper (Kamin, Säule) setzen, Räume Wand an Wand anbauen. Alles bleibt auf diesem Gerät gespeichert; als PDF ansehen, teilen oder speichern.</p>
+    </section>
+    <section class="section">
+      <h2>Baustellen aus der Berichte-App</h2>
+      ${verbunden() ? `<p class="hint">Verbunden: Baustellen kommen aus der Berichte-App, neue Baustellen von hier gehen dorthin.</p>
+        <button type="button" class="btn ghost block" id="bs-abgleich">Baustellen jetzt abgleichen</button>`
+      : `<p class="hint">Auf diesem Gerät ist kein Token eingetragen. Auf dem iPhone hat jede App vom Home-Bildschirm ihren eigenen Speicher; dann hier das Token aus der Berichte-App einfügen (dort Einstellungen › „Token kopieren“).</p>
+        <label class="field"><span>Token</span><input type="password" id="bs-token" autocomplete="off" placeholder="github_pat_…"></label>
+        <button type="button" class="btn ghost block" id="bs-token-ok">Token speichern und Baustellen holen</button>`}
     </section>`;
   $$('.proj', view).forEach((b) => { b.onclick = () => { location.hash = `#/p/${b.dataset.id}`; }; });
   $('#systeme').onclick = () => { location.hash = '#/systeme'; };
+  const holen = async (knopf) => {
+    knopf.disabled = true;
+    try { await abgleichen(); toast('Baustellen abgeglichen.'); } catch (err) { toast(`Abgleich ging nicht (${err.message}).`, 5000); }
+    knopf.disabled = false;
+  };
+  $('#bs-abgleich')?.addEventListener('click', (e) => holen(e.currentTarget));
+  $('#bs-token-ok')?.addEventListener('click', async (e) => {
+    const t = $('#bs-token').value.trim();
+    if (!t) { toast('Bitte das Token einfügen.'); return; }
+    tokenSpeichern(t);
+    await holen(e.currentTarget);
+    liste();
+  });
   $('#neu').onclick = async () => {
-    const p = { id: neueId(), name: `Aufmaß ${heute()}`, datum: heute(), raeume: [], erstellt: Date.now() };
+    const bs = await baustelleWaehlen({ titel: 'Neues Aufmaß: Baustelle' });
+    if (bs === undefined) return;
+    const p = { id: neueId(), name: bs ? bs.name : `Aufmaß ${heute()}`, baustelle: bs, datum: heute(), raeume: [], erstellt: Date.now() };
     await projektSpeichern(p);
     location.hash = `#/p/${p.id}`;
   };
@@ -161,6 +185,7 @@ async function projekt(id) {
     view.innerHTML = `
       <section class="section">
         <label class="field"><span>Name des Aufmaßes (z. B. Baustelle)</span><input type="text" id="name" value="${esc(p.name)}"></label>
+        <div class="ra-bs-zeile"><span>Baustelle: <b>${p.baustelle ? esc(p.baustelle.name) : 'keine'}</b></span><button type="button" class="btn ghost" id="bs-aendern">${p.baustelle ? 'Ändern' : 'Wählen'}</button></div>
       </section>
       <section class="section">
         <h2>Räume <span class="h-right">${fmt2(bodenSumme(p.raeume))} m² Boden netto</span></h2>
@@ -188,6 +213,16 @@ async function projekt(id) {
       <section class="section">
         <button type="button" class="btn danger block" id="loeschen">${ICON.weg} Aufmaß löschen</button>
       </section>`;
+    $('#bs-aendern').onclick = async () => {
+      const bs = await baustelleWaehlen({ aktuell: p.baustelle?.id });
+      if (bs === undefined) return;
+      // Name mitziehen, solange er noch der alte Baustellen- oder Standardname ist
+      if (!p.baustelle && /^Aufmaß \d/.test(p.name) || p.baustelle && p.name === p.baustelle.name) p.name = bs ? bs.name : p.name;
+      p.baustelle = bs;
+      await speichern();
+      $('h1', appbar).firstChild.textContent = p.name;
+      zeichnen();
+    };
     $('#name').onchange = async (e) => {
       p.name = e.target.value.trim() || p.name;
       await speichern();
