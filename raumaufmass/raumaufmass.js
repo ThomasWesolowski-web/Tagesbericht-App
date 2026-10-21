@@ -15,6 +15,7 @@ import {
   dachfensterEcken, punktInnen, raumAnbauen, andocken, verschiebeRaum, raumMitte, pruefeGruppe, grundrissAbgleichen,
   naechsterName, neuerRaum, neuerKoerper, neueTreppe, istTreppe, aendereKoerper, loescheKoerper, koerperEcken, KOERPER_NAMEN, grenzen,
 } from './raumgeometrie.js';
+import { laserMoeglich, laserVerbinden, laserName, laserEmpfaenger, laserStatus } from './laser.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const escH = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -393,16 +394,45 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
   };
 
   // ---------- Dialoge ----------
-  const dialog = (html, binden) => new Promise((resolve) => {
+  const dialog = (html, binden, { oben = false } = {}) => new Promise((resolve) => {
     dialogBox.innerHTML = html;
     const dl = $('.ra-dialog');
+    dl.classList.toggle('oben', oben);
     dl.hidden = false;
-    const fertig = (wert) => { dl.hidden = true; dialogBox.innerHTML = ''; resolve(wert); };
+    const fertig = (wert) => { laserEmpfaenger(null); laserStatus(null); dl.hidden = true; dl.classList.remove('oben'); dialogBox.innerHTML = ''; resolve(wert); };
     dialogBox.querySelectorAll('[data-wert]').forEach((b) => { b.onclick = () => fertig(b.dataset.wert); });
     binden?.(fertig);
     const inp = dialogBox.querySelector('input');
     if (inp) setTimeout(() => { inp.focus(); inp.select?.(); }, 50);
   });
+
+  // Laser per Bluetooth: Zeile im Maß-Dialog; ein ankommender Messwert geht ins Eingabefeld und wird übernommen
+  const laserHtml = '<div class="ra-laser"></div>';
+  const laserBinden = (inp, uebernehmen) => {
+    const el = dialogBox.querySelector('.ra-laser');
+    if (!el) return;
+    const zeigen = () => {
+      const name = laserName();
+      if (name) el.innerHTML = `<span class="ra-laser-an">Laser verbunden: ${escH(name)}. Am Laser messen, das Maß wird übernommen.</span>`;
+      else if (laserMoeglich()) el.innerHTML = '<button type="button" class="btn soft ra-laser-knopf">Laser per Bluetooth verbinden</button>';
+      else el.innerHTML = '<span class="fa-klein">Laser im Tastatur-Modus: einfach messen, das Maß landet im Feld.</span>';
+      const knopf = el.querySelector('.ra-laser-knopf');
+      if (knopf) {
+        knopf.onclick = async () => {
+          knopf.disabled = true;
+          knopf.textContent = 'Verbinde …';
+          try { await laserVerbinden(); } catch (err) {
+            if (err?.name !== 'NotFoundError') hinweis(`Laser ließ sich nicht verbinden (${err?.message || err}).`);
+          }
+          zeigen();
+          inp.focus();
+        };
+      }
+    };
+    laserStatus(zeigen);
+    laserEmpfaenger((m) => { inp.value = zahlText(m, 3); uebernehmen(); });
+    zeigen();
+  };
 
   const massFragen = async (wandId) => {
     const i = wandIndex(d, wandId);
@@ -415,7 +445,9 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
       <p class="fa-klein">${erst ? 'Das erste Maß legt den Maßstab fest. Alle anderen Längen werden daraus berechnet.' : `Gezeichnet: ${fmt2(g.l)} m. Die Nachbarwände werden angepasst, damit der Raum geschlossen bleibt.`}</p>
       <label class="fa-feld"><span>Länge in m</span><input type="text" inputmode="decimal" autocomplete="off" class="ra-eingabe" value="${w.mass != null ? zahlText(w.mass, 3) : ''}" placeholder="z. B. 5,42"></label>
       <p class="fa-klein fa-warn ra-fehler"></p>
-      <div class="fa-panel-knoepfe"><button type="button" class="btn ghost" data-wert="">Abbrechen</button><button type="button" class="btn primary ra-ok">Übernehmen</button></div>`, (fertig) => {
+      ${laserHtml}
+      <div class="fa-panel-knoepfe"><button type="button" class="btn ghost" data-wert="">Abbrechen</button><button type="button" class="btn primary ra-ok">Übernehmen</button></div>
+      ${d.waende.length > 1 ? '<button type="button" class="btn soft ra-reihe">Ab hier alle Wände nacheinander messen</button>' : ''}`, (fertig) => {
       const inp = dialogBox.querySelector('.ra-eingabe');
       const ok = () => {
         const l = laengeLesen(inp.value);
@@ -423,10 +455,81 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
         fertig(String(l));
       };
       dialogBox.querySelector('.ra-ok').onclick = ok;
+      const reihe = dialogBox.querySelector('.ra-reihe');
+      if (reihe) reihe.onclick = () => fertig('reihe');
       inp.onkeydown = (e) => { if (e.key === 'Enter') ok(); };
+      laserBinden(inp, ok);
     });
     if (!wert) return;
+    if (wert === 'reihe') { reiheMessen(wandId); return; }
     massSetzen(wandId, Number(wert));
+  };
+
+  // Alle Wände nacheinander messen (z. B. mit dem Laser abklappern): ein Dialog oben, der Plan bleibt
+  // sichtbar und die aktuelle Wand ist markiert. Eingabe/Enter übernimmt das Maß und springt zur nächsten
+  // Wand, ohne dass sich das Eingabefeld schließt (die Handy-Tastatur bleibt offen; ein Laser im
+  // Tastatur-Modus tippt Zahl + Enter). schon = Wände, die in dieser Runde schon dran waren.
+  const reiheMessen = async (startId, schon = 0) => {
+    if (!geschlossen(d)) { hinweis('Zuerst den Raum zeichnen und schließen.'); zeichne(); return; }
+    const ids = d.waende.map((w) => w.id);
+    const n = ids.length;
+    let k = Math.max(0, ids.indexOf(startId));
+    let gezaehlt = schon;
+    let konfliktOffen = null;
+    const wahl = await dialog(`
+      <b class="ra-reihe-titel"></b>
+      <p class="fa-klein ra-reihe-info"></p>
+      <label class="fa-feld"><span>Länge in m</span><input type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next" class="ra-eingabe" placeholder="z. B. 5,42"></label>
+      <p class="fa-klein fa-warn ra-fehler"></p>
+      ${laserHtml}
+      <div class="ra-reihe-knoepfe"><button type="button" class="btn ghost" data-wert="">Fertig</button><button type="button" class="btn ghost ra-skip">Überspringen</button><button type="button" class="btn primary ra-ok">Weiter</button></div>`, (fertig) => {
+      const inp = dialogBox.querySelector('.ra-eingabe');
+      const fehler = dialogBox.querySelector('.ra-fehler');
+      const zeigen = () => {
+        const i = wandIndex(d, ids[k]);
+        const w = d.waende[i];
+        const g = wandGeo(d, i);
+        dialogBox.querySelector('.ra-reihe-titel').textContent = `Wand ${wandName(i)} (${gezaehlt + 1} von ${n})`;
+        dialogBox.querySelector('.ra-reihe-info').textContent = w.mass != null ? `Bisher gemessen: ${fmt2(w.mass)} m. Leer lassen und „Überspringen“ behält das Maß.`
+          : d.massstabGesetzt ? `Gezeichnet: ${fmt2(g.l)} m.` : 'Das erste Maß legt den Maßstab fest.';
+        inp.value = '';
+        fehler.textContent = '';
+        auswahl = { art: 'wand', id: ids[k] };
+        zeichne();
+        inp.focus();
+      };
+      const weiter = () => {
+        gezaehlt += 1;
+        k = (k + 1) % n;
+        if (gezaehlt >= n) { fertig('fertig'); return; }
+        zeigen();
+      };
+      const ok = () => {
+        if (!inp.value.trim()) { weiter(); return; }
+        const l = laengeLesen(inp.value);
+        if (!l) { fehler.textContent = 'Bitte eine Länge eingeben, z. B. 5,42.'; inp.focus(); return; }
+        const erg = setzeMass(d, ids[k], l);
+        if (erg.konflikt) { konfliktOffen = erg.konflikt; fertig('konflikt'); return; }
+        if (erg.skaliert) ansicht.s /= erg.skaliert;
+        if (!uebernehme(erg, { still: true })) return;
+        weiter();
+      };
+      dialogBox.querySelector('.ra-ok').onclick = ok;
+      dialogBox.querySelector('.ra-skip').onclick = weiter;
+      inp.onkeydown = (e) => { if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); ok(); } };
+      laserBinden(inp, ok);
+      zeigen();
+    }, { oben: true });
+    auswahl = null;
+    if (wahl === 'konflikt') {
+      const w = await konflikt(konfliktOffen);
+      // danach mit der nächsten Wand weitermachen (außer die Maßliste wurde geöffnet)
+      if (w !== 'pruefen' && gezaehlt + 1 < n) reiheMessen(ids[(k + 1) % n], gezaehlt + 1);
+      return;
+    }
+    werkzeug = 'mass';
+    if (wahl === 'fertig') hinweis('Alle Wände durch. Blau = gemessen.');
+    zeichne();
   };
 
   const massSetzen = async (wandId, laenge) => {
@@ -455,7 +558,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
         <button type="button" class="btn soft" data-wert="geometrie" ${k.geometrieMoeglich ? '' : 'disabled'}><b>Geometrie anpassen</b><small>${k.geometrieMoeglich ? 'Alle Maße bleiben, eine Wand ohne Maß wird dafür schräg' : 'Geht nicht: jede passende Wand hat schon ein Maß'}</small></button>
         <button type="button" class="btn soft" data-wert="pruefen"><b>Maße überprüfen</b><small>Liste aller Maße öffnen, nichts ändern</small></button>
       </div>`);
-    if (wahl === 'pruefen') { masseZeigen(); return; }
+    if (wahl === 'pruefen') { masseZeigen(); return wahl; }
     if (!wahl || wahl === 'alt') { hinweis('Das neue Maß wurde verworfen.'); zeichne(); return; }
     const erg = konfliktLoesen(d, k, wahl);
     if (erg.konflikt) { await konflikt(erg.konflikt); return; }
@@ -961,6 +1064,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     const gemessen = b.waende.filter((w) => w.mass != null);
     panelAuf(`
       <div class="fa-panel-kopf"><b>Maße und Maßstab</b><button type="button" class="btn primary ra-p-ok">Fertig</button></div>
+      <button type="button" class="btn soft ra-p-reihe">Alle Wände nacheinander messen</button>
       <p class="fa-klein">${d.massstabGesetzt ? `Maßstab aus ${gemessen.length ? `Wand ${gemessen[0].name}` : 'dem ersten Maß'}. Blau = gemessen, die anderen Längen sind daraus berechnet.` : 'Noch kein Maßstab. Bei einer Wand die echte Länge eingeben: dann wird der ganze Raum maßstäblich.'}</p>
       ${b.waende.map((w) => `<div class="ra-wandzeile"><b>${w.name}</b><span>${d.massstabGesetzt ? '' : '≈ '}${fmt2(w.laenge)} m</span>
         <input type="text" inputmode="decimal" data-wand="${w.id}" value="${w.mass != null ? zahlText(w.mass, 3) : ''}" placeholder="Maß" class="${w.mass != null ? 'gemessen' : ''}">
@@ -974,6 +1078,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
           if (!panel.hidden) masseZeigen();
         };
       });
+      panel.querySelector('.ra-p-reihe').onclick = () => { panelZu(); reiheMessen(d.waende[0].id); };
       panel.querySelectorAll('[data-weg]').forEach((btn) => {
         btn.onclick = () => {
           const r = kopie(d);

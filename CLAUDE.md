@@ -24,7 +24,7 @@ Veröffentlicht über GitHub Pages aus `main` (Root): https://thomaswesolowski-w
 | `markup.js` | Fotos markieren |
 | `fotoaufmass.js` | Foto-Aufmaß (Rahmen/Homografie, Formen, VOB/C-Abzüge, Laibungen) |
 | `raumgeometrie.js` | Raumaufmaß-Rechnung, nur noch zum Anzeigen alter Räume in Berichten und PDFs |
-| `raumaufmass/` | Raumaufmaß als eigene App (vorübergehend): `ra-app.js` Liste/PDF, `raumaufmass.js` Editor, `raumgeometrie.js` Rechnung (mit Node testbar), `ansicht3d.js` 3-D-Ansicht (Canvas, ohne Bibliothek), eigener `sw.js` (`CACHE` raumaufmass-vN) |
+| `raumaufmass/` | Raumaufmaß als eigene App (vorübergehend): `ra-app.js` Liste/PDF, `raumaufmass.js` Editor, `raumgeometrie.js` Rechnung (mit Node testbar), `ansicht3d.js` 3-D-Ansicht (Canvas, ohne Bibliothek), `laser.js` Laser per Bluetooth (Leica, Bosch), eigener `sw.js` (`CACHE` raumaufmass-vN) |
 | `i18n.js` | Oberflächen-Sprachen DE/PL/RO/MK/SQ |
 | `translate.js` | Freitexte beim Hochladen ins Deutsche übersetzen (MyMemory) |
 | `zeitplan.js` | Baustellen-Zeitplan (nur Admin): Aufträge mit Abschnitten, Gerüst-Standzeit, Auslastung; Repo `planung/zeitplan.json` |

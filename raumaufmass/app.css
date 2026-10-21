@@ -819,6 +819,10 @@ html.mk-offen, html.mk-offen body { overflow: hidden; }
 .ra-wert b { color: #fff; }
 .ra-dialog { position: absolute; inset: 0; z-index: 10; display: grid; place-items: center; padding: 16px; background: rgba(0,0,0,.55); }
 .ra-dialog[hidden] { display: none; }
+.ra-dialog.oben { place-items: start center; padding-top: calc(env(safe-area-inset-top) + 10px); background: rgba(0,0,0,.18); }
+.ra-laser .btn { width: 100%; }
+.ra-laser-an { display: block; font-size: 14px; color: #9fe0a5; }
+.ra-reihe-knoepfe { display: grid; grid-template-columns: auto auto 1fr; gap: 8px; }
 .ra-dialog-box { width: min(420px, 100%); max-height: 86%; overflow-y: auto; display: grid; gap: 10px; padding: 16px; border-radius: 16px; background: #23272c; color: #fff; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
 .ra-dialog-box .btn.ghost { background: rgba(255,255,255,.1); color: #fff; border-color: transparent; }
 .ra-wahl { display: grid; gap: 8px; }
