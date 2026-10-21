@@ -12,7 +12,7 @@ import {
   naechsterName, fmt2, verschiebeRaum, grundrissAbgleichen,
 } from './raumgeometrie.js';
 
-const RA_VERSION = '1.14.0';
+const RA_VERSION = '1.15.0';
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -106,8 +106,14 @@ const bodenSumme = (raeume) => raeume.filter(fertig).reduce((s, r) => s + berech
 const appbar = $('#appbar');
 const view = $('#view');
 
+// aus der Berichte-App geöffnet (Reiter Aufmaß): Zurück-Knopf dorthin
+try { if (new URLSearchParams(location.search).get('aus') === 'berichte') sessionStorage.setItem('ra-aus-berichte', '1'); } catch { /* ohne Speicher */ }
+const ausBerichten = () => { try { return sessionStorage.getItem('ra-aus-berichte') === '1'; } catch { return false; } };
+
 async function liste() {
-  appbar.innerHTML = `<h1>Raumaufmaß<span class="sub">Testversion ${RA_VERSION}, getrennt von der Berichte-App</span></h1>`;
+  appbar.innerHTML = ausBerichten()
+    ? `<a class="icon-btn" id="back" href="../#/aufmass" aria-label="Zurück zur Berichte-App">${ICON.zurueck}</a><h1>Raumaufmaß<span class="sub">Version ${RA_VERSION}</span></h1>`
+    : `<h1>Raumaufmaß<span class="sub">Testversion ${RA_VERSION}, getrennt von der Berichte-App</span></h1>`;
   const projekte = (await alleProjekte()).sort((a, b) => (b.geaendert || 0) - (a.geaendert || 0));
   view.innerHTML = `
     <section class="section">

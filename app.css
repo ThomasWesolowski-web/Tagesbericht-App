@@ -434,6 +434,7 @@ body.editing .toast { bottom: calc(96px + var(--safe-b)); }
 }
 .pick.current { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
 .pick[hidden] { display: none; }
+a.pick { color: inherit; text-decoration: none; }
 
 /* Speichern / Abbrechen */
 .savebar-inner .btn { flex: 1; }

@@ -26,7 +26,8 @@ const AESTE = [
     ['Namen werden erkannt', 'Auch mit vertauschtem Vor- und Nachnamen'],
     ['Alle Stunden sehen', 'Mitarbeiter sehen nur die eigenen', 'Admin']] },
   { n: 'Aufmaß', t: 'Aufmaß', z: [
-    ['Aufmaß-Reiter', 'Wie das Papierformular'],
+    ['Aufmaß-Reiter', 'Wählen: Aufmaß mit Positionen oder Raumaufmaß'],
+    ['Aufmaß mit Positionen', 'Wie das Papierformular'],
     ['Foto-Aufmaß', 'Foto entzerren mit Rahmen, Raster, Fadenkreuz'],
     ['Formen zeichnen', 'Blauer Schiebepunkt, Kopie-Knopf'],
     ['Ecken-Magnet & Erkennen', 'Funktioniert offline'],
@@ -71,11 +72,13 @@ const AESTE = [
     ['Mindmap', 'Diese Übersicht, unter Einstellungen'],
     ['Anleitung für Mitarbeiter', 'Bild-PDF und Video zum Einrichten'],
     ['Admin-PIN', 'Schaltet Admin-Funktionen frei']] },
-  { n: 'Raumaufmaß', t: 'Raumaufmaß (eigene App)', z: [
+  { n: 'Raumaufmaß', t: 'Raumaufmaß (über Reiter Aufmaß)', z: [
     ['Grundriss zeichnen', 'Wände mit Maßen, mehrere Räume anbauen'],
     ['Dachschrägen', 'Kniestock, Dachfenster'],
     ['Körper abziehen', 'Z. B. Schächte, Pfeiler'],
     ['Material-Planer', 'Knauf-Systeme inkl. W111–W116'],
+    ['Räume anheften', 'Angebaute Räume schließen an Nachbarwände an'],
+    ['Updates von selbst', 'Neue Version lädt, sobald nichts offen ist'],
     ['Nur auf dem Gerät', 'Kein Abgleich, eigenes PDF']] },
 ];
 
