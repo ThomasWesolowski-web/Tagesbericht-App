@@ -691,6 +691,24 @@ function ausLaengen(raum, L, anker) {
   return r;
 }
 
+// Wände ohne eigenes Maß, deren Länge sich aus den gemessenen ergibt (Richtungen bleiben, der Raum muss
+// schließen). Beim Rechteck reichen so zwei Wände über Eck: die gegenüberliegenden ergeben sich.
+// Eine freie Wand ist bestimmt, wenn alle anderen freien Wände zueinander parallel sind und sie nicht.
+export function ergibtSich(raum) {
+  const erg = new Set();
+  if (!geschlossen(raum) || !raum.massstabGesetzt) return erg;
+  const frei = raum.waende.map((w, i) => i).filter((i) => raum.waende[i].mass == null);
+  if (frei.length === raum.waende.length) return erg;
+  const u = raum.ecken.map((_, i) => wandGeo(raum, i).r);
+  const parallel = (a, b) => Math.abs(kreuz(a, b)) < 1e-6;
+  for (const i of frei) {
+    const andere = frei.filter((j) => j !== i);
+    if (andere.some((j) => parallel(u[j], u[i]))) continue;
+    if (andere.every((j) => parallel(u[j], u[andere[0]]))) erg.add(i);
+  }
+  return erg;
+}
+
 // Bekanntes Maß an einer Wand setzen. Das erste Maß legt den Maßstab fest (alles wird skaliert),
 // jedes weitere ändert nur Längen. Ergebnis { raum } oder { konflikt } oder { fehler }.
 export function setzeMass(raum, wandId, laenge) {
@@ -1656,6 +1674,8 @@ export function planElemente(raum, abb, o = {}) {
   const n = p.length;
   if (!n) return els;
   const zu = geschlossen(raum);
+  // Längen, die sich aus den Maßen ergeben, stehen in der Farbe der Maße (nicht fett)
+  const ergibt = zu ? ergibtSich(raum) : new Set();
   const P = p.map(abb);
   if (zu && g.mitFlaeche) els.push({ art: 'flaeche', punkte: P, farbe: g.flaeche });
   // Dachschrägen: Fläche dunkler, Knick- und Gratlinien gestrichelt, Neigung und Kniestock als Text
@@ -1787,7 +1807,7 @@ export function planElemente(raum, abb, o = {}) {
       const a = abb(m);
       const nIn = einheit(sub(abb(add(m, ge.innen)), a));
       const fest = w?.mass != null;
-      els.push({ art: 'text', p: add(a, mul(nIn, g.schrift * 0.8)), text: `${g.namen ? `${wandName(i)}: ` : ''}${g.ungefaehr ? '≈ ' : ''}${fmt2(ge.l)}`, groesse: g.schrift * 0.85, winkel: lesbar(sub(abb(ge.b), abb(ge.a))), fett: fest, farbe: fest ? g.fest : g.mass, anker: 'mitte', wand: w?.id });
+      els.push({ art: 'text', p: add(a, mul(nIn, g.schrift * 0.8)), text: `${g.namen ? `${wandName(i)}: ` : ''}${g.ungefaehr ? '≈ ' : ''}${fmt2(ge.l)}`, groesse: g.schrift * 0.85, winkel: lesbar(sub(abb(ge.b), abb(ge.a))), fett: fest, farbe: fest || ergibt.has(i) ? g.fest : g.mass, anker: 'mitte', wand: w?.id });
     }
   } else if (g.masse) {
     const einspringend = p.map((q, i) => zu && kreuz(sub(q, p[(i - 1 + n) % n]), sub(p[(i + 1) % n], q)) < -1e-9);
@@ -1813,7 +1833,7 @@ export function planElemente(raum, abb, o = {}) {
       const lm = zu ? wandGeo(raum, i).l : abst(p[i], p[i + 1]);
       const fest = w?.mass != null;
       const txt = `${g.namen ? `${wandName(i)}: ` : ''}${g.ungefaehr ? '≈ ' : ''}${fmt2(lm)}`;
-      els.push({ art: 'text', p: add(mul(add(a2, b2), 0.5), mul(aus, g.schrift * 0.55)), text: txt, groesse: g.schrift, winkel: lesbar(r), fett: fest, farbe: fest ? g.fest : g.mass, anker: 'mitte', wand: w?.id });
+      els.push({ art: 'text', p: add(mul(add(a2, b2), 0.5), mul(aus, g.schrift * 0.55)), text: txt, groesse: g.schrift, winkel: lesbar(r), fett: fest, farbe: fest || ergibt.has(i) ? g.fest : g.mass, anker: 'mitte', wand: w?.id });
     }
   }
   // Raumname und Fläche in der Mitte
