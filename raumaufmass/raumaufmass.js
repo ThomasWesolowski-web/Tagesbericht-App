@@ -13,7 +13,7 @@ import {
   Verlauf, laengeLesen, wandName, fmt2, alsSvg, alsDxf, winkelVon, punkteVon, massstabFuer,
   schraegeWerte, setzeSchraege, SCHRAEGE_STANDARD, dachflaechenVonNachbarn, schraegeWieNachbar, neuesDachfenster, aendereDachfenster, loescheDachfenster,
   dachfensterEcken, punktInnen, raumAnbauen, andocken, verschiebeRaum, raumMitte, pruefeGruppe, grundrissAbgleichen,
-  naechsterName, neuerRaum, neuerKoerper, neueTreppe, istTreppe, aendereKoerper, loescheKoerper, koerperEcken, KOERPER_NAMEN, grenzen,
+  naechsterName, neuerRaum, neuerKoerper, neueTreppe, istTreppe, aendereKoerper, loescheKoerper, koerperEcken, KOERPER_NAMEN, grenzen, ergibtSich,
 } from './raumgeometrie.js';
 import { laserMoeglich, laserVerbinden, laserName, laserEmpfaenger, laserStatus } from './laser.js';
 
@@ -30,12 +30,14 @@ const WERKZEUGE = [
   { id: 'mass', label: 'Maß', svg: '<path d="M3 8h18v8H3z M7 8v3M11 8v4M15 8v3M19 8v4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>' },
   { id: 'einfuegen', label: 'Einfügen', svg: '<path d="M4 4h16v16H4z M12 8v8 M8 12h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>' },
 ];
-// hinter „Einfügen“: Tür, Fenster, Körper und Treppe (Tomeks Wunsch: ein Knopf statt drei)
+// hinter „Einfügen“: Tür, Fenster, Körper, Treppe und weitere Räume (Tomeks Wunsch: ein Knopf statt drei)
 const EINFUEGEN = [
   { id: 'tuer', label: 'Tür', svg: '<path d="M4 20h16 M6 20V5h9v15 M12 13h.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>' },
   { id: 'fenster', label: 'Fenster', svg: '<path d="M5 4h14v16H5z M12 4v16 M5 12h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>' },
   { id: 'koerper', label: 'Körper', svg: '<path d="M6 6h12v12H6z M6 6l12 12 M18 6L6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>' },
   { id: 'treppe', label: 'Treppe', svg: '<path d="M7 3h10v18H7z M7 7h10 M7 11h10 M7 15h10 M12 19V5 M9.5 7.5L12 5l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>' },
+  { id: 'anbauen', label: 'Raum anbauen', svg: '<path d="M3 6h9v12H3z M12 6h9v12h-9 M16.5 10v4 M14.5 12h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>' },
+  { id: 'raum', label: 'Neuer Raum', svg: '<path d="M4 6h16v12H4z M12 9v6 M9 12h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>' },
 ];
 const istEinfuegen = (w) => EINFUEGEN.some((x) => x.id === w);
 const RICHTUNG_NAMEN = { oben: '↑ nach oben', rechts: '→ nach rechts', unten: '↓ nach unten', links: '← nach links' };
@@ -56,6 +58,7 @@ const HINWEIS = {
   fenster: 'Auf eine Wand tippen, um dort ein Fenster einzusetzen.',
   koerper: 'In den Raum tippen, wo ein Kamin, eine Säule oder ein Schacht steht. Seine Fläche wird vom Boden abgezogen.',
   treppe: 'In den Raum tippen, wo die Treppe liegt. Der Pfeil zeigt die Laufrichtung nach oben.',
+  anbauen: 'Auf die Wand tippen, an die der neue Raum angebaut wird.',
 };
 // frühere Voreinstellung: 11,5 cm Lücke zwischen angebauten Räumen; jetzt Wand an Wand
 const ALTE_WANDSTAERKE = 0.115;
@@ -331,7 +334,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
       // umschalten, was eingefügt wird
       t.textContent = HINWEIS[werkzeug];
       k.innerHTML = EINFUEGEN.map((x) => `<button type="button" class="chip" data-einfuegen="${x.id}" aria-pressed="${x.id === werkzeug}">${x.label}</button>`).join('');
-      k.querySelectorAll('[data-einfuegen]').forEach((b) => { b.onclick = () => { werkzeug = b.dataset.einfuegen; zeichne(); }; });
+      k.querySelectorAll('[data-einfuegen]').forEach((b) => { b.onclick = () => { if (b.dataset.einfuegen === 'raum') { weitererRaum(); return; } werkzeug = b.dataset.einfuegen; zeichne(); }; });
       return;
     }
     if (werkzeug === 'zeichnen' && entwurf && entwurfErkannt) {
@@ -498,10 +501,11 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
         zeichne();
         inp.focus();
       };
+      // Wände, deren Länge sich schon aus den Maßen ergibt (z. B. gegenüber beim Rechteck), auslassen
       const weiter = () => {
-        gezaehlt += 1;
-        k = (k + 1) % n;
-        if (gezaehlt >= n) { fertig('fertig'); return; }
+        const ergibt = ergibtSich(d);
+        do { gezaehlt += 1; k = (k + 1) % n; } while (gezaehlt < n && ergibt.has(wandIndex(d, ids[k])));
+        if (gezaehlt >= n) { fertig(ergibt.size && d.waende.every((w, i) => w.mass != null || ergibt.has(i)) ? 'komplett' : 'fertig'); return; }
         zeigen();
       };
       const ok = () => {
@@ -529,6 +533,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     }
     werkzeug = 'mass';
     if (wahl === 'fertig') hinweis('Alle Wände durch. Blau = gemessen.');
+    if (wahl === 'komplett') hinweis('Raum vollständig: die übrigen Wände ergeben sich aus den Maßen.');
     zeichne();
   };
 
@@ -591,7 +596,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     const richtung = (winkelVon(g.r) + drehGrad) % 360;
     const quer = Math.round(ansicht.w / (Math.PI / 2)) % 2 === 1;
     panelAuf(`
-      <div class="fa-panel-kopf"><b>Wand ${wandName(i)} · ${d.massstabGesetzt ? '' : '≈ '}${fmt2(g.l)} m${w.mass != null ? ' (gemessen)' : ''}</b><button type="button" class="btn primary ra-p-ok">Fertig</button></div>
+      <div class="fa-panel-kopf"><b>Wand ${wandName(i)} · ${d.massstabGesetzt ? '' : '≈ '}${fmt2(g.l)} m${w.mass != null ? ' (gemessen)' : ergibtSich(d).has(i) ? ' (ergibt sich)' : ''}</b><button type="button" class="btn primary ra-p-ok">Fertig</button></div>
       <div class="ra-reihe"><label class="fa-feld"><span>Länge in m</span><input type="text" inputmode="decimal" class="ra-laenge" value="${w.mass != null ? zahlText(w.mass, 3) : ''}" placeholder="${zahlText(g.l)}"></label><button type="button" class="btn soft ra-laenge-ok">Setzen</button></div>
       <div class="fa-vorschlaege">
         <button type="button" class="chip" data-tun="waagerecht">Waagerecht</button>
@@ -1062,12 +1067,14 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     if (!geschlossen(d)) { hinweis('Zuerst den Raum zeichnen und schließen.'); zeichne(); return; }
     const b = berechne(d);
     const gemessen = b.waende.filter((w) => w.mass != null);
+    const ergibt = ergibtSich(d);
+    const fehlen = d.massstabGesetzt ? d.waende.filter((w, i) => w.mass == null && !ergibt.has(i)).length : d.waende.length;
     panelAuf(`
       <div class="fa-panel-kopf"><b>Maße und Maßstab</b><button type="button" class="btn primary ra-p-ok">Fertig</button></div>
       <button type="button" class="btn soft ra-p-reihe">Alle Wände nacheinander messen</button>
-      <p class="fa-klein">${d.massstabGesetzt ? `Maßstab aus ${gemessen.length ? `Wand ${gemessen[0].name}` : 'dem ersten Maß'}. Blau = gemessen, die anderen Längen sind daraus berechnet.` : 'Noch kein Maßstab. Bei einer Wand die echte Länge eingeben: dann wird der ganze Raum maßstäblich.'}</p>
-      ${b.waende.map((w) => `<div class="ra-wandzeile"><b>${w.name}</b><span>${d.massstabGesetzt ? '' : '≈ '}${fmt2(w.laenge)} m</span>
-        <input type="text" inputmode="decimal" data-wand="${w.id}" value="${w.mass != null ? zahlText(w.mass, 3) : ''}" placeholder="Maß" class="${w.mass != null ? 'gemessen' : ''}">
+      <p class="fa-klein">${d.massstabGesetzt ? `Maßstab aus ${gemessen.length ? `Wand ${gemessen[0].name}` : 'dem ersten Maß'}. Blau = gemessen (fett) oder ergibt sich daraus. ${fehlen ? `Noch ${fehlen === 1 ? 'eine Wand' : `${fehlen} Wände`} ohne Maß, ihre Länge ist nur gezeichnet.` : 'Der Raum ist vollständig bemaßt.'}` : 'Noch kein Maßstab. Bei einer Wand die echte Länge eingeben: dann wird der ganze Raum maßstäblich.'}</p>
+      ${b.waende.map((w, i) => `<div class="ra-wandzeile"><b>${w.name}</b><span>${d.massstabGesetzt ? '' : '≈ '}${fmt2(w.laenge)} m</span>
+        <input type="text" inputmode="decimal" data-wand="${w.id}" value="${w.mass != null ? zahlText(w.mass, 3) : ''}" placeholder="${ergibt.has(i) ? 'ergibt sich' : 'Maß'}" class="${w.mass != null ? 'gemessen' : ''}">
         ${w.mass != null ? `<button type="button" class="chip" data-weg="${w.id}" aria-label="Maß entfernen">✕</button>` : '<span></span>'}</div>`).join('')}`, () => {
       panel.querySelectorAll('[data-wand]').forEach((inp) => {
         inp.onchange = async () => {
@@ -1134,7 +1141,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
         <label class="fa-feld"><span>Glätten Punkte</span><input type="text" inputmode="decimal" data-zahl="vereinfachen" value="${zahlText(e.vereinfachen, 0)}"></label>
         <label class="fa-feld"><span>Abstand zwischen Räumen in cm (0 = Wand an Wand)</span><input type="text" inputmode="decimal" data-staerke value="${cm(e.wandstaerke ?? 0)}"></label>
       </div>
-      ${geschlossen(d) ? `<div class="fa-vorschlaege"><button type="button" class="chip" data-export="svg">Grundriss als SVG</button><button type="button" class="chip" data-export="dxf">Grundriss als DXF (CAD)</button>${andere.length ? '<button type="button" class="chip" data-export="svg" data-gesamt>Grundriss gesamt als SVG</button><button type="button" class="chip" data-export="dxf" data-gesamt>Grundriss gesamt als DXF</button>' : ''}<button type="button" class="chip" data-tun="weiter">Weiteren Raum zeichnen</button></div>` : ''}
+      ${geschlossen(d) ? `<div class="fa-vorschlaege"><button type="button" class="chip" data-export="svg">Grundriss als SVG</button><button type="button" class="chip" data-export="dxf">Grundriss als DXF (CAD)</button>${andere.length ? '<button type="button" class="chip" data-export="svg" data-gesamt>Grundriss gesamt als SVG</button><button type="button" class="chip" data-export="dxf" data-gesamt>Grundriss gesamt als DXF</button>' : ''}</div>` : ''}
       <div class="fa-vorschlaege"><button type="button" class="chip ra-gefahr" data-tun="neu">Neu zeichnen</button></div>`, () => {
       panel.querySelectorAll('[data-raum]').forEach((inp) => {
         inp.onchange = () => {
@@ -1163,7 +1170,6 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
       panel.querySelectorAll('[data-export]').forEach((btn) => { btn.onclick = () => exportieren(btn.dataset.export, btn.hasAttribute('data-gesamt')); });
       const st = panel.querySelector('[data-staerke]');
       st.onchange = () => { const t = staerkeLesen(st.value); if (t == null) { einstellungen(); return; } einst({ wandstaerke: t }); };
-      panel.querySelector('[data-tun="weiter"]')?.addEventListener('click', weitererRaum);
       panel.querySelector('[data-tun="neu"]').onclick = async () => {
         const ja = await dialog('<b>Den Raum neu zeichnen?</b><p class="fa-klein">Wände, Maße, Türen, Fenster und Körper werden entfernt. Mit „Rückgängig“ kommt alles zurück.</p><div class="fa-panel-knoepfe"><button type="button" class="btn ghost" data-wert="">Abbrechen</button><button type="button" class="btn primary" data-wert="ja">Neu zeichnen</button></div>');
         if (!ja) return;
@@ -1625,6 +1631,11 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
       if (unter && unter !== d) { wechseln(unter.id); return; }
       if (!w) { hinweis(werkzeug === 'mass' ? 'Bitte direkt auf eine Wand oder ihre Maßzahl tippen.' : 'Bitte direkt auf eine Wand tippen.'); zeichne(); return; }
       if (werkzeug === 'mass') { massFragen(w.id); return; }
+      if (werkzeug === 'anbauen') {
+        if (!d.massstabGesetzt) { hinweis('Zuerst ein echtes Maß eingeben, dann lassen sich Räume anbauen.'); zeichne(); return; }
+        await anbauenFragen(w.id);
+        return;
+      }
       if (werkzeug === 'tuer' || werkzeug === 'fenster') {
         if (!d.massstabGesetzt) hinweis('Tipp: zuerst ein echtes Maß eingeben, dann stimmen Lage und Größe.');
         const g = wandGeo(d, w.i);
@@ -1653,6 +1664,7 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
           <div class="ra-einfuegen-wahl">${EINFUEGEN.map((x) => `<button type="button" class="btn soft" data-wert="${x.id}"><svg viewBox="0 0 24 24" aria-hidden="true">${x.svg}</svg><span>${x.label}</span></button>`).join('')}</div>
           <div class="fa-panel-knoepfe"><button type="button" class="btn ghost" data-wert="">Abbrechen</button></div>`);
         if (!wahl) return;
+        if (wahl === 'raum') { weitererRaum(); return; }
         werkzeug = wahl;
       } else werkzeug = b.dataset.wz;
       if (werkzeug !== 'auswahl') { auswahl = null; panelZu(); }
