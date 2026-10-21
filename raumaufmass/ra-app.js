@@ -12,7 +12,7 @@ import {
   naechsterName, fmt2, verschiebeRaum, grundrissAbgleichen,
 } from './raumgeometrie.js';
 
-const RA_VERSION = '1.13.0';
+const RA_VERSION = '1.14.0';
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -594,7 +594,28 @@ window.addEventListener('hashchange', route);
 route();
 // Daten auf dem Gerät vor automatischem Aufräumen des Browsers schützen
 if (navigator.storage?.persist) navigator.storage.persisted().then((ja) => ja || navigator.storage.persist()).catch(() => {});
-if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+// Neue Version: lädt im Hintergrund und wird von selbst aktiv, sobald gerade nichts bearbeitet wird
+// (kein Editor, keine Vorschau, kein Blatt offen und kein Eingabefeld aktiv).
+const grundElemente = new Set(document.body.children);
+let neueVersion = false;
+const ruhig = () => [...document.body.children].every((el) => grundElemente.has(el) || el.tagName === 'SCRIPT')
+  && !document.activeElement?.matches?.('input, textarea, select, [contenteditable]');
+const updateEinspielen = () => { if (neueVersion && ruhig()) location.reload(); };
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  const hatteVersion = Boolean(navigator.serviceWorker.controller);
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hatteVersion || neueVersion) return;
+    neueVersion = true;
+    updateEinspielen();
+    setInterval(updateEinspielen, 3000);
+  });
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    // beim Zurückkehren in die App nach einer neuen Version schauen
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') reg.update().catch(() => {});
+    });
+  }).catch(() => {});
+}
 // für Tests: PDF eines gespeicherten Aufmaßes bauen
 window.raumaufmassPdf = async (id) => pdfBauen(await projektLaden(id), await alleSysteme());
 window.raumaufmassProjekte = alleProjekte;
