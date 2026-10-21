@@ -1305,6 +1305,27 @@ export function verschiebeRaum(raum, [dx, dy]) {
   return { raum: r };
 }
 
+// Ganzen Raum um 90° im Uhrzeigersinn um seine Mitte drehen (Maße, Türen, Fenster und Schrägen hängen an
+// den Wänden und gehen mit; Körper und Treppen drehen mit)
+export function dreheRaum(raum) {
+  const r = kopie(raum);
+  const g = grenzen(r);
+  if (!g) return { raum: r };
+  const cx = (g.x0 + g.x1) / 2;
+  const cy = (g.y0 + g.y1) / 2;
+  const um = (x, y) => [cx - (y - cy), cy + (x - cx)];
+  for (const e of r.ecken) { [e.x, e.y] = um(e.x, e.y).map((v) => rund(v, 1e6)); }
+  const weiter = { oben: 'rechts', rechts: 'unten', unten: 'links', links: 'oben' };
+  for (const k of r.koerper || []) {
+    [k.x, k.y] = um(k.x, k.y).map((v) => rund(v, 1e6));
+    [k.breite, k.tiefe] = [k.tiefe, k.breite];
+    if (istTreppe(k)) k.richtung = weiter[k.richtung] || 'rechts';
+  }
+  const f = r.skizze?.faktor || 1;
+  for (const s of r.skizze?.striche || []) for (const q of s) { [q[0], q[1]] = um(q[0] * f, q[1] * f).map((v) => v / f); }
+  return { raum: r };
+}
+
 // Neuen rechteckigen Raum auf der anderen Seite einer Wand anbauen (mit Trennwand dazwischen).
 // breite/abstand entlang der Wand, tiefe nach außen. Die gemeinsame Wand ist Wand A des neuen Raums.
 export function raumAnbauen(raum, wandId, o = {}) {

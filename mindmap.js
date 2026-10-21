@@ -78,6 +78,7 @@ const AESTE = [
     ['Körper abziehen', 'Z. B. Schächte, Pfeiler'],
     ['Material-Planer', 'Knauf-Systeme inkl. W111–W116'],
     ['Räume anheften', 'Angebaute Räume schließen an Nachbarwände an'],
+    ['Räume verschieben', 'Antippen, im Raum ziehen, wieder andocken, 90° drehen'],
     ['Updates von selbst', 'Neue Version lädt, sobald nichts offen ist'],
     ['Nur auf dem Gerät', 'Kein Abgleich, eigenes PDF']] },
 ];
