@@ -549,6 +549,10 @@ const ROWS = [
   ['Dachfenster', 'Okna dachowe', 'Ferestre de mansardă', 'Кровни прозорци', 'Dritaret e çatisë'],
   ['Dachschrägen netto', 'Skosy dachu netto', 'Pante de acoperiș net', 'Коси покриви нето', 'Pjerrësitë e çatisë neto'],
   ['Raumhöhe (flache Decke) in m', 'Wysokość pomieszczenia (płaski sufit) w m', 'Înălțimea camerei (tavan plat) în m', 'Висина на просторија (рамен таван) во m', 'Lartësia e dhomës (tavan i sheshtë) në m'],
+  // Reiter Aufmaß: Auswahl
+  ['Aufmaß mit Positionen', 'Obmiar z pozycjami', 'Măsurătoare cu poziții', 'Мерење со позиции', 'Matje me pozicione'],
+  ['Länge × Breite, Foto-Aufmaß, Laibungen', 'Długość × szerokość, obmiar ze zdjęcia, ościeża', 'Lungime × lățime, măsurare din foto, glafuri', 'Должина × ширина, мерење од фотографија, шпалети', 'Gjatësi × gjerësi, matje nga foto, kornizat'],
+  ['Grundriss zeichnen, Flächen, Material', 'Rysowanie rzutu, powierzchnie, materiał', 'Desenare plan, suprafețe, material', 'Цртање основа, површини, материјал', 'Vizatim i planit, sipërfaqe, material'],
   // Raumaufmaß (Freihand-Grundriss)
   ['Raum zeichnen', 'Narysuj pomieszczenie', 'Desenează camera', 'Нацртај просторија', 'Vizato dhomën'],
   ['Raumaufmaß: Raum grob skizzieren, eine Wand messen, Türen und Fenster setzen. Boden, Decke, Wände und Umfang kommen als Positionen ins Aufmaß.',

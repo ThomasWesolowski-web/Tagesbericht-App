@@ -33,7 +33,7 @@ import {
   planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
 } from './zeitplan.js';
 
-const APP_VERSION = '1.71.0';
+const APP_VERSION = '1.72.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -199,7 +199,7 @@ async function route() {
     (a.dataset.tab === 'list' && hash === '#/')
     || (a.dataset.tab === 'sites' && (hash.startsWith('#/baustelle') || hash.startsWith('#/zeitplan')))
     || (a.dataset.tab === 'hours' && (hash === '#/stunden' || hash === '#/urlaub'))
-    || (a.dataset.tab === 'aufmass' && hash === '#/aufmass')
+    || (a.dataset.tab === 'aufmass' && hash.startsWith('#/aufmass'))
     || (a.dataset.tab === 'settings' && (hash === '#/einstellungen' || hash === '#/personal' || hash === '#/handbuch' || hash === '#/mindmap'))));
 
   if (hash === '#/aufmass/neu') {
@@ -234,7 +234,8 @@ function seiteZeigen(hash) {
   if (hash === '#/einstellungen') return renderSettings();
   if (hash === '#/handbuch') return renderHandbuch();
   if (hash === '#/mindmap') return renderMindmap();
-  if (hash === '#/aufmass') return renderList({ aufmass: true });
+  if (hash === '#/aufmass') return renderAufmassWahl();
+  if (hash === '#/aufmass/liste') return renderList({ aufmass: true });
   return renderList();
 }
 
@@ -261,6 +262,18 @@ function zurueckKnopf(hash) {
     location.hash = vorher || '#/';
   };
   appbar.prepend(btn);
+}
+
+// ---------- Aufmaß: Auswahl ----------
+
+// Reiter Aufmaß: Aufmaß mit Positionen (hier in der App) oder Raumaufmaß (eigener Teil unter raumaufmass/)
+function renderAufmassWahl() {
+  appbar.innerHTML = '<h1>Aufmaß</h1>';
+  view.innerHTML = `
+    <div class="pick-list aufmass-wahl">
+      <a class="pick" href="#/aufmass/liste">${ICON.doc}<span><b>Aufmaß mit Positionen</b><small>Länge × Breite, Foto-Aufmaß, Laibungen</small></span></a>
+      <a class="pick" href="raumaufmass/?aus=berichte">${ICON.plan}<span><b>Raumaufmaß</b><small>Grundriss zeichnen, Flächen, Material</small></span></a>
+    </div>`;
 }
 
 // ---------- Übersicht ----------
@@ -587,7 +600,7 @@ async function renderEditor(id) {
 
   const leave = () => {
     editorHooks = null;
-    location.hash = report.art === 'aufmass' ? '#/aufmass' : '#/';
+    location.hash = report.art === 'aufmass' ? '#/aufmass/liste' : '#/';
   };
   const discard = async () => {
     for (const fid of pendingAdds) await db.deleteFile(fid);
@@ -4797,6 +4810,8 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     neueVersion = true;
     updateEinspielen();
   });
+  // Raumaufmaß (raumaufmass/) hat einen eigenen Offline-Speicher: gleich mit einrichten, damit es auch ohne Netz öffnet
+  navigator.serviceWorker.register('raumaufmass/sw.js').catch(() => {});
   navigator.serviceWorker.register('sw.js').then((reg) => {
     // Beim Zurückkehren in die App nach einer neuen Version schauen
     document.addEventListener('visibilitychange', () => {
