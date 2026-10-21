@@ -33,7 +33,7 @@ import {
   planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
 } from './zeitplan.js';
 
-const APP_VERSION = '1.70.0';
+const APP_VERSION = '1.71.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -1438,13 +1438,8 @@ function autoGrow(el) {
 }
 
 function openFile(file) {
-  if (file.type.startsWith('image/')) {
-    const lb = $('#lightbox');
-    lb.innerHTML = `<img src="${objectUrl(file.blob)}" alt="${esc(file.name)}"><button class="icon-btn" aria-label="Schließen">${ICON.x}</button>`;
-    lb.hidden = false;
-    lb.onclick = () => { lb.hidden = true; lb.innerHTML = ''; };
-    return;
-  }
+  // Fotos in der Plan-Ansicht: mit zwei Fingern oder + und − zoomen, mit der Hand verschieben
+  if (file.type.startsWith('image/')) { planSeiteAnsehen(file, 1); return; }
   // Excel, Word & Co.: in der installierten App führt ein Download-Link auf dem iPhone ins Leere,
   // deshalb eine eigene Ansicht (Tabellen direkt lesbar) mit „In anderer App öffnen“
   if (!istPdf(file)) { dateiAnsicht(file); return; }
