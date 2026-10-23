@@ -901,6 +901,8 @@ html.mk-offen, html.mk-offen body { overflow: hidden; }
 .zp-karte { padding: 14px 12px; }
 .zp-kopf { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
 .zp-kopf h2 { margin: 0; font-size: .82rem; font-weight: 750; color: var(--ink-2); text-transform: uppercase; letter-spacing: .06em; }
+.appbar #bs-ansicht { flex: 0 0 auto; margin: 0; padding: 3px; }
+.appbar #bs-ansicht button { padding: 7px 12px; font-size: .88rem; }
 .seg.zp-raster { margin: 0; padding: 3px; grid-template-columns: 1fr 1fr; }
 .seg.zp-raster button { padding: 5px 12px; font-size: .82rem; }
 .zp-nav { margin: 6px 0 8px; }
