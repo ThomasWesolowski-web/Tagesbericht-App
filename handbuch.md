@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.72.0**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.73.0**.
 
 | Was | Wo |
 | --- | --- |
@@ -115,7 +115,7 @@ Zoomen mit zwei Fingern oder dem Mausrad, Verschieben mit zwei Fingern (am Compu
 
 **Baustellen:** Liste aller Baustellen mit Adresse. Anlegen und ändern darf jeder; fertige Baustellen werden oben als abgeschlossen markiert und wandern nach unten. Löschen darf nur der Admin. Auf der Seite einer Baustelle stehen ihre Berichte, die Knöpfe für die Zusammenfassung und die Materialliste und **Pläne und Dokumente**: PDF-Pläne, Bilder oder andere Dateien bis 25 MB anhängen (nachdem die Baustelle gespeichert ist). Sie kommen beim Abgleich auf alle Handys (im Repo unter stammdaten/plaene/). Anhängen darf jeder, entfernen nur der Admin. Einen Plan antippen öffnet ihn zum Verschieben und Zoomen. Bei PDFs mit mehreren Seiten stehen alle Seiten untereinander zum Durchblättern; mit zwei Fingern wird direkt hineingezoomt, nach dem Zoomen werden die sichtbaren Seiten schärfer nachgezeichnet. Excel-Dateien (.xlsx) und CSV-Dateien zeigt die App direkt als Tabelle an, mit allen Tabellenblättern; vergrößern mit zwei Fingern oder + und −. Andere Dateien (z. B. Word oder alte .xls-Dateien) öffnet der Knopf „In anderer App öffnen“, z. B. mit Excel oder Numbers; das gilt auch für Anhänge im Bericht.
 
-**Zeitplan (nur Admin):** Oben im Reiter Baustellen schaltet „Liste | Zeitplan“ um. Ein Auftrag ist eine Baustelle oder „Nur Gerüst“ für Fremdgewerke. Beim Anlegen wählst du eine Vorlage (Nur Gerüst, WDVS, Fassade, Innenputz, Trockenbau, Maler oder leer) und den Beginn; daraus entstehen Abschnitte mit Gewerk, Von/Bis, Leuten (Stunden pro Tag) und Material mit der KW, in der es da sein muss. Ein Abschnitt kann auch „Ohne Personal“ sein (z. B. Trocknen) oder Gerüst auf- bzw. abbauen.
+**Zeitplan (nur Admin):** Im Reiter Baustellen schaltet „Liste | Zeitplan“ oben rechts neben der Überschrift um; der Umschalter bleibt auch beim Herunterscrollen stehen. Ein Auftrag ist eine Baustelle oder „Nur Gerüst“ für Fremdgewerke. Beim Anlegen wählst du eine Vorlage (Nur Gerüst, WDVS, Fassade, Innenputz, Trockenbau, Maler oder leer) und den Beginn; daraus entstehen Abschnitte mit Gewerk, Von/Bis, Leuten (Stunden pro Tag) und Material mit der KW, in der es da sein muss. Ein Abschnitt kann auch „Ohne Personal“ sein (z. B. Trocknen) oder Gerüst auf- bzw. abbauen.
 
 Die Ansicht zeigt einen Balkenplan pro Woche (KW) oder pro Tag. Ein Auftrag lässt sich mit −1/+1 Woche verschieben; mit „Folgende mitverschieben“ wandern die späteren Abschnitte mit. Bei Gerüst-Aufträgen rechnet die App die Standzeit zwischen Aufbau und Abbau selbst und zeigt, wie viele Wochen über der Grundstandzeit (Vorgabe 4 Wochen) liegen.
 
@@ -177,6 +177,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 23.10.2026 | 1.73.0 | Baustellen: Umschalter „Liste \| Zeitplan“ steht fest oben in der Kopfzeile und ist immer sichtbar; Antippen eines Reiters unten springt an den Seitenanfang |
 | 21.10.2026 | Raumaufmaß 1.16.0 | Ganzen Raum irgendwo im Raum ziehen (vorher antippen), lösen und wieder andocken; Raum drehen 90° |
 | 21.10.2026 | 1.72.0 / Raumaufmaß 1.15.0 | Raumaufmaß in der Berichte-App: Reiter Aufmaß fragt „Aufmaß mit Positionen“ oder „Raumaufmaß“ |
 | 21.10.2026 | Raumaufmaß 1.14.0 | Raumaufmaß holt neue Versionen von selbst |
