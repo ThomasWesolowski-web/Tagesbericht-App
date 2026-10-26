@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.72.0**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.74.0**.
 
 | Was | Wo |
 | --- | --- |
@@ -137,7 +137,7 @@ Baustellen und Personal werden über das Repo auf allen Handys gleich gehalten. 
 
 **Sprachen:** Die Oberfläche gibt es auf Deutsch, Polnisch, Rumänisch, Mazedonisch und Albanisch (umstellbar in den Einstellungen). Freitexte wie Arbeiten, Material, Bemerkungen und Bildtexte werden beim Hochladen automatisch ins Deutsche übersetzt. Häufige Baustellenwörter (z. B. Spachtelmasse, Klebeband, Gipskarton, Gerüst, Grundierung) übersetzt die App selbst aus einer Fachwörterliste für Rumänisch, Polnisch, Mazedonisch und Albanisch; kurze Notizen nur aus solchen Wörtern gehen gar nicht erst an den Übersetzer. Fehlt ein Wort, kann es in die Liste aufgenommen werden. Repo, PDF und Admin bekommen Deutsch, der Verfasser sieht weiter sein Original. Die Übersetzungen der Oberfläche sind noch nicht von Muttersprachlern geprüft.
 
-**Ansicht:** In den Einstellungen unter Allgemein wählst du „Automatisch“ (wie das Handy oder der Computer eingestellt ist), „Hell“ oder „Dunkel“. Die Wahl gilt nur für dieses Gerät und gilt sofort, auch in der Desktop-Version im Browser.
+**Ansicht:** In den Einstellungen unter Allgemein wählst du „Automatisch“ (wie das Handy oder der Computer eingestellt ist), „Hell“ oder „Dunkel“. Die Wahl gilt nur für dieses Gerät und gilt sofort, auch in der Desktop-Version im Browser. Seit 1.74.0 hat die App eine Milchglas-Optik in beiden Ansichten: hinter allem liegen weiche Farbflächen, Karten und Leisten sind halb durchsichtig und verschwommen, die Leiste unten schwebt über dem Inhalt. Die Akzentfarbe ist das Grün aus dem Firmenlogo (vorher Orange).
 
 **Felder überschreiben:** Tippst du in ein einzeiliges Feld, in dem schon etwas steht (Name, Zahl, Fläche usw.), ist der Inhalt gleich markiert und wird beim Tippen ersetzt. Ein zweites Antippen setzt den Cursor wie gewohnt. Lange Freitexte (Notizen, Beschreibungen) werden nicht markiert, damit nichts aus Versehen verloren geht.
 
@@ -177,6 +177,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 26.10.2026 | 1.74.0 | Neues Aussehen: Milchglas-Optik (halb durchsichtige, verschwommene Karten und Leisten, schwebende Leiste unten), Akzentfarbe Grün aus dem Firmenlogo statt Orange |
 | 21.10.2026 | Raumaufmaß 1.16.0 | Ganzen Raum irgendwo im Raum ziehen (vorher antippen), lösen und wieder andocken; Raum drehen 90° |
 | 21.10.2026 | 1.72.0 / Raumaufmaß 1.15.0 | Raumaufmaß in der Berichte-App: Reiter Aufmaß fragt „Aufmaß mit Positionen“ oder „Raumaufmaß“ |
 | 21.10.2026 | Raumaufmaß 1.14.0 | Raumaufmaß holt neue Versionen von selbst |

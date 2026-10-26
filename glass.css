@@ -1,0 +1,133 @@
+/* Milchglas-Optik (ab 1.73.0): legt sich über app.css.
+   Hintergrund mit weichen Farbflächen, darauf halbdurchsichtige, verschwommene Flächen.
+   Akzentfarbe ist das Grün aus dem Firmenlogo. */
+:root {
+  --accent: #2f8a4f;
+  --accent-soft: #e3f2e7;
+  --glass: rgba(255, 255, 255, .46);
+  --glass-strong: rgba(255, 255, 255, .84);
+  --glass-field: rgba(255, 255, 255, .55);
+  --glass-rand: rgba(255, 255, 255, .75);
+  --glass-linie: rgba(29, 35, 43, .08);
+  --glass-blur: blur(22px) saturate(1.7);
+  --glass-schatten: 0 1px 1px rgba(255, 255, 255, .6) inset, 0 8px 28px rgba(29, 35, 43, .08);
+  --glass-fleck-1: rgba(78, 160, 98, .55);
+  --glass-fleck-2: color-mix(in srgb, var(--accent) 40%, transparent);
+  --glass-fleck-3: rgba(120, 170, 220, .45);
+  --bg: #eef1ec;
+  --line: rgba(29, 35, 43, .10);
+  --radius: 20px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="hell"]) {
+    --accent: #56b874;
+    --accent-ink: #0b1a10;
+    --accent-soft: #1c3324;
+    --glass: rgba(34, 39, 46, .55);
+    --glass-strong: rgba(34, 39, 46, .86);
+    --glass-field: rgba(255, 255, 255, .06);
+    --glass-rand: rgba(255, 255, 255, .10);
+    --glass-linie: rgba(255, 255, 255, .08);
+    --glass-schatten: 0 1px 0 rgba(255, 255, 255, .06) inset, 0 8px 28px rgba(0, 0, 0, .35);
+    --glass-fleck-1: rgba(70, 150, 90, .30);
+    --glass-fleck-3: rgba(70, 110, 170, .28);
+    --bg: #101317;
+    --line: rgba(255, 255, 255, .10);
+  }
+}
+:root[data-theme="dunkel"] {
+  --accent: #56b874;
+  --accent-ink: #0b1a10;
+  --accent-soft: #1c3324;
+  --glass: rgba(34, 39, 46, .55);
+  --glass-strong: rgba(34, 39, 46, .86);
+  --glass-field: rgba(255, 255, 255, .06);
+  --glass-rand: rgba(255, 255, 255, .10);
+  --glass-linie: rgba(255, 255, 255, .08);
+  --glass-schatten: 0 1px 0 rgba(255, 255, 255, .06) inset, 0 8px 28px rgba(0, 0, 0, .35);
+  --glass-fleck-1: rgba(70, 150, 90, .30);
+  --glass-fleck-3: rgba(70, 110, 170, .28);
+  --bg: #101317;
+  --line: rgba(255, 255, 255, .10);
+}
+
+/* Farbflächen hinter allem; fest stehend, damit das Glas beim Scrollen „schwimmt“ */
+body::before {
+  content: ""; position: fixed; inset: -10%; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(40% 35% at 12% 8%, var(--glass-fleck-1), transparent 70%),
+    radial-gradient(45% 35% at 95% 30%, var(--glass-fleck-2), transparent 70%),
+    radial-gradient(50% 40% at 20% 85%, var(--glass-fleck-3), transparent 70%),
+    radial-gradient(35% 30% at 85% 95%, var(--glass-fleck-1), transparent 70%),
+    var(--bg);
+}
+body { background: var(--bg); }
+.app { position: relative; z-index: 0; }
+
+/* Glasflächen */
+.stat, .rcard, .scard, .section, .pick, .menu, .crew, .banner, .site-pick, .search {
+  background: var(--glass);
+  backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-rand);
+  box-shadow: var(--glass-schatten);
+}
+.section { border-radius: 22px; }
+.stat { border-radius: 18px; }
+.crew, .site-pick, .search { box-shadow: none; background: var(--glass-field); }
+.banner { background: color-mix(in srgb, var(--warn-soft) 60%, transparent); }
+
+/* Kopf- und Fußleiste: stärker verschwommen */
+.appbar {
+  background: color-mix(in srgb, var(--bg) 35%, transparent);
+  backdrop-filter: blur(24px) saturate(1.8); -webkit-backdrop-filter: blur(24px) saturate(1.8);
+}
+.tabbar, .savebar {
+  left: 8px; right: 8px; bottom: calc(var(--safe-b) + 8px);
+  height: var(--tabbar-h); padding-bottom: 0;
+  max-width: 696px; margin: 0 auto;
+  border-radius: 24px;
+  background: var(--glass-strong);
+  backdrop-filter: blur(34px) saturate(1.8); -webkit-backdrop-filter: blur(34px) saturate(1.8);
+  border: 1px solid var(--glass-rand);
+  box-shadow: var(--glass-schatten), 0 12px 40px rgba(29, 35, 43, .14);
+}
+.savebar { height: auto; padding: 10px 12px; }
+.tabbar a { font-size: .68rem; letter-spacing: -.01em; }
+.tabbar a.active { position: relative; }
+.tabbar a.active::before {
+  content: ""; position: absolute; inset: -6px 2px; z-index: -1; border-radius: 16px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+/* Eingabefelder und Knöpfe */
+.field input, .field textarea, .field select, .chip {
+  background: var(--glass-field); border-color: var(--glass-linie);
+}
+.field input:focus, .field textarea:focus { background: var(--glass-strong); }
+.btn.ghost { background: var(--glass-field); border-color: var(--glass-rand); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.btn.primary, .fab, .chip[aria-pressed="true"] {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, #fff), var(--accent));
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .35) inset, 0 8px 22px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.fab { border: 1px solid color-mix(in srgb, var(--accent) 70%, #fff); bottom: calc(var(--tabbar-h) + var(--safe-b) + 24px); }
+.rcard .date, .scard .sicon { background: color-mix(in srgb, var(--accent) 13%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent); }
+
+/* Auswahl-Blatt von unten */
+.sheet-backdrop.open { background: rgba(20, 24, 28, .25); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+.sheet {
+  background: var(--glass-strong);
+  backdrop-filter: blur(30px) saturate(1.8); -webkit-backdrop-filter: blur(30px) saturate(1.8);
+  border: 1px solid var(--glass-rand); border-bottom: 0;
+  border-radius: 28px 28px 0 0;
+}
+.sheet .section { background: var(--glass-field); }
+.toast {
+  background: color-mix(in srgb, var(--ink) 78%, transparent);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+}
+.view { padding-bottom: calc(var(--tabbar-h) + var(--safe-b) + 110px); }
+.seg { background: var(--glass-field); border: 1px solid var(--glass-rand); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.seg button[aria-checked="true"] {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, #fff), var(--accent));
+  color: var(--accent-ink); box-shadow: 0 1px 0 rgba(255, 255, 255, .35) inset, 0 6px 16px color-mix(in srgb, var(--accent) 30%, transparent);
+}
