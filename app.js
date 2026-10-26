@@ -33,7 +33,7 @@ import {
   planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
 } from './zeitplan.js';
 
-const APP_VERSION = '1.73.0';
+const APP_VERSION = '1.74.1';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -1774,7 +1774,7 @@ async function renderSites() {
 }
 
 // ---------- Baustellen-Zeitplan (nur Administrator) ----------
-// Reiter Baustellen › Zeitplan: Umschalter Liste|Zeitplan steht seit 1.73.0 in der festen Kopfzeile,
+// Reiter Baustellen › Zeitplan: Umschalter Liste|Zeitplan steht seit 1.74.1 in der festen Kopfzeile,
 // damit er auch bei heruntergescrollter Seite zu sehen ist. Aufträge mit Abschnitten als Balken über die Kalenderwochen
 // (oder Tage), Plantafel je Person und Wochen-Auslastung. Rechnung in zeitplan.js.
 
@@ -4767,7 +4767,7 @@ async function runSync(manual) {
 // ---------- Start ----------
 
 // Reiter unten antippen: Seite beginnt oben, sonst bleibt die Scroll-Höhe der vorigen Seite stehen
-// und Kopf und Umschalter (z. B. Liste|Zeitplan) liegen außer Sicht (1.73.0).
+// und Kopf und Umschalter (z. B. Liste|Zeitplan) liegen außer Sicht (1.74.1).
 $$('.tabbar a').forEach((a) => a.addEventListener('click', () => window.scrollTo(0, 0)));
 
 window.addEventListener('hashchange', async () => {
