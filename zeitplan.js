@@ -142,7 +142,7 @@ export const planPersonen = (people) => people.filter((p) => !p.archived && p.ka
 function urlaubstage(person, antraege) {
   const tage = new Set();
   for (const u of antraege) {
-    if (u.status !== 'genehmigt' || !u.von || !u.bis) continue;
+    if (u.status !== 'genehmigt' || u.ereignis || !u.von || !u.bis) continue;
     if (!u.betrieb && !gehoertZu(u, { personId: person.id, name: person.name })) continue;
     for (let s = u.von; s <= u.bis; s = plusTage(s, 1)) tage.add(s);
   }
