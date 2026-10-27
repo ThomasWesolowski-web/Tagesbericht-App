@@ -11,6 +11,8 @@ Unter **Stunden → Urlaub** gibt es einen Urlaubskalender (Kalenderwochen, Feie
 Jeder beantragt dort seinen Urlaub, der Administrator genehmigt oder lehnt ab (genehmigte Arbeitstage
 kommen als „Urlaub“ in den Stundennachweis); jeder Antrag liegt als
 `urlaub/<JJJJ>_<name>_<id>.json` im Repo.
+Der Administrator trägt dort auch Ereignisse für alle ein, z. B. die Weihnachtsfeier
+(`urlaub/<JJJJ>_ereignis_<id>.json`, zählen nicht als Urlaub).
 
 Baustellen und Personal werden mit `stammdaten/baustellen.json` und `stammdaten/personal.json`
 im selben Repo abgeglichen, damit alle Handys dieselben Listen haben (pro Eintrag gewinnt die neuere Änderung).
