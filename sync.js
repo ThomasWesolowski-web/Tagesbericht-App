@@ -705,14 +705,15 @@ export async function syncStunden(settings) {
 // ---------- Urlaub ----------
 // Pro Antrag eine Datei urlaub/<JJJJ>_<name>_<id>.json. So überschreiben sich Anträge
 // verschiedener Mitarbeiter nie gegenseitig. Mitarbeiter laden nur ihre eigenen Anträge
-// und den Betriebsurlaub (urlaub/<JJJJ>_betriebsurlaub_<id>.json), der Administrator alle.
+// den Betriebsurlaub (urlaub/<JJJJ>_betriebsurlaub_<id>.json) und die Ereignisse wie die
+// Weihnachtsfeier (urlaub/<JJJJ>_ereignis_<id>.json), der Administrator alle.
 
-const urlaubPfad = (a) => a.pfad || `urlaub/${a.von.slice(0, 4)}_${slug(a.name) || 'mitarbeiter'}_${a.id.slice(0, 8)}.json`;
+const urlaubPfad = (a) => a.pfad || `urlaub/${a.von.slice(0, 4)}_${a.ereignis ? 'ereignis' : slug(a.name) || 'mitarbeiter'}_${a.id.slice(0, 8)}.json`;
 
 async function urlaubHochladen(gh, settings, a) {
   const pfad = urlaubPfad(a);
   const { pfad: _p, ...daten } = a;
-  const body = { message: `Urlaub ${a.status} – ${a.name} ${a.von} bis ${a.bis}`,
+  const body = { message: a.ereignis ? `Ereignis – ${a.name} ${a.von} bis ${a.bis}` : `Urlaub ${a.status} – ${a.name} ${a.von} bis ${a.bis}`,
     content: await blobToBase64(new Blob([`${JSON.stringify(daten, null, 2)}\n`])), branch: settings.branch };
   const sha = await freshSha(gh, settings, pfad);
   if (sha) body.sha = sha;
@@ -721,7 +722,7 @@ async function urlaubHochladen(gh, settings, a) {
 }
 
 // Lädt Ausstehendes hoch und holt dann den Stand aus dem Repo.
-// Gibt { antraege, neuEntschieden } zurück; neuEntschieden: eigene Anträge, die seit dem
+// Gibt { antraege, neuEntschieden, neueEreignisse } zurück; neuEntschieden: eigene Anträge, die seit dem
 // letzten Abgleich genehmigt oder abgelehnt wurden.
 export async function urlaubAbgleichen(settings, { alle = false, name = '' } = {}) {
   const gh = client(settings);
@@ -764,7 +765,7 @@ export async function urlaubAbgleichen(settings, { alle = false, name = '' } = {
   }
   const gesucht = namensTeile(slug(name));
   const dateien = (Array.isArray(liste) ? liste : []).filter((f) => f.type === 'file' && f.name.endsWith('.json')
-    && (alle || [gesucht, 'betriebsurlaub'].includes(namensTeile(f.name.replace(/^\d{4}_/, '').replace(/_[^_]+\.json$/, '')))));
+    && (alle || [gesucht, 'betriebsurlaub', 'ereignis'].includes(namensTeile(f.name.replace(/^\d{4}_/, '').replace(/_[^_]+\.json$/, '')))));
   const remote = (await Promise.all(dateien.map(async (f) => {
     const r = await getJson(gh, settings, f.path);
     return r ? { ...r.data, pfad: f.path } : null;
@@ -776,7 +777,16 @@ export async function urlaubAbgleichen(settings, { alle = false, name = '' } = {
   for (const a of d.antraege) if (warten.has(a.id) && d.ausstehend[a.id] !== 'loeschen') ergebnis.set(a.id, a);
   // Beim allerersten Abgleich auf diesem Gerät nichts melden, nur merken
   const neuEntschieden = [];
+  const neueEreignisse = [];
   for (const a of ergebnis.values()) {
+    // Neue Ereignisse (Weihnachtsfeier usw.) einmal melden, nicht dem Administrator, der sie einträgt
+    if (a.ereignis) {
+      if (!d.gemeldet[a.id]) {
+        if (d.stand && !alle) neueEreignisse.push(a);
+        d.gemeldet[a.id] = 'ereignis';
+      }
+      continue;
+    }
     if (!a.betrieb && a.status !== 'beantragt' && d.gemeldet[a.id] !== a.status && namensTeile(slug(a.name)) === gesucht) {
       if (d.stand) neuEntschieden.push(a);
       d.gemeldet[a.id] = a.status;
@@ -786,7 +796,7 @@ export async function urlaubAbgleichen(settings, { alle = false, name = '' } = {
   d.pfade = Object.fromEntries(d.antraege.filter((a) => a.pfad).map((a) => [a.id, a.pfad]));
   d.stand = Date.now();
   urlaubLokalSpeichern(d);
-  return { antraege: d.antraege, neuEntschieden, hinweise };
+  return { antraege: d.antraege, neuEntschieden, neueEreignisse, hinweise };
 }
 
 // ---------- Berichte anderer Handys herunterladen ----------

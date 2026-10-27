@@ -4,6 +4,8 @@
 //               entschiedenVon, entschiedenAm, pfad }
 // status: beantragt | genehmigt | abgelehnt
 // Betriebsurlaub (vom Administrator für alle): betrieb: true, name 'Betriebsurlaub', gleich genehmigt
+// Ereignis (Weihnachtsfeier usw., vom Administrator für alle): ereignis: true, name = Bezeichnung,
+//   dazu uhrzeit und ort; gleich genehmigt, tage 0, zählt nicht als Urlaub
 
 import { kw } from './stunden.js';
 import { newId } from './report.js';

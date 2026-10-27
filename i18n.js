@@ -24,6 +24,10 @@ const ROWS = [
   ['Beantragt', 'Złożony', 'Solicitat', 'Побарано', 'Kërkuar'],
   ['Genehmigt', 'Zatwierdzony', 'Aprobat', 'Одобрено', 'Miratuar'],
   ['Betriebsurlaub', 'Urlop firmowy', 'Concediu colectiv', 'Колективен одмор', 'Pushim kolektiv'],
+  ['Ereignis', 'Wydarzenie', 'Eveniment', 'Настан', 'Ngjarje'],
+  ['Uhrzeit', 'Godzina', 'Ora', 'Време', 'Ora'],
+  ['Ort', 'Miejsce', 'Locul', 'Место', 'Vendi'],
+  ['Gilt für alle Mitarbeiter.', 'Dotyczy wszystkich pracowników.', 'Este valabil pentru toți angajații.', 'Важи за сите вработени.', 'Vlen për të gjithë punonjësit.'],
   ['Abgelehnt', 'Odrzucony', 'Respins', 'Одбиено', 'Refuzuar'],
   ['Ersten Urlaubstag antippen, dann den letzten.', 'Dotknij pierwszego dnia urlopu, potem ostatniego.', 'Atinge prima zi de concediu, apoi ultima.', 'Допри го првиот ден од одморот, потоа последниот.', 'Prek ditën e parë të pushimit, pastaj të fundit.'],
   ['Jetzt den letzten Urlaubstag antippen.', 'Teraz dotknij ostatniego dnia urlopu.', 'Acum atinge ultima zi de concediu.', 'Сега допри го последниот ден од одморот.', 'Tani prek ditën e fundit të pushimit.'],
@@ -707,6 +711,8 @@ const WORT = {
   deinUrlaub: { pl: 'Twój urlop', ro: 'Concediul tău', mk: 'Твојот одмор', sq: 'Pushimi yt' },
   gibtSchon: { pl: 'już istnieje. Mimo to dodać jako nową osobę?', ro: 'există deja. Totuși adaugi ca persoană nouă?', mk: 'веќе постои. Сепак да се додаде како нова личност?', sq: 'ekziston tashmë. Ta shtoj gjithsesi si person të ri?' },
   ausgewaehlt: { pl: 'wybrano', ro: 'selectat', mk: 'избрано', sq: 'u zgjodh' },
+  neuesEreignis: { pl: 'Nowe wydarzenie', ro: 'Eveniment nou', mk: 'Нов настан', sq: 'Ngjarje e re' },
+  am: { pl: 'w dniu', ro: 'pe', mk: 'на', sq: 'më' },
   schonEntschieden: { pl: 'był już rozpatrzony i zostaje', ro: 'era deja decis și rămâne', mk: 'веќе беше решен и останува', sq: 'ishte vendosur tashmë dhe mbetet' },
 };
 
@@ -754,6 +760,8 @@ function muster(s) {
   if ((m = /^Der Urlaub (.+) war schon entschieden und bleibt\.$/.exec(s))) return `${WORT.deinUrlaub[lang]} ${m[1]} ${WORT.schonEntschieden[lang]}.`;
   if ((m = /^(„.+“) gibt es schon\. Trotzdem als neue Person anlegen\?$/.exec(s))) return `${m[1]} ${WORT.gibtSchon[lang]}`;
   if ((m = /^(„.+“) ausgewählt\.$/.exec(s))) return `${m[1]} – ${WORT.ausgewaehlt[lang]}.`;
+  if ((m = /^Neues Ereignis: (.+) am (.+)$/.exec(s))) return `${WORT.neuesEreignis[lang]}: ${m[1]} – ${WORT.am[lang]} ${m[2]}`;
+  if ((m = /^(\d{1,2}:\d{2}) Uhr$/.exec(s))) return m[1];
   if ((m = /^von (.+)$/.exec(s))) return `${WORT.von[lang]} ${m[1]}`;
   return null;
 }

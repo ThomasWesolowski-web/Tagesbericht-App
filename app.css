@@ -877,14 +877,21 @@ html.mk-offen, html.mk-offen body { overflow: hidden; }
 .uk-tag.u-abgelehnt { text-decoration: line-through; color: var(--ink-3); }
 .uk-tag.heute b { text-decoration: underline; text-underline-offset: 3px; }
 .uk-tag.auswahl { box-shadow: inset 0 0 0 3px var(--accent); }
+.uk-tag { position: relative; }
+.uk-tag.ev::after { content: ''; position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: 50%; background: #8a4fb5; box-shadow: 0 0 0 1.5px #fff; }
 .uk-legende { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 10px 4px 0; font-size: .78rem; color: var(--ink-2); font-weight: 600; }
 .uk-legende i { display: inline-block; width: 12px; height: 12px; border-radius: 4px; margin-right: 5px; vertical-align: -1px; }
 .uk-legende i.u-beantragt { background: var(--warn-soft); box-shadow: inset 0 0 0 2px var(--warn); }
 .uk-legende i.u-genehmigt { background: var(--ok); }
 .uk-legende i.u-betrieb { background: #2f6fb3; }
+.uk-legende i.ev { background: #8a4fb5; border-radius: 50%; }
 .uk-legende i.ft { background: var(--danger-soft); box-shadow: inset 0 0 0 2px var(--danger); }
 .uk-feiertage { margin: 4px 4px 0; font-size: .85rem; color: var(--danger); }
 .uk-feiertage b { display: inline-block; min-width: 46px; }
+.uk-ereignisse { margin: 6px 4px 0; display: grid; gap: 2px; }
+.uk-ereignis { border: 0; background: none; padding: 3px 0; text-align: left; font: inherit; font-size: .85rem; color: #8a4fb5; cursor: pointer; }
+.uk-ereignis b { display: inline-block; min-width: 46px; }
+.uk-ereignis span { text-decoration: underline; text-underline-offset: 3px; }
 .urlaub-karte { text-align: left; border: 0; width: 100%; }
 .uk-knoepfe { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
 

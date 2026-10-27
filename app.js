@@ -33,7 +33,7 @@ import {
   planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
 } from './zeitplan.js';
 
-const APP_VERSION = '1.74.0';
+const APP_VERSION = '1.75.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -3769,7 +3769,7 @@ function ansichtUmschalterBinden() {
 
 const sichtbareAntraege = () => {
   const alle = urlaubLokal().antraege;
-  return isAdmin() ? alle : alle.filter((a) => a.betrieb || gehoertZu(a, stundenPerson()));
+  return isAdmin() ? alle : alle.filter((a) => a.betrieb || a.ereignis || gehoertZu(a, stundenPerson()));
 };
 
 // Zahl am Reiter: für den Administrator offene Anfragen, sonst neue Entscheidungen zum eigenen Urlaub
@@ -3800,6 +3800,7 @@ function urlaubMelden(res, vorher) {
     const neu = res.antraege.filter((a) => a.status === 'beantragt' && !vorher.has(a.id)).length;
     if (neu) toast(neu === 1 ? 'Neue Urlaubsanfrage.' : `${neu} neue Urlaubsanfragen.`, 4000);
   }
+  for (const e of res.neueEreignisse || []) toast(`Neues Ereignis: ${e.name} am ${zeitraumText(e)}`, 4500);
   for (const h of res.hinweise) toast(h, 4500);
 }
 const offeneIds = () => new Set(urlaubLokal().antraege.filter((a) => a.status === 'beantragt').map((a) => a.id));
@@ -3843,7 +3844,10 @@ function renderUrlaub() {
     return;
   }
   if (Date.now() - urlaubGeholt > 60000) urlaubHolen();
-  const antraege = sichtbareAntraege();
+  // Ereignisse (Weihnachtsfeier usw.) stehen nur als Markierung im Kalender und als Liste darunter
+  const sichtbar = sichtbareAntraege();
+  const ereignisse = sichtbar.filter((a) => a.ereignis);
+  const antraege = sichtbar.filter((a) => !a.ereignis);
   // Was hier zu sehen ist, gilt als gesehen (Zahl am Reiter verschwindet)
   const lokal = urlaubLokal();
   let geaendert = false;
@@ -3857,14 +3861,17 @@ function renderUrlaub() {
   const amTag = (iso) => imKalender.filter((a) => a.von <= iso && iso <= a.bis);
   const heute = today();
   const wochen = monatsRaster(urlaubMonat);
+  const ereignisseMonat = ereignisse.filter((e) => e.von.slice(0, 7) <= urlaubMonat && urlaubMonat <= e.bis.slice(0, 7))
+    .sort((a, b) => a.von.localeCompare(b.von));
   const feiertageMonat = [...feiertageBW(Number(urlaubMonat.slice(0, 4))).entries()].filter(([iso]) => iso.startsWith(urlaubMonat));
   const zelle = (t) => {
     const ft = feiertag(t.iso);
     const liste = amTag(t.iso);
     // Wochenenden und Feiertage zählen nicht als Urlaubstag und bleiben, wie sie sind
     const st = ft || istWochenende(t.iso) ? '' : liste.some((a) => a.betrieb) ? 'betrieb' : liste.find((a) => a.status === 'genehmigt') ? 'genehmigt' : liste.find((a) => a.status === 'beantragt') ? 'beantragt' : liste.length ? 'abgelehnt' : '';
+    const ev = ereignisse.some((e) => e.von <= t.iso && t.iso <= e.bis);
     const kl = ['uk-tag', t.imMonat ? '' : 'fremd', istWochenende(t.iso) ? 'we' : '', ft ? 'ft' : '', t.iso === heute ? 'heute' : '',
-      st ? `u-${st}` : '', urlaubAuswahl === t.iso ? 'auswahl' : ''].filter(Boolean).join(' ');
+      st ? `u-${st}` : '', ev ? 'ev' : '', urlaubAuswahl === t.iso ? 'auswahl' : ''].filter(Boolean).join(' ');
     const personen = liste.filter((a) => !a.betrieb);
     const namen = isAdmin() && personen.length
       ? `<small>${personen.slice(0, 2).map((a) => initials(a.name)).join(' ')}${personen.length > 2 ? ` +${personen.length - 2}` : ''}</small>` : '';
@@ -3894,12 +3901,15 @@ function renderUrlaub() {
       ${wochen.map((w) => `<div class="uk-woche"><span class="uk-kw">${w.kw}</span>${w.tage.map(zelle).join('')}</div>`).join('')}
     </div>
     <div class="uk-legende">
-      <span><i class="u-beantragt"></i>Beantragt</span><span><i class="u-genehmigt"></i>Genehmigt</span><span><i class="u-betrieb"></i>Betriebsurlaub</span><span><i class="ft"></i>Feiertag</span>
+      <span><i class="u-beantragt"></i>Beantragt</span><span><i class="u-genehmigt"></i>Genehmigt</span><span><i class="u-betrieb"></i>Betriebsurlaub</span><span><i class="ft"></i>Feiertag</span><span><i class="ev"></i>Ereignis</span>
     </div>
     <p class="hint" id="uk-hinweis">${urlaubAuswahl ? 'Jetzt den letzten Urlaubstag antippen.' : 'Ersten Urlaubstag antippen, dann den letzten.'}</p>
     ${feiertageMonat.length ? `<div class="uk-feiertage">${feiertageMonat.map(([iso, name]) =>
       `<div><b>${Number(iso.slice(8))}.${iso.slice(5, 7)}.</b> <span>${esc(name)}</span></div>`).join('')}</div>` : ''}
+    ${ereignisseMonat.length ? `<div class="uk-ereignisse">${ereignisseMonat.map((e) =>
+      `<button type="button" class="uk-ereignis" data-ev="${e.id}"><b>${ereignisTage(e)}</b> <span>${esc(e.name)}${e.uhrzeit ? ` · ${esc(e.uhrzeit)} Uhr` : ''}${e.ort ? ` · ${esc(e.ort)}` : ''}</span></button>`).join('')}</div>` : ''}
     ${isAdmin() ? `<button type="button" class="btn soft block" id="betrieb-neu" style="margin-top:10px">${ICON.plus} Betriebsurlaub eintragen</button>
+      <button type="button" class="btn soft block" id="ereignis-neu" style="margin-top:8px">${ICON.plus} Ereignis eintragen</button>
       <div class="month"><span>Offene Anfragen</span><span>${offen.length}</span></div>
       ${offen.length ? `<div class="card-list">${offen.map((a) => `<div class="rcard urlaub-anfrage" data-id="${a.id}">
         <div class="body">
@@ -3942,6 +3952,9 @@ function renderUrlaub() {
   });
   const bNeu = $('#betrieb-neu');
   if (bNeu) bNeu.onclick = () => betriebsurlaubEintragen();
+  const eNeu = $('#ereignis-neu');
+  if (eNeu) eNeu.onclick = () => ereignisEintragen();
+  $$('.uk-ereignis').forEach((b) => { b.onclick = () => ereignisDetails(ereignisse.find((e) => e.id === b.dataset.ev)); });
   $$('.urlaub-karte').forEach((b) => { b.onclick = () => urlaubDetails(antraege.find((a) => a.id === b.dataset.id)); });
   $$('[data-ok]').forEach((b) => { b.onclick = () => urlaubEntscheiden(antraege.find((a) => a.id === b.dataset.ok), 'genehmigt'); });
   $$('[data-ab]').forEach((b) => { b.onclick = () => urlaubDetails(antraege.find((a) => a.id === b.dataset.ab), { ablehnen: true }); });
@@ -4021,6 +4034,7 @@ function urlaubBeantragen(von, bis) {
 function urlaubDetails(a, { ablehnen = false } = {}) {
   if (!a) return;
   if (a.betrieb) { betriebsurlaubDetails(a); return; }
+  if (a.ereignis) { ereignisDetails(a); return; }
   const eigen = gehoertZu(a, stundenPerson());
   const entschieden = a.status !== 'beantragt'
     ? `<div class="kv"><span>${a.status === 'genehmigt' ? 'Genehmigt' : 'Abgelehnt'}</span><b>${esc(a.entschiedenVon || '')}${a.entschiedenAm ? ` · ${formatDate(new Date(a.entschiedenAm).toISOString().slice(0, 10))}` : ''}</b></div>` : '';
@@ -4165,6 +4179,90 @@ function betriebsurlaubDetails(a) {
     antragMerken(a, 'loeschen');
     close();
     await betriebInStunden();
+    renderUrlaub();
+    urlaubHolen({ laut: true });
+  };
+}
+
+// ---------- Ereignisse ----------
+// Weihnachtsfeier, Betriebsausflug usw.: der Administrator trägt sie ein, alle sehen sie im
+// Urlaubskalender. Sie zählen nicht als Urlaub und stehen nicht im Stundennachweis.
+// Repo: urlaub/<JJJJ>_ereignis_<id>.json
+
+const ereignisTage = (e) => {
+  const f = (s) => `${Number(s.slice(8))}.${s.slice(5, 7)}.`;
+  return e.von === e.bis ? f(e.von) : `${f(e.von)}–${f(e.bis)}`;
+};
+
+function ereignisEintragen(alt = null) {
+  const heute = today();
+  const von = alt?.von || (urlaubMonat === heute.slice(0, 7) ? heute : `${urlaubMonat}-01`);
+  const { sheet, close } = openSheet(`
+    <h2>${alt ? 'Ereignis ändern' : 'Ereignis eintragen'}</h2>
+    <p class="hint" style="margin-top:0">Steht bei allen Mitarbeitern im Urlaubskalender. Zählt nicht als Urlaub.</p>
+    <label class="field"><span>Bezeichnung</span><input type="text" id="e-name" value="${esc(alt?.name || '')}" placeholder="z. B. Weihnachtsfeier"></label>
+    <div class="row">
+      <label class="field"><span>Von</span><input type="date" id="e-von" value="${von}"></label>
+      <label class="field"><span>Bis</span><input type="date" id="e-bis" value="${alt?.bis || von}"></label>
+    </div>
+    <div class="row">
+      <label class="field"><span>Uhrzeit</span><input type="time" id="e-zeit" step="300" value="${esc(alt?.uhrzeit || '')}"></label>
+      <label class="field"><span>Ort</span><input type="text" id="e-ort" value="${esc(alt?.ort || '')}" placeholder="optional"></label>
+    </div>
+    <label class="field"><span>Notiz</span><input type="text" id="e-notiz" value="${esc(alt?.notiz || '')}" placeholder="optional"></label>
+    <div class="row sheet-actions">
+      <button type="button" class="btn ghost" id="e-abbrechen">Abbrechen</button>
+      <button type="button" class="btn primary" id="e-ok">${alt ? 'Speichern' : 'Eintragen'}</button>
+    </div>`);
+  $('#e-von', sheet).onchange = () => {
+    if ($('#e-bis', sheet).value < $('#e-von', sheet).value) $('#e-bis', sheet).value = $('#e-von', sheet).value;
+  };
+  if (!alt) setTimeout(() => $('#e-name', sheet)?.focus(), 250);
+  $('#e-abbrechen', sheet).onclick = close;
+  $('#e-ok', sheet).onclick = () => {
+    const name = $('#e-name', sheet).value.trim();
+    const v = $('#e-von', sheet).value;
+    const b = $('#e-bis', sheet).value;
+    if (!name) { toast('Bitte eine Bezeichnung eingeben.'); return; }
+    if (!v || !b) { toast('Bitte Von und Bis wählen.'); return; }
+    if (b < v) { toast('Bis darf nicht vor Von liegen.'); return; }
+    const felder = {
+      name, von: v, bis: b, uhrzeit: $('#e-zeit', sheet).value, ort: $('#e-ort', sheet).value.trim(), notiz: $('#e-notiz', sheet).value.trim(),
+    };
+    if (alt) antragMerken({ ...alt, ...felder, updatedAt: Date.now() }, 'aendern');
+    else {
+      antragMerken(neuerAntrag({
+        ereignis: true, ...felder, tage: 0, status: 'genehmigt', entschiedenVon: settings.author || 'Administrator', entschiedenAm: Date.now(),
+      }), 'neu');
+    }
+    close();
+    urlaubMonat = v.slice(0, 7);
+    toast(alt ? 'Ereignis geändert.' : 'Ereignis eingetragen.', 3000);
+    renderUrlaub();
+    urlaubHolen({ laut: true });
+  };
+}
+
+function ereignisDetails(a) {
+  if (!a) return;
+  const { sheet, close } = openSheet(`
+    <h2>${esc(a.name)}</h2>
+    <div class="kv"><span>Datum</span><b>${zeitraumText(a)}</b></div>
+    ${a.uhrzeit ? `<div class="kv"><span>Uhrzeit</span><b>${esc(a.uhrzeit)} Uhr</b></div>` : ''}
+    ${a.ort ? `<div class="kv"><span>Ort</span><b>${esc(a.ort)}</b></div>` : ''}
+    ${a.notiz ? `<div class="kv"><span>Notiz</span><b>${esc(a.notiz)}</b></div>` : ''}
+    <p class="hint">Gilt für alle Mitarbeiter.</p>
+    ${isAdmin() ? `<div class="row sheet-actions">
+        <button type="button" class="btn danger" id="e-weg">${ICON.trash} Löschen</button>
+        <button type="button" class="btn primary" id="e-aendern">Ändern</button>
+      </div>` : ''}`);
+  const aendern = $('#e-aendern', sheet);
+  if (aendern) aendern.onclick = () => { close(); ereignisEintragen(a); };
+  const weg = $('#e-weg', sheet);
+  if (weg) weg.onclick = () => {
+    if (!confirm(`Ereignis „${a.name}“ (${zeitraumText(a)}) löschen?`)) return;
+    antragMerken(a, 'loeschen');
+    close();
     renderUrlaub();
     urlaubHolen({ laut: true });
   };
