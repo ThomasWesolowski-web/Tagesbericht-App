@@ -9,7 +9,7 @@ const AESTE = [
     ['Personal mit Zeiten', 'Zeit pro Person, Warnung bei doppelt angelegter Person'],
     ['Zeitfelder', '5-Minuten-Schritte, vorbelegt 07:00–16:00'],
     ['Fotos & PDFs anhängen', 'Werden verkleinert, Fotos als Pins auf Plänen'],
-    ['Fotos ansehen', 'Wie in einer Galerie durchwischen, zoomen'],
+    ['Fotos und PDFs ansehen', 'Wie in einer Galerie durchwischen (auch Pläne der Baustelle), zoomen'],
     ['Material und Geräte', 'Freitext, daraus entsteht die Materialliste'],
     ['Speichern / Abbrechen', 'Kein Autosave, später bearbeiten oder löschen'],
     ['Abgerechnet-Schieber', 'Rapporte als abgerechnet markieren', 'Admin']] },

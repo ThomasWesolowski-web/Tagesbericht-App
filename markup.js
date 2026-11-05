@@ -258,6 +258,13 @@ export async function openMarkup(blob, opts = {}) {
   };
   const ansichtGeaendert = () => { begrenzen(); neuZeichnen(); scharfNachladen(); };
   groesseSetzen();
+  // Galerie: beim Zurückwischen steht das Foto wieder so da wie beim Verlassen
+  if (opts.stand?.fitS) {
+    const k = fitS / opts.stand.fitS;
+    ansicht = { s: opts.stand.s * k, x: opts.stand.x * k, y: opts.stand.y * k };
+    begrenzen();
+    scharfNachladen();
+  }
   neuZeichnen();
   const beiGroesse = () => { groesseSetzen(); neuZeichnen(); scharfNachladen(); };
   window.addEventListener('resize', beiGroesse);
@@ -404,12 +411,13 @@ export async function openMarkup(blob, opts = {}) {
     finger.delete(e.pointerId);
     if (geste?.wischen && !finger.size) {
       const dx = ansicht.x - geste.von.x;
+      const von = geste.von;
       const r = flaeche.getBoundingClientRect();
       geste = null;
       const richtung = dx < 0 ? 1 : -1;
       const ziel = blaettern.nr + richtung;
       if (e.type !== 'pointercancel' && Math.abs(dx) > Math.min(80, r.width / 5) && ziel >= 1 && ziel <= blaettern.anzahl) {
-        beenden?.({ blaettern: richtung });
+        beenden?.({ blaettern: richtung, stand: { ...von, fitS } });
         return;
       }
       ansichtGeaendert(); // zurück in die Mitte
@@ -474,7 +482,7 @@ export async function openMarkup(blob, opts = {}) {
   view.querySelector('.mk-rueck').onclick = () => { formen.pop(); neuZeichnen(); };
   const blatt = (richtung) => {
     const ziel = blaettern.nr + richtung;
-    if (ziel >= 1 && ziel <= blaettern.anzahl) beenden?.({ blaettern: richtung });
+    if (ziel >= 1 && ziel <= blaettern.anzahl) beenden?.({ blaettern: richtung, stand: { ...ansicht, fitS } });
   };
   const taste = (e) => {
     if (!blaettern) return;
