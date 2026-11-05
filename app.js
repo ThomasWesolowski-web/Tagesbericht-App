@@ -33,7 +33,7 @@ import {
   planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
 } from './zeitplan.js';
 
-const APP_VERSION = '1.75.1';
+const APP_VERSION = '1.75.2';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -2944,63 +2944,132 @@ function openSignature(name, onDone) {
       <button type="button" class="btn primary" id="sign-ok">Übernehmen</button>
     </div>`);
   const canvas = $('#sign-canvas', sheet);
-  const ratio = window.devicePixelRatio || 1;
+  const pad = canvas.parentElement;
+  const FARBE = '#111';
+  const STRICH = 2.4;
+  // Striche als Punktlisten in einem festen Bezugsmaß (Größe der Fläche beim ersten Zeichnen).
+  // So lässt sich die Unterschrift nach dem Drehen des Handys neu und an der richtigen Stelle zeichnen.
+  const striche = [];
+  let bezug = null; // { w, h }
   let ctx;
-  let drawn = false;
+  let groesse = { w: 0, h: 0 };
+  // Umrechnung Bildschirm (CSS-Pixel in der Fläche) <-> Bezugsmaß: gleichmäßig skaliert und mittig.
+  const abbildung = () => {
+    if (!bezug) return { s: 1, ox: 0, oy: 0 };
+    const s = Math.min(groesse.w / bezug.w, groesse.h / bezug.h) || 1;
+    return { s, ox: (groesse.w - bezug.w * s) / 2, oy: (groesse.h - bezug.h * s) / 2 };
+  };
+  const zeichneStrich = (pkte) => {
+    const { s, ox, oy } = abbildung();
+    const xy = (p) => [ox + p[0] * s, oy + p[1] * s];
+    if (pkte.length === 1) {
+      const [x, y] = xy(pkte[0]);
+      ctx.beginPath();
+      ctx.arc(x, y, STRICH / 2, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
+    ctx.beginPath();
+    ctx.moveTo(...xy(pkte[0]));
+    for (let i = 1; i < pkte.length; i++) ctx.lineTo(...xy(pkte[i]));
+    ctx.stroke();
+  };
+  // Zeichenfläche an die aktuelle Größe anpassen (auch nach dem Drehen) und alles neu zeichnen.
   const setup = () => {
     const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const ratio = window.devicePixelRatio || 1;
+    groesse = { w: rect.width, h: rect.height };
     canvas.width = Math.round(rect.width * ratio);
     canvas.height = Math.round(rect.height * ratio);
     ctx = canvas.getContext('2d');
-    ctx.scale(ratio, ratio);
-    ctx.lineWidth = 2.4;
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    ctx.lineWidth = STRICH;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.strokeStyle = '#111';
-    drawn = false;
+    ctx.strokeStyle = FARBE;
+    ctx.fillStyle = FARBE;
+    striche.forEach(zeichneStrich);
   };
   requestAnimationFrame(setup);
-  let last = null;
-  const pos = (e) => { const r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => setup()) : null;
+  if (ro) ro.observe(pad);
+  const beiDrehen = () => setTimeout(setup, 250);
+  window.addEventListener('resize', setup);
+  window.addEventListener('orientationchange', beiDrehen);
+  const aufraeumen = () => {
+    ro?.disconnect();
+    window.removeEventListener('resize', setup);
+    window.removeEventListener('orientationchange', beiDrehen);
+  };
+  let aktuell = null;
+  // Fingerposition ins Bezugsmaß umrechnen; die Lage der Fläche wird bei jeder Bewegung neu gemessen.
+  const pos = (e) => {
+    const r = canvas.getBoundingClientRect();
+    if (Math.abs(r.width - groesse.w) > 0.5 || Math.abs(r.height - groesse.h) > 0.5) setup();
+    if (!bezug) bezug = { w: r.width, h: r.height };
+    const { s, ox, oy } = abbildung();
+    return [(e.clientX - r.left - ox) / s, (e.clientY - r.top - oy) / s];
+  };
   canvas.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     canvas.setPointerCapture(e.pointerId);
-    last = pos(e);
-    ctx.beginPath();
-    ctx.arc(last[0], last[1], 1.2, 0, Math.PI * 2);
-    ctx.fillStyle = '#111';
-    ctx.fill();
-    drawn = true;
+    aktuell = [pos(e)];
+    striche.push(aktuell);
+    zeichneStrich(aktuell);
   });
   canvas.addEventListener('pointermove', (e) => {
-    if (!last) return;
+    if (!aktuell) return;
     e.preventDefault();
     const p = pos(e);
-    ctx.beginPath();
-    ctx.moveTo(last[0], last[1]);
-    ctx.lineTo(p[0], p[1]);
-    ctx.stroke();
-    last = p;
+    aktuell.push(p);
+    zeichneStrich(aktuell.slice(-2));
   });
-  const end = () => { last = null; };
+  const end = () => { aktuell = null; };
   canvas.addEventListener('pointerup', end);
   canvas.addEventListener('pointercancel', end);
-  $('#sign-cancel', sheet).onclick = close;
-  $('#sign-clear', sheet).onclick = () => { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, canvas.width, canvas.height); setup(); };
+  const schliessen = () => { aufraeumen(); close(); };
+  $('#sign-cancel', sheet).onclick = schliessen;
+  $('.sheet-zurueck', sheet).onclick = schliessen;
+  sheet.addEventListener('click', (e) => { if (e.target === sheet) aufraeumen(); });
+  $('#sign-clear', sheet).onclick = () => { striche.length = 0; bezug = null; setup(); };
   $('#sign-ok', sheet).onclick = () => {
-    if (!drawn) { toast('Bitte zuerst unterschreiben.'); return; }
-    // Auf weißem Grund speichern, damit die Unterschrift auch im dunklen Modus lesbar ist.
+    if (!striche.length) { toast('Bitte zuerst unterschreiben.'); return; }
+    // Nur den beschriebenen Bereich (mit Rand) speichern, unabhängig von Hoch- oder Querformat,
+    // auf weißem Grund, damit die Unterschrift auch im dunklen Modus lesbar ist.
+    const alle = striche.flat();
+    const xs = alle.map((p) => p[0]);
+    const ys = alle.map((p) => p[1]);
+    const rand = 16;
+    const x0 = Math.min(...xs) - rand;
+    const y0 = Math.min(...ys) - rand;
+    const bw = Math.max(...xs) - x0 + rand;
+    const bh = Math.max(...ys) - y0 + rand;
+    const k = 3; // Auflösung des gespeicherten Bildes
     const out = document.createElement('canvas');
-    out.width = canvas.width;
-    out.height = canvas.height;
+    out.width = Math.max(1, Math.round(bw * k));
+    out.height = Math.max(1, Math.round(bh * k));
     const o = out.getContext('2d');
     o.fillStyle = '#fff';
     o.fillRect(0, 0, out.width, out.height);
-    o.drawImage(canvas, 0, 0);
+    o.setTransform(k, 0, 0, k, -x0 * k, -y0 * k);
+    o.lineWidth = STRICH;
+    o.lineCap = 'round';
+    o.lineJoin = 'round';
+    o.strokeStyle = FARBE;
+    o.fillStyle = FARBE;
+    for (const pkte of striche) {
+      o.beginPath();
+      if (pkte.length === 1) { o.arc(pkte[0][0], pkte[0][1], STRICH / 2, 0, Math.PI * 2); o.fill(); continue; }
+      o.moveTo(...pkte[0]);
+      for (let i = 1; i < pkte.length; i++) o.lineTo(...pkte[i]);
+      o.stroke();
+    }
     onDone({ name: $('#sign-name', sheet).value.trim(), dataUrl: out.toDataURL('image/png'), zeit: Date.now() });
-    close();
+    schliessen();
   };
 }
+
 
 function openSheet(html) {
   const sheet = document.createElement('div');
