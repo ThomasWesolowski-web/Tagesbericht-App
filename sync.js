@@ -428,6 +428,14 @@ async function plaeneLaden(gh, settings) {
   return neu;
 }
 
+// Einen Plan noch einmal vom Repo holen, wenn die Datei auf dem Handy nicht mehr lesbar ist.
+export async function planNeuHolen(settings, pfad, typ) {
+  const gh = client(settings);
+  const sha = await freshSha(gh, settings, pfad);
+  if (!sha) throw new Error('Der Plan liegt nicht mehr im Repo');
+  return blobAt(gh, sha, typ);
+}
+
 // ---------- Administrator und Stunden anderer Mitarbeiter ----------
 
 async function getJson(gh, settings, path) {

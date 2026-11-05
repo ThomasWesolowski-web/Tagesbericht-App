@@ -126,6 +126,9 @@ const HAND = { id: 'hand', label: 'Hand', svg: '<path d="M8 12V5.5a1.5 1.5 0 0 1
 
 export async function openMarkup(blob, opts = {}) {
   const { titel = 'Foto markieren', fotos = null, mitFormen = false, kachel = null, nurAnsehen = false, fotoNeu = null } = opts;
+  // Galerie: { nr, anzahl } (nr ab 1); Wischen oder die Pfeile beenden mit { blaettern: -1 | 1 }
+  const blaettern = nurAnsehen && opts.blaettern?.anzahl > 1 ? opts.blaettern : null;
+  let beenden = null;
   let pinNr = opts.pinNr ?? null;
   const plan = mitFormen;
   const img = await ladeBild(blob);
@@ -151,7 +154,10 @@ export async function openMarkup(blob, opts = {}) {
     </div>
     <div class="mk-flaeche"><canvas></canvas>
       <div class="fa-zoomknoepfe"><button type="button" data-zoom="+" aria-label="Vergrößern">+</button><button type="button" data-zoom="-" aria-label="Verkleinern">−</button><button type="button" data-zoom="0" aria-label="Ganz zeigen">⤢</button></div>
-      <div class="mk-hinweis" hidden></div>
+      <div class="mk-hinweis" hidden></div>${blaettern ? `
+      <button type="button" class="mk-blatt mk-blatt-zurueck" aria-label="Voriges Foto"${blaettern.nr <= 1 ? ' hidden' : ''}>‹</button>
+      <button type="button" class="mk-blatt mk-blatt-vor" aria-label="Nächstes Foto"${blaettern.nr >= blaettern.anzahl ? ' hidden' : ''}>›</button>
+      <div class="mk-blatt-nr">${blaettern.nr} / ${blaettern.anzahl}</div>` : ''}
     </div>
     <div class="mk-text" hidden>
       <input type="text" placeholder="Text eingeben" enterkeyhint="done">
@@ -257,7 +263,7 @@ export async function openMarkup(blob, opts = {}) {
   window.addEventListener('resize', beiGroesse);
   const wzHinweis = () => hinweis(werkzeug === 'foto'
     ? (pinNr != null ? `Tippe auf die Stelle im Plan, an der Foto ${pinNr} entstanden ist.` : (fotoNeu ? 'Tippe auf die Stelle im Plan, dann Foto aufnehmen oder auswählen.' : 'Tippe auf die Stelle, an der ein Foto entstanden ist.'))
-    : werkzeug === 'hand' ? 'Mit einem Finger verschieben, mit zwei Fingern zoomen.'
+    : werkzeug === 'hand' ? (blaettern ? 'Zur Seite wischen für das nächste Foto, mit zwei Fingern zoomen.' : 'Mit einem Finger verschieben, mit zwei Fingern zoomen.')
     : plan && werkzeug === 'flaeche' ? 'Bearbeitete Fläche mit dem Finger umfahren. Zwei Finger zoomen.' : '');
   wzHinweis();
 
@@ -339,6 +345,8 @@ export async function openMarkup(blob, opts = {}) {
     const f = [...finger.values()];
     const m = f.length > 1 ? [(f[0][0] + f[1][0]) / 2, (f[0][1] + f[1][1]) / 2] : f[0];
     geste = { d: f.length > 1 ? Math.hypot(f[0][0] - f[1][0], f[0][1] - f[1][1]) : 0, m, von: { ...ansicht } };
+    // Galerie: ein Finger auf dem ganz gezeigten Foto blättert statt zu verschieben
+    geste.wischen = !!blaettern && f.length === 1 && ansicht.s <= fitS * 1.001;
   };
   canvas.addEventListener('pointerdown', (e) => {
     e.preventDefault();
@@ -374,6 +382,12 @@ export async function openMarkup(blob, opts = {}) {
       if (f.length > 1) {
         const d = Math.hypot(f[0][0] - f[1][0], f[0][1] - f[1][1]);
         zoomUm(geste.von.s * (d / geste.d), [(f[0][0] + f[1][0]) / 2, (f[0][1] + f[1][1]) / 2], geste.von, geste.m);
+      } else if (geste.wischen) {
+        // Foto folgt dem Finger zur Seite; am ersten/letzten Foto nur ein kleines Stück
+        let dx = f[0][0] - geste.m[0];
+        if ((dx > 0 && blaettern.nr <= 1) || (dx < 0 && blaettern.nr >= blaettern.anzahl)) dx /= 4;
+        ansicht = { ...geste.von, x: geste.von.x + dx };
+        neuZeichnen();
       } else {
         ansicht = { s: geste.von.s, x: geste.von.x + f[0][0] - geste.m[0], y: geste.von.y + f[0][1] - geste.m[1] };
         ansichtGeaendert();
@@ -388,6 +402,19 @@ export async function openMarkup(blob, opts = {}) {
   });
   const loslassen = (e) => {
     finger.delete(e.pointerId);
+    if (geste?.wischen && !finger.size) {
+      const dx = ansicht.x - geste.von.x;
+      const r = flaeche.getBoundingClientRect();
+      geste = null;
+      const richtung = dx < 0 ? 1 : -1;
+      const ziel = blaettern.nr + richtung;
+      if (e.type !== 'pointercancel' && Math.abs(dx) > Math.min(80, r.width / 5) && ziel >= 1 && ziel <= blaettern.anzahl) {
+        beenden?.({ blaettern: richtung });
+        return;
+      }
+      ansichtGeaendert(); // zurück in die Mitte
+      return;
+    }
     if (geste) {
       // Mit dem verbleibenden Finger nahtlos weiter verschieben
       if (finger.size) gesteStarten(); else geste = null;
@@ -445,10 +472,25 @@ export async function openMarkup(blob, opts = {}) {
   view.querySelectorAll('.mk-st').forEach((b) => { b.onclick = () => staerkeSetzen(Number(b.dataset.f)); });
   regler.oninput = () => staerkeSetzen(Number(regler.value));
   view.querySelector('.mk-rueck').onclick = () => { formen.pop(); neuZeichnen(); };
+  const blatt = (richtung) => {
+    const ziel = blaettern.nr + richtung;
+    if (ziel >= 1 && ziel <= blaettern.anzahl) beenden?.({ blaettern: richtung });
+  };
+  const taste = (e) => {
+    if (!blaettern) return;
+    if (e.key === 'ArrowRight') blatt(1);
+    else if (e.key === 'ArrowLeft') blatt(-1);
+  };
+  if (blaettern) {
+    view.querySelector('.mk-blatt-vor').onclick = () => blatt(1);
+    view.querySelector('.mk-blatt-zurueck').onclick = () => blatt(-1);
+    window.addEventListener('keydown', taste);
+  }
 
   return new Promise((resolve) => {
     const schliessen = (ergebnis) => {
       window.removeEventListener('resize', beiGroesse);
+      window.removeEventListener('keydown', taste);
       clearTimeout(scharfUhr);
       scharfNr++;
       document.documentElement.classList.remove('mk-offen');
@@ -458,6 +500,7 @@ export async function openMarkup(blob, opts = {}) {
       URL.revokeObjectURL(img.src);
       resolve(ergebnis);
     };
+    beenden = schliessen;
     view.querySelector('.mk-abbrechen').onclick = () => {
       if (JSON.stringify(formen) !== anfang && !confirm('Markierungen verwerfen?')) return;
       schliessen(null);

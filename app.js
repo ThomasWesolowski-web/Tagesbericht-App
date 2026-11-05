@@ -14,7 +14,7 @@ import {
   TYPEN, typLabel, hatZeiten, newStunde, stundenOf, personKey, kw, summe, sortStunden, monatLabel, shiftMonth,
 } from './stunden.js';
 import {
-  isConfigured, syncAll, syncReport, testConnection, deleteRemote, loadAdminConfig, saveAdminConfig, loadStundenRemote, loadStundenMonatAlle, namensSchluessel, meldeGeraet, ladeGeraete, setzeAdminFreigabe, urlaubAbgleichen, syncStunden,
+  isConfigured, syncAll, syncReport, testConnection, deleteRemote, loadAdminConfig, saveAdminConfig, loadStundenRemote, loadStundenMonatAlle, namensSchluessel, meldeGeraet, ladeGeraete, setzeAdminFreigabe, urlaubAbgleichen, syncStunden, planNeuHolen,
 } from './sync.js';
 import { startI18n, SPRACHEN } from './i18n.js';
 import { openMarkup } from './markup.js';
@@ -33,7 +33,7 @@ import {
   planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
 } from './zeitplan.js';
 
-const APP_VERSION = '1.77.0';
+const APP_VERSION = '1.78.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -1001,7 +1001,7 @@ async function renderEditor(id) {
     }).join('');
     $$('#thumbs .thumb-item').forEach((t) => {
       const file = files.find((f) => f.id === t.dataset.id);
-      $('.open', t).onclick = () => openFile(file);
+      $('.open', t).onclick = () => openFile(file, files);
       const mk = $('.markieren', t);
       if (mk) mk.onclick = async () => {
         let blob;
@@ -1367,9 +1367,9 @@ async function renderEditor(id) {
     let basis;
     $('#sync-state').textContent = 'Plan wird geladen …';
     try {
-      basis = quelle ? await planQuelle(quelle, m ? m.seite : seite) : { blob: datei.blob, w: m.w, h: m.h, kachel: null, schliessen: () => {} };
+      basis = quelle ? await planQuelleSicher(quelle, m ? m.seite : seite) : { blob: datei.blob, w: m.w, h: m.h, kachel: null, schliessen: () => {} };
     } catch (err) {
-      toast(`Der Plan lässt sich nicht öffnen (${err.message}).`, 4000);
+      toast(planFehlerText(err), 5000);
       updateState();
       return;
     }
@@ -1451,9 +1451,16 @@ function autoGrow(el) {
   el.style.height = `${Math.max(el.scrollHeight + 2, 96)}px`;
 }
 
-function openFile(file) {
-  // Fotos in der Plan-Ansicht: mit zwei Fingern oder + und − zoomen, mit der Hand verschieben
-  if (file.type.startsWith('image/')) { planSeiteAnsehen(file, 1); return; }
+function openFile(file, liste = null) {
+  // Fotos in der Plan-Ansicht: mit zwei Fingern oder + und − zoomen, mit der Hand verschieben.
+  // Mit liste (alle Anhänge des Berichts) lässt sich wie in einer Galerie zum nächsten Foto wischen.
+  if (file.type.startsWith('image/')) {
+    let bilder = (liste || []).filter((f) => f.type?.startsWith('image/') && f.blob?.size);
+    let i = bilder.findIndex((f) => f.id === file.id);
+    if (i < 0) { bilder = [file]; i = 0; }
+    fotoGalerie(bilder, i);
+    return;
+  }
   // Excel, Word & Co.: in der installierten App führt ein Download-Link auf dem iPhone ins Leere,
   // deshalb eine eigene Ansicht (Tabellen direkt lesbar) mit „In anderer App öffnen“
   if (!istPdf(file)) { dateiAnsicht(file); return; }
@@ -2713,16 +2720,54 @@ async function pdfSeitenAnsicht(f, { hinweis = '', onSeite = null }) {
   });
 }
 
-async function planSeiteAnsehen(f, seite) {
+// Plan öffnen. Lässt sich die Datei auf diesem Handy nicht lesen (Safari verliert manchmal den
+// Inhalt gespeicherter Dateien) und liegt der Plan im Repo, wird er einmal neu geholt und ersetzt.
+async function planQuelleSicher(f, seite) {
+  try {
+    return await planQuelle(f, seite);
+  } catch (err) {
+    if (!f.hochgeladen || !isConfigured(settings) || !navigator.onLine) throw err;
+    toast('Der Plan wird neu vom Repo geladen …', 3000);
+    const blob = await planNeuHolen(settings, f.hochgeladen, f.type);
+    const neu = { ...f, blob, size: blob.size };
+    await db.putFile(neu);
+    f.blob = (await db.getFile(f.id))?.blob || blob;
+    f.size = blob.size;
+    return planQuelle(f, seite);
+  }
+}
+
+function planFehlerText(err) {
+  if (err?.name === 'PlanDefekt') {
+    return 'Der Plan ist auf diesem Handy beschädigt. Bitte mit Netz abgleichen oder den Plan neu anhängen.';
+  }
+  return `Der Plan lässt sich nicht öffnen (${err?.message || 'unbekannter Fehler'}). Bitte mit Netz noch einmal versuchen oder den Plan neu anhängen.`;
+}
+
+// Fotos nacheinander ansehen; der dunkle Grund verhindert ein Aufblitzen der Seite beim Wechsel
+async function fotoGalerie(bilder, i) {
+  const grund = bilder.length > 1 ? document.body.appendChild(Object.assign(document.createElement('div'), { className: 'mk-galerie-grund' })) : null;
+  try {
+    for (;;) {
+      const r = await planSeiteAnsehen(bilder[i], 1, bilder.length > 1 ? { nr: i + 1, anzahl: bilder.length } : null);
+      if (!r?.blaettern) break;
+      i = Math.min(bilder.length - 1, Math.max(0, i + r.blaettern));
+    }
+  } finally {
+    grund?.remove();
+  }
+}
+
+async function planSeiteAnsehen(f, seite, blaettern = null) {
   let q;
   try {
-    q = await planQuelle(f, seite);
+    q = await planQuelleSicher(f, seite);
   } catch (err) {
-    toast(`Der Plan lässt sich nicht öffnen (${err.message}).`, 4000);
+    toast(planFehlerText(err), 5000);
     return;
   }
   try {
-    await openMarkup(q.blob, { mitFormen: true, nurAnsehen: true, kachel: q.kachel, titel: f.name.replace(/\.[^.]+$/, '') });
+    return await openMarkup(q.blob, { mitFormen: true, nurAnsehen: true, kachel: q.kachel, titel: f.name.replace(/\.[^.]+$/, ''), blaettern });
   } finally {
     q.schliessen();
   }
