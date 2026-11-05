@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.77.1**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.78.0**.
 
 | Was | Wo |
 | --- | --- |
@@ -40,7 +40,7 @@ Im Reiter **Berichte** startet das Plus unten rechts einen neuen Bericht. Er beg
 4. **Personal:** Personen aus der Liste hinzufügen, jeweils mit Kategorie (Meister, Facharbeiter, Helfer, Lehrling, Büro), Beginn, Ende und Pause. Die Minuten von Beginn und Ende werden auf 5-Minuten-Schritte gerundet; die erste Person startet mit 7:00 bis 16:00, weitere Personen übernehmen die Zeiten der ersten.
 5. **Ausgeführte Arbeiten, Material, Bemerkungen, Wetter** eintragen.
 6. **Rapport zusätzlich:** Maschinen mit Stunden (Schnellauswahl LKW, Transporter) und Unterschrift des Bauherrn mit dem Finger (geht im Hoch- und Querformat; das Handy darf beim Unterschreiben gedreht werden, die Unterschrift bleibt erhalten). Beim Rapport sind Personal mit Zeiten und die ausgeführten Arbeiten Pflicht.
-7. **Fotos und Dokumente:** „Kamera“ oder „Datei“. Fotos werden automatisch verkleinert, Dateien bis 25 MB. Ein Foto antippen öffnet es groß: mit zwei Fingern oder den Knöpfen + und − zoomen, mit einem Finger verschieben, ⤢ zeigt wieder das ganze Foto.
+7. **Fotos und Dokumente:** „Kamera“ oder „Datei“. Fotos werden automatisch verkleinert, Dateien bis 25 MB. Ein Foto antippen öffnet es groß: mit zwei Fingern oder den Knöpfen + und − zoomen, mit einem Finger verschieben, ⤢ zeigt wieder das ganze Foto. Seit 1.78.0 geht das wie in einer Galerie: zur Seite wischen (oder die Pfeile ‹ › antippen) zeigt das nächste oder vorige Foto des Berichts, unten steht z. B. „2 / 4“. Ist ein Foto hineingezoomt, verschiebt ein Finger das Foto; erst nach ⤢ wird wieder geblättert.
 8. **Speichern.** Mit Netz lädt die App den Bericht sofort hoch, sonst sobald wieder Netz da ist.
 
 **Foto markieren:** Das orange Stift-Symbol auf dem Foto öffnet den Editor mit Stift, Pfeil, Kreis, Rechteck und Text, sechs Farben, Strichstärke (Dünn, Mittel, Dick oder per Schieber), Hand zum Verschieben, Zoomen mit zwei Fingern und Rückgängig. „Fertig“ übernimmt die Markierung. Nach dem Speichern ist sie fest im Foto.
@@ -177,6 +177,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 05.11.2026 | 1.78.0 | Fotos im Bericht wie in einer Galerie ansehen: zur Seite wischen oder Pfeile für das nächste/vorige Foto, Anzeige „2 / 4“ |
 | 05.11.2026 | 1.77.1 | Fehler „Der Plan lässt sich nicht öffnen (Loading error.)“ bei Bild-Plänen auf dem iPhone behoben: Bild wird robuster geladen, eine beschädigte Datei auf dem Handy wird neu vom Repo geholt |
 | 05.11.2026 | 1.77.0 | Leiste unten: gewählter Reiter schwebt in einer grünen Glaskugel, die Leiste weicht darunter in einem Bogen aus und gleitet beim Wechsel mit |
 | 05.11.2026 | 1.76.0 | Ereignisse im Urlaubskalender können sich wiederholen: täglich (Mo–Fr), wöchentlich, monatlich oder jährlich, optional bis zu einem Datum |

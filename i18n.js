@@ -441,6 +441,7 @@ const ROWS = [
   ['Strichstärke', 'Grubość linii', 'Grosimea liniei', 'Дебелина на линија', 'Trashësia e vijës'],
   ['Ganz zeigen', 'Pokaż całość', 'Arătați tot', 'Покажи цело', 'Shfaq të gjithë'],
   ['Mit einem Finger verschieben, mit zwei Fingern zoomen.', 'Przesuwaj jednym palcem, powiększaj dwoma.', 'Mutați cu un deget, măriți cu două degete.', 'Помести со еден прст, зумирај со два прста.', 'Lëviz me një gisht, zmadho me dy gishta.'],
+  ['Zur Seite wischen für das nächste Foto, mit zwei Fingern zoomen.', 'Przesuń w bok, aby zobaczyć następne zdjęcie, powiększaj dwoma palcami.', 'Glisați în lateral pentru următoarea fotografie, măriți cu două degete.', 'Повлечете настрана за следната фотографија, зумирајте со два прста.', 'Rrëshqit anash për foton tjetër, zmadho me dy gishta.'],
   ['Bericht gespeichert.', 'Raport zapisany.', 'Raport salvat.', 'Извештајот е зачуван.', 'Raporti u ruajt.'],
   ['Unterschrift entfernen?', 'Usunąć podpis?', 'Ștergi semnătura?', 'Да се отстрани потписот?', 'Të hiqet nënshkrimi?'],
   ['PDF wird erstellt …', 'Tworzenie PDF …', 'Se creează PDF …', 'Се прави PDF …', 'Po krijohet PDF …'],

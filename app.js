@@ -33,7 +33,7 @@ import {
   planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
 } from './zeitplan.js';
 
-const APP_VERSION = '1.77.1';
+const APP_VERSION = '1.78.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -1001,7 +1001,7 @@ async function renderEditor(id) {
     }).join('');
     $$('#thumbs .thumb-item').forEach((t) => {
       const file = files.find((f) => f.id === t.dataset.id);
-      $('.open', t).onclick = () => openFile(file);
+      $('.open', t).onclick = () => openFile(file, files);
       const mk = $('.markieren', t);
       if (mk) mk.onclick = async () => {
         let blob;
@@ -1451,9 +1451,16 @@ function autoGrow(el) {
   el.style.height = `${Math.max(el.scrollHeight + 2, 96)}px`;
 }
 
-function openFile(file) {
-  // Fotos in der Plan-Ansicht: mit zwei Fingern oder + und − zoomen, mit der Hand verschieben
-  if (file.type.startsWith('image/')) { planSeiteAnsehen(file, 1); return; }
+function openFile(file, liste = null) {
+  // Fotos in der Plan-Ansicht: mit zwei Fingern oder + und − zoomen, mit der Hand verschieben.
+  // Mit liste (alle Anhänge des Berichts) lässt sich wie in einer Galerie zum nächsten Foto wischen.
+  if (file.type.startsWith('image/')) {
+    let bilder = (liste || []).filter((f) => f.type?.startsWith('image/') && f.blob?.size);
+    let i = bilder.findIndex((f) => f.id === file.id);
+    if (i < 0) { bilder = [file]; i = 0; }
+    fotoGalerie(bilder, i);
+    return;
+  }
   // Excel, Word & Co.: in der installierten App führt ein Download-Link auf dem iPhone ins Leere,
   // deshalb eine eigene Ansicht (Tabellen direkt lesbar) mit „In anderer App öffnen“
   if (!istPdf(file)) { dateiAnsicht(file); return; }
@@ -2737,7 +2744,21 @@ function planFehlerText(err) {
   return `Der Plan lässt sich nicht öffnen (${err?.message || 'unbekannter Fehler'}). Bitte mit Netz noch einmal versuchen oder den Plan neu anhängen.`;
 }
 
-async function planSeiteAnsehen(f, seite) {
+// Fotos nacheinander ansehen; der dunkle Grund verhindert ein Aufblitzen der Seite beim Wechsel
+async function fotoGalerie(bilder, i) {
+  const grund = bilder.length > 1 ? document.body.appendChild(Object.assign(document.createElement('div'), { className: 'mk-galerie-grund' })) : null;
+  try {
+    for (;;) {
+      const r = await planSeiteAnsehen(bilder[i], 1, bilder.length > 1 ? { nr: i + 1, anzahl: bilder.length } : null);
+      if (!r?.blaettern) break;
+      i = Math.min(bilder.length - 1, Math.max(0, i + r.blaettern));
+    }
+  } finally {
+    grund?.remove();
+  }
+}
+
+async function planSeiteAnsehen(f, seite, blaettern = null) {
   let q;
   try {
     q = await planQuelleSicher(f, seite);
@@ -2746,7 +2767,7 @@ async function planSeiteAnsehen(f, seite) {
     return;
   }
   try {
-    await openMarkup(q.blob, { mitFormen: true, nurAnsehen: true, kachel: q.kachel, titel: f.name.replace(/\.[^.]+$/, '') });
+    return await openMarkup(q.blob, { mitFormen: true, nurAnsehen: true, kachel: q.kachel, titel: f.name.replace(/\.[^.]+$/, ''), blaettern });
   } finally {
     q.schliessen();
   }
