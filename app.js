@@ -25,7 +25,7 @@ import { raumKurz } from './raumgeometrie.js';
 import { istAbgerechnet, abgerechnetSetzen, abrechnungLokal } from './abrechnung.js';
 import {
   STATUS, feiertageBW, feiertag, istWochenende, arbeitstage, monatsRaster, neuerAntrag, zeitraumText, plusTage,
-  urlaubLokal, urlaubLokalSpeichern, antragMerken, gehoertZu, arbeitstageOhneBetrieb,
+  urlaubLokal, urlaubLokalSpeichern, antragMerken, gehoertZu, arbeitstageOhneBetrieb, ereignisTermine, WIEDERHOLUNG,
 } from './urlaub.js';
 import {
   GEWERK_REIHE, gewerkVon, gewerkKurz, gewerkFarbe, TAGE_KURZ, montagVon, kurzDatum, istArbeitstag, tageZwischen, plusArbeitstage, naechsterArbeitstag,
@@ -33,7 +33,7 @@ import {
   planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
 } from './zeitplan.js';
 
-const APP_VERSION = '1.75.1';
+const APP_VERSION = '1.76.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -3860,15 +3860,16 @@ function renderUrlaub() {
   const amTag = (iso) => imKalender.filter((a) => a.von <= iso && iso <= a.bis);
   const heute = today();
   const wochen = monatsRaster(urlaubMonat);
-  const ereignisseMonat = ereignisse.filter((e) => e.von.slice(0, 7) <= urlaubMonat && urlaubMonat <= e.bis.slice(0, 7))
-    .sort((a, b) => a.von.localeCompare(b.von));
+  // Termine der Ereignisse im sichtbaren Raster (wiederkehrende Ereignisse mehrfach)
+  const termine = ereignisse.flatMap((e) => ereignisTermine(e, wochen[0].tage[0].iso, wochen.at(-1).tage[6].iso).map((t) => ({ ...t, e })));
+  const ereignisseMonat = ereignisListe(termine.filter((t) => t.von.slice(0, 7) <= urlaubMonat && urlaubMonat <= t.bis.slice(0, 7)));
   const feiertageMonat = [...feiertageBW(Number(urlaubMonat.slice(0, 4))).entries()].filter(([iso]) => iso.startsWith(urlaubMonat));
   const zelle = (t) => {
     const ft = feiertag(t.iso);
     const liste = amTag(t.iso);
     // Wochenenden und Feiertage zählen nicht als Urlaubstag und bleiben, wie sie sind
     const st = ft || istWochenende(t.iso) ? '' : liste.some((a) => a.betrieb) ? 'betrieb' : liste.find((a) => a.status === 'genehmigt') ? 'genehmigt' : liste.find((a) => a.status === 'beantragt') ? 'beantragt' : liste.length ? 'abgelehnt' : '';
-    const ev = ereignisse.some((e) => e.von <= t.iso && t.iso <= e.bis);
+    const ev = termine.some((x) => x.von <= t.iso && t.iso <= x.bis);
     const kl = ['uk-tag', t.imMonat ? '' : 'fremd', istWochenende(t.iso) ? 'we' : '', ft ? 'ft' : '', t.iso === heute ? 'heute' : '',
       st ? `u-${st}` : '', ev ? 'ev' : '', urlaubAuswahl === t.iso ? 'auswahl' : ''].filter(Boolean).join(' ');
     const personen = liste.filter((a) => !a.betrieb);
@@ -3905,8 +3906,8 @@ function renderUrlaub() {
     <p class="hint" id="uk-hinweis">${urlaubAuswahl ? 'Jetzt den letzten Urlaubstag antippen.' : 'Ersten Urlaubstag antippen, dann den letzten.'}</p>
     ${feiertageMonat.length ? `<div class="uk-feiertage">${feiertageMonat.map(([iso, name]) =>
       `<div><b>${Number(iso.slice(8))}.${iso.slice(5, 7)}.</b> <span>${esc(name)}</span></div>`).join('')}</div>` : ''}
-    ${ereignisseMonat.length ? `<div class="uk-ereignisse">${ereignisseMonat.map((e) =>
-      `<button type="button" class="uk-ereignis" data-ev="${e.id}"><b>${ereignisTage(e)}</b> <span>${esc(e.name)}${e.uhrzeit ? ` · ${esc(e.uhrzeit)} Uhr` : ''}${e.ort ? ` · ${esc(e.ort)}` : ''}</span></button>`).join('')}</div>` : ''}
+    ${ereignisseMonat.length ? `<div class="uk-ereignisse">${ereignisseMonat.map(({ e, von, tage }) =>
+      `<button type="button" class="uk-ereignis" data-ev="${e.id}" data-von="${von}"><b>${tage}</b> <span>${esc(e.name)}${e.uhrzeit ? ` · ${esc(e.uhrzeit)} Uhr` : ''}${e.ort ? ` · ${esc(e.ort)}` : ''}</span>${e.wiederholung ? ` <small>${WIEDERHOLUNG[e.wiederholung] || ''}</small>` : ''}</button>`).join('')}</div>` : ''}
     ${isAdmin() ? `<button type="button" class="btn soft block" id="betrieb-neu" style="margin-top:10px">${ICON.plus} Betriebsurlaub eintragen</button>
       <button type="button" class="btn soft block" id="ereignis-neu" style="margin-top:8px">${ICON.plus} Ereignis eintragen</button>
       <div class="month"><span>Offene Anfragen</span><span>${offen.length}</span></div>
@@ -3953,7 +3954,7 @@ function renderUrlaub() {
   if (bNeu) bNeu.onclick = () => betriebsurlaubEintragen();
   const eNeu = $('#ereignis-neu');
   if (eNeu) eNeu.onclick = () => ereignisEintragen();
-  $$('.uk-ereignis').forEach((b) => { b.onclick = () => ereignisDetails(ereignisse.find((e) => e.id === b.dataset.ev)); });
+  $$('.uk-ereignis').forEach((b) => { b.onclick = () => ereignisDetails(ereignisse.find((e) => e.id === b.dataset.ev), b.dataset.von); });
   $$('.urlaub-karte').forEach((b) => { b.onclick = () => urlaubDetails(antraege.find((a) => a.id === b.dataset.id)); });
   $$('[data-ok]').forEach((b) => { b.onclick = () => urlaubEntscheiden(antraege.find((a) => a.id === b.dataset.ok), 'genehmigt'); });
   $$('[data-ab]').forEach((b) => { b.onclick = () => urlaubDetails(antraege.find((a) => a.id === b.dataset.ab), { ablehnen: true }); });
@@ -4192,6 +4193,23 @@ const ereignisTage = (e) => {
   const f = (s) => `${Number(s.slice(8))}.${s.slice(5, 7)}.`;
   return e.von === e.bis ? f(e.von) : `${f(e.von)}–${f(e.bis)}`;
 };
+const WOCHENTAG_KURZ = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+
+// Liste unter dem Kalender: tägliche und wöchentliche Ereignisse nur einmal pro Monat
+// (mit „Mo–Fr“ bzw. dem Wochentag), alle anderen Termine einzeln mit Datum
+function ereignisListe(termine) {
+  const liste = [];
+  const schon = new Set();
+  for (const t of [...termine].sort((a, b) => a.von.localeCompare(b.von))) {
+    const art = t.e.wiederholung;
+    if (art === 'taeglich' || art === 'woechentlich') {
+      if (schon.has(t.e.id)) continue;
+      schon.add(t.e.id);
+      liste.push({ ...t, tage: art === 'taeglich' ? 'Mo–Fr' : WOCHENTAG_KURZ[new Date(`${t.von}T12:00:00`).getDay()] });
+    } else liste.push({ ...t, tage: ereignisTage(t) });
+  }
+  return liste;
+}
 
 function ereignisEintragen(alt = null) {
   const heute = today();
@@ -4209,6 +4227,12 @@ function ereignisEintragen(alt = null) {
       <label class="field"><span>Ort</span><input type="text" id="e-ort" value="${esc(alt?.ort || '')}" placeholder="optional"></label>
     </div>
     <label class="field"><span>Notiz</span><input type="text" id="e-notiz" value="${esc(alt?.notiz || '')}" placeholder="optional"></label>
+    <div class="row">
+      <label class="field"><span>Wiederholung</span><select id="e-wdh">${Object.entries(WIEDERHOLUNG).map(([k, n]) =>
+        `<option value="${k}"${(alt?.wiederholung || '') === k ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
+      <label class="field" id="e-wdh-bis-feld"><span>Wiederholen bis</span><input type="date" id="e-wdh-bis" value="${esc(alt?.wiederholungBis || '')}"></label>
+    </div>
+    <p class="hint" id="e-wdh-hinweis"></p>
     <div class="row sheet-actions">
       <button type="button" class="btn ghost" id="e-abbrechen">Abbrechen</button>
       <button type="button" class="btn primary" id="e-ok">${alt ? 'Speichern' : 'Eintragen'}</button>
@@ -4216,6 +4240,13 @@ function ereignisEintragen(alt = null) {
   $('#e-von', sheet).onchange = () => {
     if ($('#e-bis', sheet).value < $('#e-von', sheet).value) $('#e-bis', sheet).value = $('#e-von', sheet).value;
   };
+  const wdhZeigen = () => {
+    const art = $('#e-wdh', sheet).value;
+    $('#e-wdh-bis-feld', sheet).style.visibility = art ? '' : 'hidden';
+    $('#e-wdh-hinweis', sheet).textContent = art ? 'Ohne Datum bei „Wiederholen bis“ wiederholt es sich ohne Ende.' : '';
+  };
+  $('#e-wdh', sheet).onchange = wdhZeigen;
+  wdhZeigen();
   if (!alt) setTimeout(() => $('#e-name', sheet)?.focus(), 250);
   $('#e-abbrechen', sheet).onclick = close;
   $('#e-ok', sheet).onclick = () => {
@@ -4225,8 +4256,12 @@ function ereignisEintragen(alt = null) {
     if (!name) { toast('Bitte eine Bezeichnung eingeben.'); return; }
     if (!v || !b) { toast('Bitte Von und Bis wählen.'); return; }
     if (b < v) { toast('Bis darf nicht vor Von liegen.'); return; }
+    const wiederholung = $('#e-wdh', sheet).value;
+    const wiederholungBis = wiederholung ? $('#e-wdh-bis', sheet).value : '';
+    if (wiederholungBis && wiederholungBis < v) { toast('„Wiederholen bis“ darf nicht vor Von liegen.', 3500); return; }
     const felder = {
       name, von: v, bis: b, uhrzeit: $('#e-zeit', sheet).value, ort: $('#e-ort', sheet).value.trim(), notiz: $('#e-notiz', sheet).value.trim(),
+      wiederholung, wiederholungBis,
     };
     if (alt) antragMerken({ ...alt, ...felder, updatedAt: Date.now() }, 'aendern');
     else {
@@ -4242,11 +4277,16 @@ function ereignisEintragen(alt = null) {
   };
 }
 
-function ereignisDetails(a) {
+function ereignisDetails(a, terminVon = '') {
   if (!a) return;
+  // bei wiederkehrenden Ereignissen den angetippten Termin zeigen
+  const termin = a.wiederholung && terminVon ? ereignisTermine(a, terminVon, terminVon)[0] : null;
   const { sheet, close } = openSheet(`
     <h2>${esc(a.name)}</h2>
-    <div class="kv"><span>Datum</span><b>${zeitraumText(a)}</b></div>
+    <div class="kv"><span>Datum</span><b>${zeitraumText(termin || a)}</b></div>
+    ${a.wiederholung ? `<div class="kv"><span>Wiederholung</span><b>${WIEDERHOLUNG[a.wiederholung] || ''}</b></div>
+      <div class="kv"><span>Erster Termin</span><b>${zeitraumText(a)}</b></div>
+      ${a.wiederholungBis ? `<div class="kv"><span>Wiederholen bis</span><b>${formatDate(a.wiederholungBis)}</b></div>` : ''}` : ''}
     ${a.uhrzeit ? `<div class="kv"><span>Uhrzeit</span><b>${esc(a.uhrzeit)} Uhr</b></div>` : ''}
     ${a.ort ? `<div class="kv"><span>Ort</span><b>${esc(a.ort)}</b></div>` : ''}
     ${a.notiz ? `<div class="kv"><span>Notiz</span><b>${esc(a.notiz)}</b></div>` : ''}
@@ -4259,7 +4299,7 @@ function ereignisDetails(a) {
   if (aendern) aendern.onclick = () => { close(); ereignisEintragen(a); };
   const weg = $('#e-weg', sheet);
   if (weg) weg.onclick = () => {
-    if (!confirm(`Ereignis „${a.name}“ (${zeitraumText(a)}) löschen?`)) return;
+    if (!confirm(a.wiederholung ? `Ereignis „${a.name}“ mit allen Wiederholungen löschen?` : `Ereignis „${a.name}“ (${zeitraumText(a)}) löschen?`)) return;
     antragMerken(a, 'loeschen');
     close();
     renderUrlaub();

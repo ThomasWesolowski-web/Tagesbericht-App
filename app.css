@@ -892,6 +892,7 @@ html.mk-offen, html.mk-offen body { overflow: hidden; }
 .uk-ereignis { border: 0; background: none; padding: 3px 0; text-align: left; font: inherit; font-size: .85rem; color: #8a4fb5; cursor: pointer; }
 .uk-ereignis b { display: inline-block; min-width: 46px; }
 .uk-ereignis span { text-decoration: underline; text-underline-offset: 3px; }
+.uk-ereignis small { color: var(--ink-3); font-size: .75rem; }
 .urlaub-karte { text-align: left; border: 0; width: 100%; }
 .uk-knoepfe { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
 

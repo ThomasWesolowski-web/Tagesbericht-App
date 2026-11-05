@@ -6,6 +6,8 @@
 // Betriebsurlaub (vom Administrator für alle): betrieb: true, name 'Betriebsurlaub', gleich genehmigt
 // Ereignis (Weihnachtsfeier usw., vom Administrator für alle): ereignis: true, name = Bezeichnung,
 //   dazu uhrzeit und ort; gleich genehmigt, tage 0, zählt nicht als Urlaub
+//   wiederholung: '' | taeglich (Mo–Fr ohne Feiertage) | woechentlich | monatlich | jaehrlich,
+//   wiederholungBis: letzter Tag der Wiederholung ('' = ohne Ende)
 
 import { kw } from './stunden.js';
 import { newId } from './report.js';
@@ -188,4 +190,59 @@ export function gehoertZu(a, person) {
   if (!person) return false;
   if (a.personId && person.personId) return a.personId === person.personId || teile(a.name) === teile(person.name);
   return teile(a.name) === teile(person.name);
+}
+
+// ---------- Wiederkehrende Ereignisse ----------
+
+export const WIEDERHOLUNG = {
+  '': 'Keine',
+  taeglich: 'Täglich (Mo–Fr)',
+  woechentlich: 'Wöchentlich',
+  monatlich: 'Monatlich',
+  jaehrlich: 'Jährlich',
+};
+
+const tageZwischen = (a, b) => Math.round((datum(b) - datum(a)) / 86400000);
+
+// n-ter Termin ab dem ersten Tag; gibt es den Tag im Monat nicht (31.), zählt der letzte Tag des Monats
+function terminNr(start, art, n) {
+  if (art === 'woechentlich') return plusTage(start, 7 * n);
+  const j = Number(start.slice(0, 4));
+  const m = Number(start.slice(5, 7)) - 1;
+  const t = Number(start.slice(8));
+  const d = art === 'jaehrlich' ? new Date(j + n, m, 1, 12) : new Date(j, m + n, 1, 12);
+  const letzter = new Date(d.getFullYear(), d.getMonth() + 1, 0, 12).getDate();
+  d.setDate(Math.min(t, letzter));
+  return iso(d);
+}
+
+// Alle Termine eines Ereignisses, die in den Zeitraum von–bis fallen: [{ von, bis }]
+export function ereignisTermine(e, von, bis) {
+  const art = e.wiederholung || '';
+  const dauer = Math.max(0, tageZwischen(e.von, e.bis));
+  const ende = e.wiederholungBis && e.wiederholungBis < bis ? e.wiederholungBis : bis;
+  const liste = [];
+  if (!art || !WIEDERHOLUNG[art]) {
+    if (e.von <= bis && von <= e.bis) liste.push({ von: e.von, bis: e.bis });
+    return liste;
+  }
+  if (art === 'taeglich') {
+    let s = e.von < plusTage(von, -dauer) ? plusTage(von, -dauer) : e.von;
+    for (; s <= ende; s = plusTage(s, 1)) {
+      if (istWochenende(s) || feiertag(s)) continue;
+      liste.push({ von: s, bis: plusTage(s, dauer) });
+    }
+    return liste;
+  }
+  // grob vorspulen, damit lange Serien nicht von vorne gezählt werden
+  let n = 0;
+  const abstand = tageZwischen(e.von, von) - dauer;
+  if (abstand > 0) n = Math.max(0, Math.floor(abstand / (art === 'woechentlich' ? 7 : art === 'monatlich' ? 31 : 366)) - 1);
+  for (let i = 0; i < 10000; i++, n++) {
+    const s = terminNr(e.von, art, n);
+    if (s > ende) break;
+    const b = plusTage(s, dauer);
+    if (b >= von) liste.push({ von: s, bis: b });
+  }
+  return liste;
 }
