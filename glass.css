@@ -92,12 +92,37 @@ body { background: var(--bg); }
   box-shadow: var(--glass-schatten), 0 12px 40px rgba(29, 35, 43, .14);
 }
 .savebar { height: auto; padding: 10px 12px; }
-.tabbar a { font-size: .68rem; letter-spacing: -.01em; }
-.tabbar a.active { position: relative; }
-.tabbar a.active::before {
-  content: ""; position: absolute; inset: -6px 2px; z-index: -1; border-radius: 16px;
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
+
+/* Untere Leiste (ab 1.77.0): Glas mit Mulde unter der schwebenden Kugel, Form kommt aus
+   leisteFormen() in app.js. .tb-glas verschwimmt den Hintergrund, .tb-linie färbt, umrandet
+   und wirft den Schatten, .tb-kugel trägt das Symbol des gewählten Reiters. */
+.tabbar {
+  background: transparent; border: 0; border-radius: 0; box-shadow: none;
+  backdrop-filter: none; -webkit-backdrop-filter: none;
 }
+.tabbar.ohne-wahl { background: var(--glass-strong); border-radius: 24px; }
+.tb-glas, .tb-linie { position: absolute; inset: 0; pointer-events: none; }
+.tb-glas { backdrop-filter: blur(34px) saturate(1.8); -webkit-backdrop-filter: blur(34px) saturate(1.8); }
+.tb-linie { width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 10px 22px rgba(29, 35, 43, .16)); }
+.tb-linie path { fill: var(--glass-strong); stroke: var(--glass-rand); stroke-width: 1.2; }
+.tb-kugel {
+  position: absolute; left: 0; top: -25px; width: 50px; height: 50px; border-radius: 50%; pointer-events: none;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 78%, #fff), var(--accent));
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .45) inset, 0 -1px 0 rgba(0, 0, 0, .12) inset,
+    0 8px 20px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.tabbar.ohne-wahl .tb-glas, .tabbar.ohne-wahl .tb-linie, .tabbar.ohne-wahl .tb-kugel { display: none; }
+.tabbar a {
+  position: relative; z-index: 1; height: 100%; justify-content: center;
+  font-size: .68rem; letter-spacing: -.01em;
+}
+.tabbar a svg { transition: transform .32s cubic-bezier(.3, 1.4, .5, 1), color .2s; }
+.tabbar a.active svg { color: var(--accent-ink); transform: translateY(-26px); }
+.tabbar a.active span { transform: translateY(4px); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="hell"]) .tb-linie { filter: drop-shadow(0 10px 22px rgba(0, 0, 0, .45)); }
+}
+:root[data-theme="dunkel"] .tb-linie { filter: drop-shadow(0 10px 22px rgba(0, 0, 0, .45)); }
 
 /* Eingabefelder und Knöpfe */
 .field input, .field textarea, .field select, .chip {
