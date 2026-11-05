@@ -182,6 +182,16 @@ export async function openMarkup(blob, opts = {}) {
 
   const canvas = view.querySelector('canvas');
   const ctx = canvas.getContext('2d');
+  // Galerie: das neue Foto gleitet von der Seite herein, aus der gewischt wurde
+  if (blaettern?.von) {
+    canvas.style.transform = `translateX(${blaettern.von * 60}px)`;
+    canvas.style.opacity = '0.3';
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      canvas.style.transition = 'transform .2s ease-out, opacity .2s ease-out';
+      canvas.style.transform = '';
+      canvas.style.opacity = '';
+    }));
+  }
   const flaeche = view.querySelector('.mk-flaeche');
   const textBox = view.querySelector('.mk-text');
   const textInput = textBox.querySelector('input');
@@ -270,7 +280,7 @@ export async function openMarkup(blob, opts = {}) {
   window.addEventListener('resize', beiGroesse);
   const wzHinweis = () => hinweis(werkzeug === 'foto'
     ? (pinNr != null ? `Tippe auf die Stelle im Plan, an der Foto ${pinNr} entstanden ist.` : (fotoNeu ? 'Tippe auf die Stelle im Plan, dann Foto aufnehmen oder auswählen.' : 'Tippe auf die Stelle, an der ein Foto entstanden ist.'))
-    : werkzeug === 'hand' ? (blaettern ? 'Zur Seite wischen für das nächste Foto, mit zwei Fingern zoomen.' : 'Mit einem Finger verschieben, mit zwei Fingern zoomen.')
+    : werkzeug === 'hand' ? (blaettern && !blaettern.nurPfeile ? 'Zur Seite wischen für das nächste Foto, mit zwei Fingern zoomen.' : 'Mit einem Finger verschieben, mit zwei Fingern zoomen.')
     : plan && werkzeug === 'flaeche' ? 'Bearbeitete Fläche mit dem Finger umfahren. Zwei Finger zoomen.' : '');
   wzHinweis();
 
@@ -353,7 +363,8 @@ export async function openMarkup(blob, opts = {}) {
     const m = f.length > 1 ? [(f[0][0] + f[1][0]) / 2, (f[0][1] + f[1][1]) / 2] : f[0];
     geste = { d: f.length > 1 ? Math.hypot(f[0][0] - f[1][0], f[0][1] - f[1][1]) : 0, m, von: { ...ansicht } };
     // Galerie: ein Finger auf dem ganz gezeigten Foto blättert statt zu verschieben
-    geste.wischen = !!blaettern && f.length === 1 && ansicht.s <= fitS * 1.001;
+    // Bei Dokumenten (nurPfeile) wird nur mit den Pfeilen geblättert, der Finger verschiebt immer
+    geste.wischen = !!blaettern && !blaettern.nurPfeile && f.length === 1 && ansicht.s <= fitS * 1.001;
   };
   canvas.addEventListener('pointerdown', (e) => {
     e.preventDefault();
@@ -390,11 +401,13 @@ export async function openMarkup(blob, opts = {}) {
         const d = Math.hypot(f[0][0] - f[1][0], f[0][1] - f[1][1]);
         zoomUm(geste.von.s * (d / geste.d), [(f[0][0] + f[1][0]) / 2, (f[0][1] + f[1][1]) / 2], geste.von, geste.m);
       } else if (geste.wischen) {
-        // Foto folgt dem Finger zur Seite; am ersten/letzten Foto nur ein kleines Stück
+        // Foto folgt dem Finger zur Seite (nur verschoben, nicht neu gezeichnet: läuft flüssig);
+        // am ersten/letzten Foto nur ein kleines Stück
         let dx = f[0][0] - geste.m[0];
         if ((dx > 0 && blaettern.nr <= 1) || (dx < 0 && blaettern.nr >= blaettern.anzahl)) dx /= 4;
-        ansicht = { ...geste.von, x: geste.von.x + dx };
-        neuZeichnen();
+        geste.dx = dx;
+        canvas.style.transition = 'none';
+        canvas.style.transform = `translateX(${dx}px)`;
       } else {
         ansicht = { s: geste.von.s, x: geste.von.x + f[0][0] - geste.m[0], y: geste.von.y + f[0][1] - geste.m[1] };
         ansichtGeaendert();
@@ -410,19 +423,17 @@ export async function openMarkup(blob, opts = {}) {
   const loslassen = (e) => {
     finger.delete(e.pointerId);
     if (geste?.wischen && !finger.size) {
-      const dx = ansicht.x - geste.von.x;
-      const von = geste.von;
+      const dx = geste.dx || 0;
       const r = flaeche.getBoundingClientRect();
       geste = null;
       const richtung = dx < 0 ? 1 : -1;
-      const ziel = blaettern.nr + richtung;
-      if (e.type !== 'pointercancel' && Math.abs(dx) > Math.min(80, r.width / 5) && ziel >= 1 && ziel <= blaettern.anzahl) {
-        beenden?.({ blaettern: richtung, stand: { ...von, fitS } });
-        return;
-      }
-      ansichtGeaendert(); // zurück in die Mitte
+      if (e.type !== 'pointercancel' && Math.abs(dx) > Math.min(80, r.width / 5) && blatt(richtung)) return;
+      // zurück in die Mitte gleiten
+      canvas.style.transition = 'transform .2s ease-out';
+      canvas.style.transform = '';
       return;
     }
+    if (geste?.wischen && finger.size) canvas.style.transform = ''; // zweiter Finger: zoomen statt blättern
     if (geste) {
       // Mit dem verbleibenden Finger nahtlos weiter verschieben
       if (finger.size) gesteStarten(); else geste = null;
@@ -480,9 +491,18 @@ export async function openMarkup(blob, opts = {}) {
   view.querySelectorAll('.mk-st').forEach((b) => { b.onclick = () => staerkeSetzen(Number(b.dataset.f)); });
   regler.oninput = () => staerkeSetzen(Number(regler.value));
   view.querySelector('.mk-rueck').onclick = () => { formen.pop(); neuZeichnen(); };
+  // Zum nächsten/vorigen Foto: das jetzige gleitet hinaus, dann kommt das neue herein
+  let gleitet = false;
   const blatt = (richtung) => {
     const ziel = blaettern.nr + richtung;
-    if (ziel >= 1 && ziel <= blaettern.anzahl) beenden?.({ blaettern: richtung, stand: { ...ansicht, fitS } });
+    if (gleitet || ziel < 1 || ziel > blaettern.anzahl) return false;
+    gleitet = true;
+    const stand = { ...ansicht, fitS };
+    canvas.style.transition = 'transform .18s ease-in, opacity .18s ease-in';
+    canvas.style.transform = `translateX(${-richtung * flaeche.clientWidth}px)`;
+    canvas.style.opacity = '0.3';
+    setTimeout(() => beenden?.({ blaettern: richtung, stand }), 170);
+    return true;
   };
   const taste = (e) => {
     if (!blaettern) return;
