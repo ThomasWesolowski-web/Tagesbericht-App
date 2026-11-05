@@ -33,7 +33,7 @@ import {
   planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
 } from './zeitplan.js';
 
-const APP_VERSION = '1.78.0';
+const APP_VERSION = '1.79.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -1454,11 +1454,12 @@ function autoGrow(el) {
 function openFile(file, liste = null) {
   // Fotos in der Plan-Ansicht: mit zwei Fingern oder + und − zoomen, mit der Hand verschieben.
   // Mit liste (alle Anhänge des Berichts) lässt sich wie in einer Galerie zum nächsten Foto wischen.
-  if (file.type.startsWith('image/')) {
-    let bilder = (liste || []).filter((f) => f.type?.startsWith('image/') && f.blob?.size);
-    let i = bilder.findIndex((f) => f.id === file.id);
-    if (i < 0) { bilder = [file]; i = 0; }
-    fotoGalerie(bilder, i);
+  // PDFs gehören mit in die Galerie, wenn eine Liste da ist (Anhänge im Bericht).
+  if (file.type.startsWith('image/') || (liste && istPdf(file))) {
+    let dateien = galerieTauglich(liste);
+    let i = dateien.findIndex((f) => f.id === file.id);
+    if (i < 0) { dateien = [file]; i = 0; }
+    fotoGalerie(dateien, i);
     return;
   }
   // Excel, Word & Co.: in der installierten App führt ein Download-Link auf dem iPhone ins Leere,
@@ -2494,8 +2495,11 @@ async function planListeBinden(site) {
       const f = dateien.find((d) => d.id === p.id);
       $('.plan-oeffnen', el).onclick = () => {
         if (!f) { toast('Der Plan ist auf diesem Handy noch nicht da. Bitte abgleichen.'); return; }
-        if (planTauglich(f)) planAnsehen(f);
-        else openFile(f);
+        if (!planTauglich(f)) { openFile(f); return; }
+        // Alle Pläne der Baustelle wie in einer Galerie durchwischen
+        const galerie = galerieTauglich(plaene.map((x) => x.f).filter(Boolean));
+        const i = galerie.findIndex((d) => d.id === f.id);
+        if (i < 0) planAnsehen(f); else fotoGalerie(galerie, i);
       };
       const weg = $('.plan-weg', el);
       if (weg) weg.onclick = async () => {
@@ -2549,7 +2553,7 @@ async function planAnsehen(f) {
 // werden erst gezeichnet, wenn sie in die Nähe des Bildschirms kommen (Speicher auf dem iPhone),
 // nach dem Zoomen werden die sichtbaren Seiten schärfer nachgezeichnet. Mit onSeite lässt sich
 // eine Seite antippen: gibt onSeite(seite) true zurück, schließt die Ansicht und liefert die Seite.
-async function pdfSeitenAnsicht(f, { hinweis = '', onSeite = null }) {
+async function pdfSeitenAnsicht(f, { hinweis = '', onSeite = null, blaettern = null, stand = null }) {
   let doc;
   try {
     doc = await pdfDokument(f.blob);
@@ -2570,7 +2574,10 @@ async function pdfSeitenAnsicht(f, { hinweis = '', onSeite = null }) {
     <div class="ps-liste"><div class="ps-inhalt">${formate.map((v, i) => `<div class="ps-seite${onSeite ? ' waehlbar' : ''}" data-s="${i + 1}">
       <div class="ps-bild" style="aspect-ratio: 1 / ${v.toFixed(4)}"></div>
       <span><span>Seite</span> ${i + 1} / ${doc.n}</span>
-    </div>`).join('')}</div></div>`;
+    </div>`).join('')}</div></div>${blaettern ? `
+    <button type="button" class="mk-blatt mk-blatt-zurueck" aria-label="Vorige Datei"${blaettern.nr <= 1 ? ' hidden' : ''}>‹</button>
+    <button type="button" class="mk-blatt mk-blatt-vor" aria-label="Nächste Datei"${blaettern.nr >= blaettern.anzahl ? ' hidden' : ''}>›</button>
+    <div class="mk-blatt-nr">${blaettern.nr} / ${blaettern.anzahl}</div>` : ''}`;
   document.body.appendChild(view);
   const liste = $('.ps-liste', view);
   const inhalt = $('.ps-inhalt', view);
@@ -2587,6 +2594,12 @@ async function pdfSeitenAnsicht(f, { hinweis = '', onSeite = null }) {
     inhalt.style.width = `${Math.round(grundBreite() * zoom)}px`;
   };
   zoomSetzen(1);
+  // Galerie: beim Zurückwischen an derselben Stelle und mit demselben Zoom weiter
+  if (stand) {
+    zoomSetzen(stand.zoom);
+    liste.scrollLeft = stand.left;
+    liste.scrollTop = stand.top;
+  }
 
   // Seiten zeichnen, eine nach der anderen; höchstens zwei Seiten bleiben scharf nachgezeichnet
   const breite = Math.min(1400, Math.round(grundBreite() * Math.min(2, dpr)));
@@ -2708,6 +2721,27 @@ async function pdfSeitenAnsicht(f, { hinweis = '', onSeite = null }) {
       resolve(ergebnis);
     };
     $('.ps-zu', view).onclick = () => zu(null);
+    if (blaettern) {
+      const blatt = (richtung) => {
+        const ziel = blaettern.nr + richtung;
+        if (ziel >= 1 && ziel <= blaettern.anzahl) zu({ blaettern: richtung, stand: { zoom, left: liste.scrollLeft, top: liste.scrollTop } });
+      };
+      $('.mk-blatt-vor', view).onclick = () => blatt(1);
+      $('.mk-blatt-zurueck', view).onclick = () => blatt(-1);
+      // Mit einem Finger deutlich zur Seite wischen (nicht hineingezoomt) wechselt die Datei
+      let start = null;
+      liste.addEventListener('touchstart', (e) => {
+        start = e.touches.length === 1 && zoom <= 1.05 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
+      }, { passive: true });
+      liste.addEventListener('touchend', (e) => {
+        if (!start || e.touches.length) return;
+        const t = e.changedTouches[0];
+        const dx = t.clientX - start.x;
+        const dy = t.clientY - start.y;
+        start = null;
+        if (Math.abs(dx) > Math.min(80, liste.clientWidth / 5) && Math.abs(dx) > 2 * Math.abs(dy)) blatt(dx < 0 ? 1 : -1);
+      });
+    }
     if (onSeite) {
       seiten.forEach((el) => {
         el.onclick = async () => {
@@ -2744,21 +2778,35 @@ function planFehlerText(err) {
   return `Der Plan lässt sich nicht öffnen (${err?.message || 'unbekannter Fehler'}). Bitte mit Netz noch einmal versuchen oder den Plan neu anhängen.`;
 }
 
-// Fotos nacheinander ansehen; der dunkle Grund verhindert ein Aufblitzen der Seite beim Wechsel
-async function fotoGalerie(bilder, i) {
-  const grund = bilder.length > 1 ? document.body.appendChild(Object.assign(document.createElement('div'), { className: 'mk-galerie-grund' })) : null;
+// Fotos und Pläne/PDFs nacheinander ansehen (wischen oder Pfeile); der dunkle Grund verhindert
+// ein Aufblitzen der Seite beim Wechsel. Mehrseitige PDFs zeigen alle Seiten untereinander.
+async function fotoGalerie(dateien, i) {
+  const grund = dateien.length > 1 ? document.body.appendChild(Object.assign(document.createElement('div'), { className: 'mk-galerie-grund' })) : null;
+  const staende = new Map(); // je Datei: wo und wie weit gezoomt sie verlassen wurde
   try {
     for (;;) {
-      const r = await planSeiteAnsehen(bilder[i], 1, bilder.length > 1 ? { nr: i + 1, anzahl: bilder.length } : null);
+      const f = dateien[i];
+      const blaettern = dateien.length > 1 ? { nr: i + 1, anzahl: dateien.length } : null;
+      const stand = staende.get(f.id) || null;
+      let r;
+      if (istPdf(f) && (await pdfSeiten(f.blob).catch(() => 1)) > 1) {
+        r = await pdfSeitenAnsicht(f, { hinweis: 'Mit zwei Fingern zoomen.', blaettern, stand });
+      } else {
+        r = await planSeiteAnsehen(f, 1, blaettern, stand);
+      }
       if (!r?.blaettern) break;
-      i = Math.min(bilder.length - 1, Math.max(0, i + r.blaettern));
+      if (r.stand) staende.set(f.id, r.stand);
+      i = Math.min(dateien.length - 1, Math.max(0, i + r.blaettern));
     }
   } finally {
     grund?.remove();
   }
 }
 
-async function planSeiteAnsehen(f, seite, blaettern = null) {
+// Aus einer Liste von Anhängen die, die sich in der Galerie zeigen lassen (Fotos, Bilder, PDFs)
+const galerieTauglich = (liste) => (liste || []).filter((f) => planTauglich(f) && f.blob?.size);
+
+async function planSeiteAnsehen(f, seite, blaettern = null, stand = null) {
   let q;
   try {
     q = await planQuelleSicher(f, seite);
@@ -2767,7 +2815,7 @@ async function planSeiteAnsehen(f, seite, blaettern = null) {
     return;
   }
   try {
-    return await openMarkup(q.blob, { mitFormen: true, nurAnsehen: true, kachel: q.kachel, titel: f.name.replace(/\.[^.]+$/, ''), blaettern });
+    return await openMarkup(q.blob, { mitFormen: true, nurAnsehen: true, kachel: q.kachel, titel: f.name.replace(/\.[^.]+$/, ''), blaettern, stand });
   } finally {
     q.schliessen();
   }

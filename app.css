@@ -798,7 +798,7 @@ html.mk-offen, html.mk-offen body { overflow: hidden; }
 .mk-blatt-zurueck { left: 8px; }
 .mk-blatt-vor { right: 8px; }
 .mk-blatt-nr { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); padding: 4px 12px; border-radius: 999px; background: rgba(0,0,0,.45); color: #fff; font-size: .85rem; font-weight: 600; pointer-events: none; }
-.mk-galerie-grund { position: fixed; inset: 0; background: #16191d; z-index: 69; }
+.mk-galerie-grund { position: fixed; inset: 0; background: #16191d; z-index: 59; }
 
 /* Handbuch */
 .handbuch { line-height: 1.55; }

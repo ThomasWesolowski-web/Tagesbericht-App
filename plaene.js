@@ -105,6 +105,7 @@ async function bildLaden(blob) {
     try {
       const bmp = await createImageBitmap(frisch, { imageOrientation: 'from-image' });
       bmp.freigeben = () => bmp.close();
+      bmp.quelle = frisch;
       return bmp;
     } catch {
       // weiter mit dem Bild-Element
@@ -123,6 +124,7 @@ async function bildLaden(blob) {
     throw typ ? err : new PlanDefekt();
   }
   img.freigeben = () => URL.revokeObjectURL(url);
+  img.quelle = frisch;
   return img;
 }
 
@@ -177,6 +179,10 @@ export async function planQuelle(file, seite = 1) {
     const bw = bild.naturalWidth || bild.width;
     const bh = bild.naturalHeight || bild.height;
     const s = Math.min(1, groesse(bw, bh));
+    // Kleine Bilder (z. B. Fotos im Bericht) direkt nehmen: spart das Neu-Kodieren beim Blättern
+    if (s >= 1 && /^image\/(jpeg|png|webp)$/.test(bild.quelle.type)) {
+      return { blob: bild.quelle, w: bw, h: bh, kachel: null, schliessen: () => {} };
+    }
     canvas.width = Math.round(bw * s);
     canvas.height = Math.round(bh * s);
     const ctx = canvas.getContext('2d');
