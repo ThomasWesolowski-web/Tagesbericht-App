@@ -33,7 +33,7 @@ import {
   planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
 } from './zeitplan.js';
 
-const APP_VERSION = '1.79.0';
+const APP_VERSION = '1.79.1';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -1459,7 +1459,7 @@ function openFile(file, liste = null) {
     let dateien = galerieTauglich(liste);
     let i = dateien.findIndex((f) => f.id === file.id);
     if (i < 0) { dateien = [file]; i = 0; }
-    fotoGalerie(dateien, i);
+    fotoGalerie(dateien, i, { nurPfeile: istPdf }); // Dokumente nur mit den Pfeilen, Fotos auch wischen
     return;
   }
   // Excel, Word & Co.: in der installierten App führt ein Download-Link auf dem iPhone ins Leere,
@@ -2499,7 +2499,7 @@ async function planListeBinden(site) {
         // Alle Pläne der Baustelle wie in einer Galerie durchwischen
         const galerie = galerieTauglich(plaene.map((x) => x.f).filter(Boolean));
         const i = galerie.findIndex((d) => d.id === f.id);
-        if (i < 0) planAnsehen(f); else fotoGalerie(galerie, i);
+        if (i < 0) planAnsehen(f); else fotoGalerie(galerie, i, { nurPfeile: () => true }); // Pläne: nur Pfeile
       };
       const weg = $('.plan-weg', el);
       if (weg) weg.onclick = async () => {
@@ -2599,6 +2599,16 @@ async function pdfSeitenAnsicht(f, { hinweis = '', onSeite = null, blaettern = n
     zoomSetzen(stand.zoom);
     liste.scrollLeft = stand.left;
     liste.scrollTop = stand.top;
+  }
+  // Galerie: von der Seite hereingleiten, aus der gewischt wurde
+  if (blaettern?.von) {
+    liste.style.transform = `translateX(${blaettern.von * 60}px)`;
+    liste.style.opacity = '0.3';
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      liste.style.transition = 'transform .2s ease-out, opacity .2s ease-out';
+      liste.style.transform = '';
+      liste.style.opacity = '';
+    }));
   }
 
   // Seiten zeichnen, eine nach der anderen; höchstens zwei Seiten bleiben scharf nachgezeichnet
@@ -2722,15 +2732,23 @@ async function pdfSeitenAnsicht(f, { hinweis = '', onSeite = null, blaettern = n
     };
     $('.ps-zu', view).onclick = () => zu(null);
     if (blaettern) {
+      let gleitet = false;
       const blatt = (richtung) => {
         const ziel = blaettern.nr + richtung;
-        if (ziel >= 1 && ziel <= blaettern.anzahl) zu({ blaettern: richtung, stand: { zoom, left: liste.scrollLeft, top: liste.scrollTop } });
+        if (gleitet || ziel < 1 || ziel > blaettern.anzahl) return;
+        gleitet = true;
+        const stand = { zoom, left: liste.scrollLeft, top: liste.scrollTop };
+        liste.style.transition = 'transform .18s ease-in, opacity .18s ease-in';
+        liste.style.transform = `translateX(${-richtung * liste.clientWidth}px)`;
+        liste.style.opacity = '0.3';
+        setTimeout(() => zu({ blaettern: richtung, stand }), 170);
       };
       $('.mk-blatt-vor', view).onclick = () => blatt(1);
       $('.mk-blatt-zurueck', view).onclick = () => blatt(-1);
-      // Mit einem Finger deutlich zur Seite wischen (nicht hineingezoomt) wechselt die Datei
+      // Mit einem Finger deutlich zur Seite wischen (nicht hineingezoomt) wechselt die Datei,
+      // außer bei Dokumenten (nurPfeile): dort nur mit den Pfeilen
       let start = null;
-      liste.addEventListener('touchstart', (e) => {
+      if (!blaettern.nurPfeile) liste.addEventListener('touchstart', (e) => {
         start = e.touches.length === 1 && zoom <= 1.05 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
       }, { passive: true });
       liste.addEventListener('touchend', (e) => {
@@ -2780,25 +2798,47 @@ function planFehlerText(err) {
 
 // Fotos und Pläne/PDFs nacheinander ansehen (wischen oder Pfeile); der dunkle Grund verhindert
 // ein Aufblitzen der Seite beim Wechsel. Mehrseitige PDFs zeigen alle Seiten untereinander.
-async function fotoGalerie(dateien, i) {
+async function fotoGalerie(dateien, i, { nurPfeile = () => false } = {}) {
   const grund = dateien.length > 1 ? document.body.appendChild(Object.assign(document.createElement('div'), { className: 'mk-galerie-grund' })) : null;
   const staende = new Map(); // je Datei: wo und wie weit gezoomt sie verlassen wurde
+  // Seitenzahl der PDFs und die Bilder der Nachbarn vorab laden, damit der Wechsel ohne Pause geht
+  const seitenZahl = new Map();
+  const seitenVon = (f) => {
+    if (!istPdf(f)) return Promise.resolve(1);
+    if (!seitenZahl.has(f.id)) seitenZahl.set(f.id, pdfSeiten(f.blob).catch(() => 1));
+    return seitenZahl.get(f.id);
+  };
+  const vorab = new Map();
+  const vorladen = (j) => {
+    const f = dateien[j];
+    if (!f || vorab.has(f.id)) return;
+    const p = seitenVon(f).then((n) => (n > 1 ? null : planQuelleSicher(f, 1)));
+    p.catch(() => {});
+    vorab.set(f.id, p);
+  };
+  let von = 0;
   try {
     for (;;) {
       const f = dateien[i];
-      const blaettern = dateien.length > 1 ? { nr: i + 1, anzahl: dateien.length } : null;
+      const blaettern = dateien.length > 1 ? { nr: i + 1, anzahl: dateien.length, von, nurPfeile: nurPfeile(f) } : null;
       const stand = staende.get(f.id) || null;
+      vorladen(i);
+      const q = await vorab.get(f.id).catch(() => null);
+      vorab.delete(f.id); // jede Ansicht bekommt ihr Bild frisch (wird beim Schließen freigegeben)
+      if (dateien.length > 1) { vorladen(i + 1); vorladen(i - 1); }
       let r;
-      if (istPdf(f) && (await pdfSeiten(f.blob).catch(() => 1)) > 1) {
+      if ((await seitenVon(f)) > 1) {
         r = await pdfSeitenAnsicht(f, { hinweis: 'Mit zwei Fingern zoomen.', blaettern, stand });
       } else {
-        r = await planSeiteAnsehen(f, 1, blaettern, stand);
+        r = await planSeiteAnsehen(f, 1, blaettern, stand, q);
       }
       if (!r?.blaettern) break;
       if (r.stand) staende.set(f.id, r.stand);
+      von = r.blaettern;
       i = Math.min(dateien.length - 1, Math.max(0, i + r.blaettern));
     }
   } finally {
+    vorab.forEach((p) => p.then((q) => q?.schliessen()).catch(() => {}));
     grund?.remove();
   }
 }
@@ -2806,10 +2846,10 @@ async function fotoGalerie(dateien, i) {
 // Aus einer Liste von Anhängen die, die sich in der Galerie zeigen lassen (Fotos, Bilder, PDFs)
 const galerieTauglich = (liste) => (liste || []).filter((f) => planTauglich(f) && f.blob?.size);
 
-async function planSeiteAnsehen(f, seite, blaettern = null, stand = null) {
-  let q;
+async function planSeiteAnsehen(f, seite, blaettern = null, stand = null, fertig = null) {
+  let q = fertig;
   try {
-    q = await planQuelleSicher(f, seite);
+    q ||= await planQuelleSicher(f, seite);
   } catch (err) {
     toast(planFehlerText(err), 5000);
     return;
