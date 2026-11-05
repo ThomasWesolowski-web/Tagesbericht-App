@@ -33,7 +33,7 @@ import {
   planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
 } from './zeitplan.js';
 
-const APP_VERSION = '1.76.0';
+const APP_VERSION = '1.77.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -201,6 +201,7 @@ async function route() {
     || (a.dataset.tab === 'hours' && (hash === '#/stunden' || hash === '#/urlaub'))
     || (a.dataset.tab === 'aufmass' && hash.startsWith('#/aufmass'))
     || (a.dataset.tab === 'settings' && (hash === '#/einstellungen' || hash === '#/personal' || hash === '#/handbuch' || hash === '#/mindmap'))));
+  leisteFormen();
 
   if (hash === '#/aufmass/neu') {
     const r = { ...newReport(), art: 'aufmass' };
@@ -4976,6 +4977,65 @@ async function runSync(manual) {
 // Reiter unten antippen: Seite beginnt oben, sonst bleibt die Scroll-Höhe der vorigen Seite stehen
 // und Kopf und Umschalter (z. B. Liste|Zeitplan) liegen außer Sicht (1.75.1).
 $$('.tabbar a').forEach((a) => a.addEventListener('click', () => window.scrollTo(0, 0)));
+
+// Untere Leiste als Milchglas mit Mulde (1.77.0): der gewählte Reiter schwebt in einer Kugel, die
+// Leiste weicht darunter in einem Bogen aus. Die Form ist ein Pfad, der beim Wechsel hinübergleitet.
+const leiste = { x: null, lauf: 0 };
+// Oberkante Punkt für Punkt: runde Ecken, dazu die Mulde (halbe Breite m, Tiefe t) um x. Am Rand
+// darf die Mulde in die Ecke laufen, damit die Kugel auch über dem ersten und letzten Reiter mittig sitzt.
+function leistePfad(b, h, x) {
+  const r = 24, m = 54, t = 32;
+  const ecke = (d) => (d < r ? r - Math.sqrt(r * r - (r - d) ** 2) : 0);
+  const mulde = (px) => {
+    const u = Math.abs(px - x) / m;
+    return u < 1 ? t * ((1 + Math.cos(Math.PI * u)) / 2) ** 0.7 : 0;
+  };
+  const oben = [];
+  for (let px = 0; px <= b; px += 2) {
+    oben.push(`${px},${Math.max(ecke(px), ecke(b - px), mulde(px)).toFixed(1)}`);
+  }
+  if ((b & 1) === 1) oben.push(`${b},${Math.max(r, mulde(b)).toFixed(1)}`);
+  return `M${oben.join(' L')} V${h - r} A${r},${r} 0 0 1 ${b - r},${h} H${r} A${r},${r} 0 0 1 0,${h - r} Z`;
+}
+function leisteZeichnen(x) {
+  const bar = $('#tabbar');
+  const b = bar.offsetWidth, h = bar.offsetHeight;
+  if (!b) return;
+  const d = leistePfad(b, h, x);
+  $('.tb-glas', bar).style.clipPath = `path('${d}')`;
+  $('.tb-linie', bar).setAttribute('viewBox', `0 0 ${b} ${h}`);
+  $('.tb-linie path', bar).setAttribute('d', d);
+  $('.tb-kugel', bar).style.transform = `translateX(${x - 25}px)`;
+}
+function leisteFormen() {
+  const bar = $('#tabbar');
+  if (!bar) return;
+  if (!$('.tb-glas', bar)) {
+    bar.insertAdjacentHTML('afterbegin', '<div class="tb-glas" aria-hidden="true"></div>'
+      + '<svg class="tb-linie" aria-hidden="true"><path/></svg><div class="tb-kugel" aria-hidden="true"></div>');
+    addEventListener('resize', () => { leiste.x = null; leisteFormen(); });
+  }
+  const a = $('.tabbar a.active');
+  bar.classList.toggle('ohne-wahl', !a);
+  if (!a) return;
+  const ziel = a.offsetLeft + a.offsetWidth / 2;
+  // Leiste noch unsichtbar (z. B. beim Bearbeiten): später neu messen
+  if (!bar.offsetWidth) { leiste.x = null; return; }
+  if (leiste.x === null || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    leiste.x = ziel;
+    leisteZeichnen(ziel);
+    return;
+  }
+  const von = leiste.x, start = performance.now(), lauf = ++leiste.lauf;
+  const schritt = (jetzt) => {
+    if (lauf !== leiste.lauf) return;
+    const t = Math.min(1, (jetzt - start) / 320);
+    leiste.x = von + (ziel - von) * (1 - (1 - t) ** 3);
+    leisteZeichnen(leiste.x);
+    if (t < 1) requestAnimationFrame(schritt);
+  };
+  requestAnimationFrame(schritt);
+}
 
 window.addEventListener('hashchange', async () => {
   const ed = editorHooks;
