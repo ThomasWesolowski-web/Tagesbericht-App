@@ -69,6 +69,63 @@ export async function pdfDokument(blob) {
   return { n: pdf.numPages, bild, format, schliessen: () => pdf.destroy() };
 }
 
+// Die Datei des Plans auf diesem Handy ist leer oder nicht lesbar (dann neu vom Repo holen).
+export class PlanDefekt extends Error {
+  constructor() {
+    super('Die Datei ist auf diesem Handy beschädigt');
+    this.name = 'PlanDefekt';
+  }
+}
+
+// Bildart an den ersten Bytes erkennen (der gespeicherte Typ kann fehlen oder falsch sein)
+function bildTyp(b) {
+  if (b[0] === 0xff && b[1] === 0xd8) return 'image/jpeg';
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'image/png';
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return 'image/gif';
+  if (b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return 'image/webp';
+  const ftyp = String.fromCharCode(...b.slice(4, 12));
+  if (/^ftyp(heic|heix|mif1|msf1|hevc)/.test(ftyp)) return 'image/heic';
+  return '';
+}
+
+// Bild eines Plans laden. Safari auf dem iPhone meldet bei img.decode() manchmal
+// „Loading error.“, obwohl das Bild in Ordnung ist. Deshalb erst die Bytes frisch aus dem
+// Speicher lesen, dann createImageBitmap, und als Letztes das Bild klassisch mit onload laden.
+async function bildLaden(blob) {
+  let daten;
+  try {
+    daten = blob?.size ? await blob.arrayBuffer() : null;
+  } catch {
+    daten = null;
+  }
+  if (!daten?.byteLength) throw new PlanDefekt();
+  const typ = bildTyp(new Uint8Array(daten, 0, Math.min(12, daten.byteLength)));
+  const frisch = new Blob([daten], { type: typ || blob.type || 'image/jpeg' });
+  if ('createImageBitmap' in window) {
+    try {
+      const bmp = await createImageBitmap(frisch, { imageOrientation: 'from-image' });
+      bmp.freigeben = () => bmp.close();
+      return bmp;
+    } catch {
+      // weiter mit dem Bild-Element
+    }
+  }
+  const url = URL.createObjectURL(frisch);
+  const img = new Image();
+  try {
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = () => reject(new Error('Das Bild lässt sich nicht lesen'));
+      img.src = url;
+    });
+  } catch (err) {
+    URL.revokeObjectURL(url);
+    throw typ ? err : new PlanDefekt();
+  }
+  img.freigeben = () => URL.revokeObjectURL(url);
+  return img;
+}
+
 // Plan (Bild oder PDF-Seite) als Bild mit fester Größe, damit Markierungen beim erneuten
 // Öffnen wieder genau passen. Bei PDFs liefert kachel(x, y, w, h, k) einen scharf gezeichneten
 // Ausschnitt (Angaben in Bildpunkten des Plan-Bildes, k = Bildschirmpunkte je Bildpunkt).
@@ -115,20 +172,19 @@ export async function planQuelle(file, seite = 1) {
     };
     return { blob, w: Math.round(vp.width), h: Math.round(vp.height), kachel, schliessen: () => pdf.destroy() };
   }
-  const url = URL.createObjectURL(file.blob);
+  const bild = await bildLaden(file.blob);
   try {
-    const img = new Image();
-    img.src = url;
-    await img.decode();
-    const s = Math.min(1, groesse(img.naturalWidth, img.naturalHeight));
-    canvas.width = Math.round(img.naturalWidth * s);
-    canvas.height = Math.round(img.naturalHeight * s);
+    const bw = bild.naturalWidth || bild.width;
+    const bh = bild.naturalHeight || bild.height;
+    const s = Math.min(1, groesse(bw, bh));
+    canvas.width = Math.round(bw * s);
+    canvas.height = Math.round(bh * s);
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bild, 0, 0, canvas.width, canvas.height);
   } finally {
-    URL.revokeObjectURL(url);
+    bild.freigeben();
   }
   const w = canvas.width;
   const h = canvas.height;

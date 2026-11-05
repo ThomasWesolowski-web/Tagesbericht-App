@@ -14,7 +14,7 @@ import {
   TYPEN, typLabel, hatZeiten, newStunde, stundenOf, personKey, kw, summe, sortStunden, monatLabel, shiftMonth,
 } from './stunden.js';
 import {
-  isConfigured, syncAll, syncReport, testConnection, deleteRemote, loadAdminConfig, saveAdminConfig, loadStundenRemote, loadStundenMonatAlle, namensSchluessel, meldeGeraet, ladeGeraete, setzeAdminFreigabe, urlaubAbgleichen, syncStunden,
+  isConfigured, syncAll, syncReport, testConnection, deleteRemote, loadAdminConfig, saveAdminConfig, loadStundenRemote, loadStundenMonatAlle, namensSchluessel, meldeGeraet, ladeGeraete, setzeAdminFreigabe, urlaubAbgleichen, syncStunden, planNeuHolen,
 } from './sync.js';
 import { startI18n, SPRACHEN } from './i18n.js';
 import { openMarkup } from './markup.js';
@@ -33,7 +33,7 @@ import {
   planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
 } from './zeitplan.js';
 
-const APP_VERSION = '1.77.0';
+const APP_VERSION = '1.77.1';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -1367,9 +1367,9 @@ async function renderEditor(id) {
     let basis;
     $('#sync-state').textContent = 'Plan wird geladen …';
     try {
-      basis = quelle ? await planQuelle(quelle, m ? m.seite : seite) : { blob: datei.blob, w: m.w, h: m.h, kachel: null, schliessen: () => {} };
+      basis = quelle ? await planQuelleSicher(quelle, m ? m.seite : seite) : { blob: datei.blob, w: m.w, h: m.h, kachel: null, schliessen: () => {} };
     } catch (err) {
-      toast(`Der Plan lässt sich nicht öffnen (${err.message}).`, 4000);
+      toast(planFehlerText(err), 5000);
       updateState();
       return;
     }
@@ -2713,12 +2713,36 @@ async function pdfSeitenAnsicht(f, { hinweis = '', onSeite = null }) {
   });
 }
 
+// Plan öffnen. Lässt sich die Datei auf diesem Handy nicht lesen (Safari verliert manchmal den
+// Inhalt gespeicherter Dateien) und liegt der Plan im Repo, wird er einmal neu geholt und ersetzt.
+async function planQuelleSicher(f, seite) {
+  try {
+    return await planQuelle(f, seite);
+  } catch (err) {
+    if (!f.hochgeladen || !isConfigured(settings) || !navigator.onLine) throw err;
+    toast('Der Plan wird neu vom Repo geladen …', 3000);
+    const blob = await planNeuHolen(settings, f.hochgeladen, f.type);
+    const neu = { ...f, blob, size: blob.size };
+    await db.putFile(neu);
+    f.blob = (await db.getFile(f.id))?.blob || blob;
+    f.size = blob.size;
+    return planQuelle(f, seite);
+  }
+}
+
+function planFehlerText(err) {
+  if (err?.name === 'PlanDefekt') {
+    return 'Der Plan ist auf diesem Handy beschädigt. Bitte mit Netz abgleichen oder den Plan neu anhängen.';
+  }
+  return `Der Plan lässt sich nicht öffnen (${err?.message || 'unbekannter Fehler'}). Bitte mit Netz noch einmal versuchen oder den Plan neu anhängen.`;
+}
+
 async function planSeiteAnsehen(f, seite) {
   let q;
   try {
-    q = await planQuelle(f, seite);
+    q = await planQuelleSicher(f, seite);
   } catch (err) {
-    toast(`Der Plan lässt sich nicht öffnen (${err.message}).`, 4000);
+    toast(planFehlerText(err), 5000);
     return;
   }
   try {
