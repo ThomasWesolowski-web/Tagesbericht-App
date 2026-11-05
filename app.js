@@ -33,7 +33,7 @@ import {
   planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
 } from './zeitplan.js';
 
-const APP_VERSION = '1.75.0';
+const APP_VERSION = '1.75.1';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -1753,21 +1753,20 @@ function siteCard(site, st) {
 }
 
 async function renderSites() {
-  appbar.innerHTML = '<h1>Baustellen</h1>';
+  appbar.innerHTML = `<h1>Baustellen</h1>${isAdmin() ? baustellenUmschalter('liste') : ''}`;
   const sites = await db.allSites();
   const stats = await siteStats();
   const active = sites.filter((s) => !s.archived);
   const done = sites.filter((s) => s.archived);
-  const umschalter = isAdmin() ? baustellenUmschalter('liste') : '';
   if (!sites.length) {
-    view.innerHTML = `${umschalter}<div class="empty">
+    view.innerHTML = `<div class="empty">
         <h2>Noch keine Baustellen</h2>
         <p>Lege deine Baustellen einmal an. Beim Bericht wählst du sie dann nur noch aus.</p>
         <a class="btn primary" href="#/baustelle/neu">${ICON.plus} Neue Baustelle</a></div>`;
     baustellenUmschalterBinden();
     return;
   }
-  view.innerHTML = `${umschalter}
+  view.innerHTML = `
     <a class="btn soft block" href="#/baustelle/neu" style="margin:6px 0 14px">${ICON.plus} Neue Baustelle</a>
     ${active.length ? `<div class="month"><span>Aktiv</span><span>${active.length}</span></div><div class="card-list">${active.map((s) => siteCard(s, stats.get(s.id))).join('')}</div>` : ''}
     ${done.length ? `<div class="month"><span>Abgeschlossen</span><span>${done.length}</span></div><div class="card-list">${done.map((s) => siteCard(s, stats.get(s.id))).join('')}</div>` : ''}`;
@@ -1775,7 +1774,8 @@ async function renderSites() {
 }
 
 // ---------- Baustellen-Zeitplan (nur Administrator) ----------
-// Reiter Baustellen › Zeitplan: Aufträge mit Abschnitten als Balken über die Kalenderwochen
+// Reiter Baustellen › Zeitplan: Umschalter Liste|Zeitplan steht seit 1.75.1 in der festen Kopfzeile,
+// damit er auch bei heruntergescrollter Seite zu sehen ist. Aufträge mit Abschnitten als Balken über die Kalenderwochen
 // (oder Tage), Plantafel je Person und Wochen-Auslastung. Rechnung in zeitplan.js.
 
 const ZP_WOCHEN = 8;
@@ -1830,7 +1830,7 @@ async function renderZeitplan() {
     location.replace('#/baustellen');
     return;
   }
-  appbar.innerHTML = '<h1>Baustellen</h1>';
+  appbar.innerHTML = `<h1>Baustellen</h1>${baustellenUmschalter('zeitplan')}`;
   const people = await db.allPeople();
   const auftraege = alleAuftraege();
   const ansichten = [['baustellen', 'Baustellen'], ['personal', 'Personal'], ['auslastung', 'Auslastung']];
@@ -1840,7 +1840,6 @@ async function renderZeitplan() {
   else if (zpAnsicht === 'personal') inhalt = zpPersonalHtml(auftraege, people);
   else inhalt = zpAuslastungHtml(auftraege, people);
   view.innerHTML = `
-    ${baustellenUmschalter('zeitplan')}
     <div class="seg three" id="zp-ansicht" role="radiogroup" aria-label="Zeitplan-Ansicht" style="margin-bottom:12px">
       ${ansichten.map(([id, t]) => `<button type="button" role="radio" data-a="${id}" aria-checked="${zpAnsicht === id}">${t}</button>`).join('')}
     </div>
@@ -4864,6 +4863,10 @@ async function runSync(manual) {
 }
 
 // ---------- Start ----------
+
+// Reiter unten antippen: Seite beginnt oben, sonst bleibt die Scroll-Höhe der vorigen Seite stehen
+// und Kopf und Umschalter (z. B. Liste|Zeitplan) liegen außer Sicht (1.75.1).
+$$('.tabbar a').forEach((a) => a.addEventListener('click', () => window.scrollTo(0, 0)));
 
 window.addEventListener('hashchange', async () => {
   const ed = editorHooks;
