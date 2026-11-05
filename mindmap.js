@@ -52,7 +52,7 @@ const AESTE = [
     ['Urlaubskalender', 'Urlaub beantragen'],
     ['Genehmigen', 'Anträge annehmen', 'Admin'],
     ['Betriebsurlaub', 'Für alle eintragen', 'Admin'],
-    ['Ereignisse', 'Weihnachtsfeier usw. für alle', 'Admin']] },
+    ['Ereignisse', 'Weihnachtsfeier usw. für alle, auch wiederkehrend', 'Admin']] },
   { n: 'Personal', t: 'Personal & Stammdaten', z: [
     ['Kategorien', 'Meister, Facharbeiter, Helfer, Lehrling, Büro'],
     ['Gewerk & Schultag', 'Für Zeitplan und Auslastung'],
