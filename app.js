@@ -33,7 +33,7 @@ import {
   planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
 } from './zeitplan.js';
 
-const APP_VERSION = '1.79.1';
+const APP_VERSION = '1.79.2';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -3922,8 +3922,10 @@ async function stundenAlleTeilen(ym) {
     const alt = p.eintraege.get(e.id);
     if (!alt || (e.updatedAt || 0) >= (alt.updatedAt || 0)) p.eintraege.set(e.id, e);
   }
-  // Administratoren (Admin-Handys und dieses Gerät) sind ausgenommen
-  const admins = new Set([...geraete.filter((g) => g.admin).map((g) => g.name), stundenPerson()?.name, settings.author]
+  // Administratoren (Admin-Handys und der Name in den Einstellungen dieses Geräts) sind ausgenommen.
+  // Nicht die gerade im Reiter Stunden gewählte Person: der Administrator trägt dort auch für
+  // Mitarbeiter ohne eigenes Handy ein, und deren Stunden gehören ins PDF.
+  const admins = new Set([...geraete.filter((g) => g.admin).map((g) => g.name), settings.author]
     .filter(Boolean).map(namensSchluessel));
   const leute = await db.allPeople();
   const kategorie = (name) => {
