@@ -24,6 +24,7 @@ import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from '.
 import { raumKurz } from './raumgeometrie.js';
 import { wetterHolen } from './wetter.js';
 import { istAbgerechnet, abgerechnetSetzen, abrechnungLokal } from './abrechnung.js';
+import { GEGEN, ANLAESSE, ANREDE, bedenkenFehlt, fristVorschlag, textDazu, textWeg } from './bedenken.js';
 import {
   STATUS, feiertageBW, feiertag, istWochenende, arbeitstage, monatsRaster, neuerAntrag, zeitraumText, plusTage,
   urlaubLokal, urlaubLokalSpeichern, antragMerken, gehoertZu, arbeitstageOhneBetrieb, ereignisTermine, WIEDERHOLUNG,
@@ -34,7 +35,7 @@ import {
   planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
 } from './zeitplan.js';
 
-const APP_VERSION = '1.80.0';
+const APP_VERSION = '1.81.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -386,15 +387,16 @@ async function renderList({ aufmass = false } = {}) {
       const n = fileCount.get(r.id);
       const preview = aufmass
         ? (r.positionen || []).map((p) => p.bezeichnung).filter(Boolean).join(', ')
+        : r.art === 'bedenken' ? [r.auftraggeber, (r.bdSachverhalt || '').split('\n')[0]].filter(Boolean).join(': ')
         : (r.taetigkeiten || r.bemerkungen || '').split('\n')[0];
-      const rechts = aufmass ? aufmassSummen(r).map((s) => `${formatMenge(s.menge)} ${s.label}`).join('<br>') : formatHours(workedHours(r));
+      const rechts = aufmass ? aufmassSummen(r).map((s) => `${formatMenge(s.menge)} ${s.label}`).join('<br>') : r.art === 'bedenken' ? '' : formatHours(workedHours(r));
       out += `
         <a class="rcard" href="#/bericht/${encodeURIComponent(r.id)}">
           <div class="date"><b>${d.getDate()}</b><span>${weekday(r.datum).slice(0, 2)}</span></div>
           <div class="body">
             <div class="title ${r.baustelle ? '' : 'muted'}">${esc(r.baustelle || 'Ohne Baustelle')}</div>
             ${preview ? `<div class="preview">${esc(preview)}</div>` : ''}
-            <div class="meta">${r.art === 'rapport' ? '<span class="pill art">Rapport</span>' : ''}${r.fremd && r.erstelltVon ? `<span class="pill von">von ${esc(r.erstelltVon)}</span>` : ''}${syncPill(r)}${n ? `<span>${ICON.clip} ${n}</span>` : ''}${r.art === 'rapport' && isAdmin() ? abgSchalter(r.id, istAbgerechnet(r.id, abr)) : ''}</div>
+            <div class="meta">${r.art === 'rapport' ? '<span class="pill art">Rapport</span>' : r.art === 'bedenken' ? '<span class="pill art bedenken">Bedenken</span>' : ''}${r.fremd && r.erstelltVon ? `<span class="pill von">von ${esc(r.erstelltVon)}</span>` : ''}${syncPill(r)}${n ? `<span>${ICON.clip} ${n}</span>` : ''}${r.art === 'rapport' && isAdmin() ? abgSchalter(r.id, istAbgerechnet(r.id, abr)) : ''}</div>
           </div>
           <div class="hours">${rechts}</div>
         </a>`;
@@ -472,7 +474,7 @@ async function renderEditor(id) {
 
   appbar.innerHTML = `
     <button class="icon-btn" id="back" aria-label="Zurück">${ICON.back}</button>
-    <h1 class="small"><span id="head-title">${isDraft ? (report.art === 'aufmass' ? 'Neues Aufmaß' : 'Neuer Bericht') : artLabel(report)}</span><span class="sub" id="head-date">${weekday(report.datum)}, ${formatDate(report.datum)}</span></h1>
+    <h1 class="small"><span id="head-title">${isDraft ? (report.art === 'aufmass' ? 'Neues Aufmaß' : report.art === 'bedenken' ? 'Neue Bedenkenanmeldung' : 'Neuer Bericht') : artLabel(report)}</span><span class="sub" id="head-date">${weekday(report.datum)}, ${formatDate(report.datum)}</span></h1>
     <button class="icon-btn" id="menu-btn" aria-label="Mehr">${ICON.more}</button>`;
   const wetterChips = WETTER.map((w) =>
     `<button type="button" class="chip" data-wetter="${w.id}" aria-pressed="${report.wetter.includes(w.id)}">${w.icon} ${w.label}</button>`).join('');
@@ -482,7 +484,7 @@ async function renderEditor(id) {
     <form id="form" autocomplete="off" onsubmit="return false">
       <section class="section">
         <h2>Allgemein</h2>
-        <div class="seg bericht-only" id="art-seg" role="radiogroup" aria-label="Art">${ARTEN.map((a) =>
+        <div class="seg bericht-only" id="art-seg" role="radiogroup" aria-label="Art">${ARTEN.filter((a) => a.id !== 'bedenken').map((a) =>
           `<button type="button" role="radio" data-art="${a.id}" aria-checked="${report.art === a.id}">${a.label}</button>`).join('')}</div>
         <label class="field"><span>Datum</span><input type="date" data-field="datum" value="${esc(report.datum)}" required></label>
         <div class="field"><span>Baustelle</span><button type="button" class="site-pick" id="site-pick"></button></div>
@@ -490,6 +492,8 @@ async function renderEditor(id) {
         <label class="field aufmass-only"><span>Auftraggeber</span><input type="text" data-field="auftraggeber" value="${esc(report.auftraggeber || '')}" placeholder="optional"></label>
         <label class="field aufmass-only"><span>Art der Arbeit</span><input type="text" data-field="arbeitsart" value="${esc(report.arbeitsart || '')}" placeholder="z. B. Putz außen"></label>
       </section>
+
+      ${bedenkenHtml(report)}
 
       <section class="section bericht-only">
         <h2>Personal und Arbeitszeit <span class="h-right" id="hours"></span></h2>
@@ -543,13 +547,13 @@ async function renderEditor(id) {
         <div id="am-summen" class="crew-sum"></div>
       </section>
 
-      <section class="section">
+      <section class="section ohne-bedenken">
         <h2>Bemerkungen</h2>
         <label class="field"><textarea data-field="bemerkungen" placeholder="Behinderungen, Mängel, Absprachen, besondere Vorkommnisse …" rows="3">${esc(report.bemerkungen)}</textarea></label>
       </section>
 
       <section class="section sign-only">
-        <h2>${report.art === 'aufmass' ? 'Anerkannt (Unterschrift Auftraggeber)' : 'Unterschrift Bauherr'}</h2>
+        <h2 id="sign-titel">${signTitel(report)}</h2>
         <div id="sign-box"></div>
       </section>
 
@@ -623,7 +627,7 @@ async function renderEditor(id) {
       report.positionen = (report.positionen || []).filter((p) => !positionLeer(p))
         .map((p) => { const q = normPosition(p); const z = q.zeilen.filter((x) => !zeileLeer(x) || x.info); return { ...q, zeilen: z.length ? z : [newZeile()] }; });
     }
-    const fehlt = rapportFehlt(report);
+    const fehlt = rapportFehlt(report) || (report.art === 'bedenken' ? bedenkenFehlt(report) : null);
     if (fehlt) {
       toast(fehlt.text, 4000);
       const el = fehlt.sel && $(fehlt.sel);
@@ -669,7 +673,7 @@ async function renderEditor(id) {
     pendingAdds.clear();
     if (drafts.delete(report.id)) requestPersistentStorage();
     unsaved = false;
-    toast(report.art === 'aufmass' ? 'Aufmaß gespeichert.' : 'Bericht gespeichert.');
+    toast(report.art === 'aufmass' ? 'Aufmaß gespeichert.' : report.art === 'bedenken' ? 'Bedenkenanmeldung gespeichert.' : 'Bericht gespeichert.');
     scheduleAutoSync(1500);
     leave();
   };
@@ -723,8 +727,15 @@ async function renderEditor(id) {
 
   let wetterAutomatisch = () => {}; // wird weiter unten beim Wetter gesetzt
   const showRapport = () => {
+    const bd = report.art === 'bedenken';
     $$('.rapport-only').forEach((el) => { el.hidden = report.art !== 'rapport'; });
-    $$('.sign-only').forEach((el) => { el.hidden = report.art !== 'rapport' && report.art !== 'aufmass'; });
+    $$('.sign-only').forEach((el) => { el.hidden = !['rapport', 'aufmass', 'bedenken'].includes(report.art); });
+    $$('.bericht-only').forEach((el) => { el.hidden = report.art === 'aufmass' || bd; });
+    $$('.bedenken-only').forEach((el) => { el.hidden = !bd; });
+    $$('.ohne-bedenken').forEach((el) => { el.hidden = bd; });
+    $('#sign-titel').textContent = signTitel(report);
+    drawSign();
+    if (bd) bedenkenVorbelegen();
   };
   const setArt = (art) => {
     const ersteWahl = !report.art;
@@ -732,7 +743,7 @@ async function renderEditor(id) {
     if (isDraft && ersteWahl) setTimeout(() => wetterAutomatisch(), 0);
     showRapport();
     $$('#art-seg button').forEach((b) => b.setAttribute('aria-checked', b.dataset.art === art));
-    $('#head-title').textContent = `${isDraft ? 'Neuer ' : ''}${artLabel(report)}`;
+    $('#head-title').textContent = `${isDraft ? (art === 'bedenken' ? 'Neue ' : 'Neuer ') : ''}${artLabel(report)}`;
     changed();
   };
   $$('#art-seg button').forEach((b) => { b.onclick = () => setArt(b.dataset.art); });
@@ -740,12 +751,10 @@ async function renderEditor(id) {
     const { sheet, close } = openSheet(`
       <h2>Was möchtest du erstellen?</h2>
       <div class="art-choice">${ARTEN.map((a) => `<button type="button" class="pick" data-art="${a.id}">
-        ${a.id === 'rapport' ? ICON.clock : ICON.doc}<span><b>${a.label}</b><small>${a.hint}</small></span></button>`).join('')}</div>`);
+        ${a.id === 'rapport' ? ICON.clock : a.id === 'bedenken' ? ICON.info : ICON.doc}<span><b>${a.label}</b><small>${a.hint}</small></span></button>`).join('')}</div>`);
     $$('.pick', sheet).forEach((b) => { b.onclick = () => { close(); setArt(b.dataset.art); }; });
   };
   if (isDraft && !report.baustelleId) setTimeout(chooseSite, 150);
-  showRapport();
-  $$('.bericht-only').forEach((el) => { el.hidden = report.art === 'aufmass'; });
   $$('.aufmass-only').forEach((el) => { el.hidden = report.art !== 'aufmass'; });
 
   // Aufmaß wie auf Papier: Position mit Messzeilen (Stück × Länge × Breite × Höhe), Abzüge, Netto
@@ -911,13 +920,14 @@ async function renderEditor(id) {
           <small>${esc(u.name || 'Ohne Namen')} · ${new Date(u.zeit).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })}</small></div>
          <div class="row two"><button type="button" class="btn soft" id="sign-btn">Neu signieren</button>
          <button type="button" class="btn ghost" id="sign-del">Entfernen</button></div>`
-      : `<p class="hint" style="margin:0 0 12px">${report.art === 'aufmass' ? 'Der Auftraggeber erkennt das Aufmaß mit dem Finger an.' : 'Der Bauherr bestätigt den Rapport mit dem Finger.'}</p>
-         <button type="button" class="btn soft block" id="sign-btn">Unterschreiben lassen</button>`;
-    $('#sign-btn').onclick = () => openSignature(u?.name || '', (res) => { report.unterschrift = res; drawSign(); changed(); });
+      : `<p class="hint" style="margin:0 0 12px">${report.art === 'aufmass' ? 'Der Auftraggeber erkennt das Aufmaß mit dem Finger an.' : report.art === 'bedenken' ? 'Wird das Schreiben vor Ort übergeben, bestätigt der Auftraggeber oder die Bauleitung hier den Empfang. Damit ist belegt, dass die Bedenken angekommen sind.' : 'Der Bauherr bestätigt den Rapport mit dem Finger.'}</p>
+         <button type="button" class="btn soft block" id="sign-btn">${report.art === 'bedenken' ? 'Empfang bestätigen lassen' : 'Unterschreiben lassen'}</button>`;
+    $('#sign-btn').onclick = () => openSignature(u?.name || '', (res) => { report.unterschrift = res; drawSign(); changed(); }, signTitel(report));
     const del = $('#sign-del');
     if (del) del.onclick = () => { if (confirm('Unterschrift entfernen?')) { report.unterschrift = null; drawSign(); changed(); } };
   };
-  drawSign();
+  const bedenkenVorbelegen = bedenkenBinden(report, { changed });
+  showRapport();
 
   const drawCrew = () => {
     const crew = report.mitarbeiter;
@@ -1043,7 +1053,7 @@ async function renderEditor(id) {
   $('#wetter-holen').onclick = () => wetterAbfragen(false);
   wetterInfoZeigen();
   wetterAutomatisch = () => {
-    if (settings.wetterAuto !== false && report.art !== 'aufmass' && wetterLeer()) wetterAbfragen(true);
+    if (settings.wetterAuto !== false && report.art !== 'aufmass' && report.art !== 'bedenken' && wetterLeer()) wetterAbfragen(true);
   };
 
   const drawThumbs = async () => {
@@ -1500,6 +1510,139 @@ let editorHooks = null;
 
 // Pflichtangaben beim Rapport, bevor gespeichert werden darf.
 const RAPPORT_PFLICHT = { zeiten: true, arbeiten: true, unterschrift: false };
+
+// ---------- Bedenkenanmeldung (§ 4 Abs. 3 VOB/B) ----------
+
+function signTitel(r) {
+  if (r.art === 'aufmass') return 'Anerkannt (Unterschrift Auftraggeber)';
+  if (r.art === 'bedenken') return 'Empfang bestätigt (Auftraggeber / Bauleitung)';
+  return 'Unterschrift Bauherr';
+}
+
+function bedenkenHtml(r) {
+  const an = (b) => (b ? 'true' : 'false');
+  return `
+      <section class="section bedenken-only" hidden>
+        <h2>Empfänger</h2>
+        <p class="hint" style="margin-top:0">Das Schreiben geht auf Deutsch an den Auftraggeber. Bitte die Texte auf Deutsch lassen.</p>
+        <label class="field"><span>Auftraggeber</span><input type="text" id="bd-ag" data-field="auftraggeber" value="${esc(r.auftraggeber || '')}" placeholder="Firma bzw. Name"></label>
+        <label class="field"><span>Anschrift</span><textarea data-field="bdAnschrift" rows="2" placeholder="Straße, PLZ Ort">${esc(r.bdAnschrift || '')}</textarea></label>
+        <label class="field"><span>Ansprechpartner / Anrede</span><input type="text" data-field="bdAnrede" value="${esc(r.bdAnrede || '')}" placeholder="${esc(ANREDE)}"></label>
+        <label class="field"><span>Unsere Leistung</span><input type="text" data-field="bdLeistung" value="${esc(r.bdLeistung || '')}" placeholder="z. B. Innenputz Erdgeschoss"></label>
+      </section>
+
+      <section class="section bedenken-only" hidden>
+        <h2>Anlass</h2>
+        <p class="hint" style="margin-top:0">Antippen übernimmt einen vorformulierten Text. Alles lässt sich danach ändern.</p>
+        <div class="chips bd-anlaesse" id="bd-anlaesse">${ANLAESSE.map((a) =>
+          `<button type="button" class="chip" data-anlass="${a.id}" aria-pressed="${an((r.bdAnlaesse || []).includes(a.id))}">${esc(a.label)}</button>`).join('')}</div>
+        <div class="field" style="margin-top:14px"><span>Die Bedenken richten sich gegen</span>
+          <div class="chips" id="bd-gegen">${GEGEN.map((g) =>
+            `<button type="button" class="chip" data-gegen="${g.id}" aria-pressed="${an((r.bdGegen || []).includes(g.id))}">${esc(g.label)}</button>`).join('')}</div></div>
+        <label class="field" id="bd-vorleister-feld"><span>Anderer Unternehmer (Vorleistung)</span><input type="text" data-field="bdVorleister" value="${esc(r.bdVorleister || '')}" placeholder="optional, z. B. Firma Muster Fensterbau"></label>
+      </section>
+
+      <section class="section bedenken-only" hidden>
+        <h2>Sachverhalt</h2>
+        <label class="field"><span>Was wurde festgestellt?</span><textarea id="bd-sachverhalt" data-field="bdSachverhalt" rows="4" placeholder="Wo, was, seit wann? Fotos unten anhängen.">${esc(r.bdSachverhalt || '')}</textarea></label>
+        <label class="field"><span>Mögliche Folgen</span><textarea id="bd-folgen" data-field="bdFolgen" rows="3">${esc(r.bdFolgen || '')}</textarea></label>
+        <label class="field"><span>Unser Vorschlag</span><textarea id="bd-vorschlag" data-field="bdVorschlag" rows="3">${esc(r.bdVorschlag || '')}</textarea></label>
+      </section>
+
+      <section class="section bedenken-only" hidden>
+        <h2>Frist und Absender</h2>
+        <label class="field" style="max-width:220px"><span>Antwort erbeten bis</span><input type="date" id="bd-frist" data-field="bdFrist" value="${esc(r.bdFrist || '')}"></label>
+        <div class="chips bd-schalter">
+          <button type="button" class="chip" id="bd-ruhen" aria-pressed="${an(r.bdRuhen !== false)}">Betroffene Arbeiten bis zur Antwort zurückstellen</button>
+          <button type="button" class="chip" id="bd-behinderung" aria-pressed="${an(r.bdBehinderung)}">Zugleich Behinderung nach § 6 VOB/B anzeigen</button>
+        </div>
+        <label class="field" style="margin-top:14px"><span>Unterzeichner</span><input type="text" id="bd-unterzeichner" data-field="bdUnterzeichner" value="${esc(r.bdUnterzeichner || '')}" placeholder="Vor- und Nachname"></label>
+        <div id="bd-sig"></div>
+        <p class="hint">Vorlage nach dem Wortlaut der VOB/B, keine Rechtsberatung. Das PDF am besten gleich per E-Mail an den Auftraggeber schicken und den Versand aufheben, oder vor Ort den Empfang unten bestätigen lassen.</p>
+      </section>`;
+}
+
+// Bedienung der Bedenkenanmeldung im Bericht; gibt eine Funktion zum Vorbelegen zurück.
+function bedenkenBinden(report, { changed }) {
+  report.bdAnlaesse ||= [];
+  report.bdGegen ||= [];
+  const feld = (k) => $(`[data-field="${k}"]`);
+  const setzen = (k, v) => {
+    report[k] = v;
+    const el = feld(k);
+    if (el) { el.value = v; if (el.tagName === 'TEXTAREA') autoGrow(el); }
+  };
+  const drawGegen = () => {
+    $$('#bd-gegen [data-gegen]').forEach((b) => b.setAttribute('aria-pressed', report.bdGegen.includes(b.dataset.gegen)));
+    $('#bd-vorleister-feld').hidden = !report.bdGegen.includes('vorleistung');
+  };
+  $$('#bd-anlaesse [data-anlass]').forEach((b) => {
+    b.onclick = () => {
+      const a = ANLAESSE.find((x) => x.id === b.dataset.anlass);
+      const an = !report.bdAnlaesse.includes(a.id);
+      report.bdAnlaesse = an ? [...report.bdAnlaesse, a.id] : report.bdAnlaesse.filter((x) => x !== a.id);
+      b.setAttribute('aria-pressed', an);
+      for (const [k, t] of [['bdSachverhalt', a.sachverhalt], ['bdFolgen', a.folgen], ['bdVorschlag', a.vorschlag]]) {
+        setzen(k, an ? textDazu(report[k], t) : textWeg(report[k], t));
+      }
+      if (an) {
+        for (const g of a.gegen) if (!report.bdGegen.includes(g)) report.bdGegen.push(g);
+      } else {
+        // „Wogegen“ nur zurücknehmen, wenn kein anderer gewählter Anlass es braucht
+        const noch = new Set(ANLAESSE.filter((x) => report.bdAnlaesse.includes(x.id)).flatMap((x) => x.gegen));
+        report.bdGegen = report.bdGegen.filter((g) => noch.has(g) || !a.gegen.includes(g));
+      }
+      drawGegen();
+      changed();
+    };
+  });
+  $$('#bd-gegen [data-gegen]').forEach((b) => {
+    b.onclick = () => {
+      const g = b.dataset.gegen;
+      report.bdGegen = report.bdGegen.includes(g) ? report.bdGegen.filter((x) => x !== g) : [...report.bdGegen, g];
+      drawGegen();
+      changed();
+    };
+  });
+  const schalter = (id, key, standard) => {
+    const b = $(id);
+    b.onclick = () => {
+      const an = !(report[key] ?? standard);
+      report[key] = an;
+      b.setAttribute('aria-pressed', an);
+      changed();
+    };
+  };
+  schalter('#bd-ruhen', 'bdRuhen', true);
+  schalter('#bd-behinderung', 'bdBehinderung', false);
+  const drawSig = () => {
+    const u = report.bdSignatur;
+    $('#bd-sig').innerHTML = u?.dataUrl
+      ? `<div class="sign-done"><img src="${u.dataUrl}" alt="Unterschrift"><small>${esc(u.name || '')}</small></div>
+         <div class="row two"><button type="button" class="btn soft" id="bd-sig-btn">Neu unterschreiben</button>
+         <button type="button" class="btn ghost" id="bd-sig-del">Entfernen</button></div>`
+      : '<button type="button" class="btn soft block" id="bd-sig-btn">Selbst unterschreiben</button>';
+    $('#bd-sig-btn').onclick = () => openSignature(report.bdUnterzeichner || settings.author || '', (res) => {
+      report.bdSignatur = res;
+      if (res.name) setzen('bdUnterzeichner', res.name);
+      drawSig();
+      changed();
+    }, 'Unterschrift für das Schreiben');
+    const del = $('#bd-sig-del');
+    if (del) del.onclick = () => { if (confirm('Unterschrift entfernen?')) { report.bdSignatur = null; drawSig(); changed(); } };
+  };
+  drawGegen();
+  drawSig();
+  // Neue Bedenkenanmeldung: Absender, Frist und Auftraggeber (aus der Baustelle) vorschlagen
+  return async () => {
+    if (!report.bdUnterzeichner && settings.author) setzen('bdUnterzeichner', settings.author);
+    if (!report.bdFrist) setzen('bdFrist', fristVorschlag(report.datum));
+    if (!report.auftraggeber && report.baustelleId) {
+      const site = await db.getSite(report.baustelleId);
+      if (site?.kunde && !report.auftraggeber) setzen('auftraggeber', site.kunde);
+    }
+  };
+}
 
 function rapportFehlt(r) {
   if (r.art !== 'rapport') return null;
@@ -3134,9 +3277,9 @@ const trotzdemNeu = (x) => confirm(`„${x.name}“ gibt es schon. Trotzdem als 
 const mitPlanFeldern = (p) => Object.assign(p, { gewerk: p.gewerk || '', schultag: p.schultag ?? '' });
 
 // Unterschrift mit dem Finger auf einer Zeichenfläche.
-function openSignature(name, onDone) {
+function openSignature(name, onDone, titel = 'Unterschrift Bauherr') {
   const { sheet, close } = openSheet(`
-    <h2>Unterschrift Bauherr</h2>
+    <h2>${esc(titel)}</h2>
     <label class="field"><span>Name</span><input type="text" id="sign-name" value="${esc(name)}" placeholder="Vor- und Nachname"></label>
     <div class="sign-pad"><canvas id="sign-canvas"></canvas><span class="sign-line">Hier unterschreiben</span></div>
     <div class="row three sign-actions">
@@ -3484,7 +3627,7 @@ function monatsGrenzen(delta) {
 const siteKey = (r) => r.baustelleId || (r.baustelle ? `frei:${r.baustelle.trim().toLowerCase()}` : '');
 
 async function openZusammenfassung(preset = {}) {
-  const reports = (await db.allReports()).filter((r) => r.art !== 'aufmass');
+  const reports = (await db.allReports()).filter((r) => r.art !== 'aufmass' && r.art !== 'bedenken');
   if (!reports.length) { toast('Es gibt noch keine Berichte.'); return; }
   const sites = await db.allSites();
   const f = { baustelleId: preset.baustelleId || '', art: '', abr: '', von: '', bis: '', gesamt: true };
