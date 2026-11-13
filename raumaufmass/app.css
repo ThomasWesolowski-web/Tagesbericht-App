@@ -830,3 +830,11 @@ html.mk-offen, html.mk-offen body { overflow: hidden; }
 .ra-wahl .btn small { color: #cfd4da; font-weight: 400; }
 .ra-wahl .btn:disabled { opacity: .45; }
 .ra-liste { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; font-size: .88rem; }
+
+/* Aufmaß-Liste auf der Startseite (Knopf mit Pfeil rechts) */
+.proj { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 12px 14px; margin-bottom: 8px;
+  border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: inherit; font: inherit; cursor: pointer; }
+.proj > span { flex: 1; min-width: 0; }
+.proj b { display: block; font-weight: 650; }
+.proj small { display: block; color: var(--ink-3); font-size: .82rem; }
+.proj > svg { width: 20px; height: 20px; flex: none; color: var(--ink-3); }

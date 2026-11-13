@@ -47,7 +47,8 @@ In diesem Repo liegt nur der App-Code. Es enthält keine Berichte und keine Zuga
   berechnen, Flächen, Öffnungen und Strecken antippen; Öffnungen nach VOB/C übermessen oder abziehen,
   Laibungen gesondert. Läuft komplett im Browser, Maße sind nur ungefähr (`fotoaufmass.js`)
 - Raumaufmaß, vorübergehend als eigene App unter `raumaufmass/`
-  (https://thomaswesolowski-web.github.io/Tagesbericht-App/raumaufmass/, Aufmaße nur auf dem Gerät,
+  (https://thomaswesolowski-web.github.io/Tagesbericht-App/raumaufmass/, Aufmaße und eigene Material-Systeme
+  mit Token im Repo `Rapporte-` unter `raumaufmass/` gesichert (`raumaufmass/ra-sync.js`),
   PDF zum Teilen; in der Berichte-App bleiben alte Räume nur sichtbar): Raum frei skizzieren (Finger, Stift, Maus), daraus gerade Wände
   (Douglas-Peucker, Ecken, Ausrichten 0/90/45°, Schließen); Maßstab über ein echtes Maß, weitere Maße
   mit Ausgleich und Widerspruchsprüfung; Wände/Ecken bearbeiten, Türen und Fenster, Raumhöhe;

@@ -1,18 +1,20 @@
 // Raumaufmaß als eigene Test-App (vorübergehend getrennt von der Tagesberichte-App).
-// Ein Aufmaß hat einen Namen (z. B. Baustelle) und Räume. Alles bleibt auf dem Gerät (IndexedDB),
-// ausgegeben wird ein PDF mit den Grundrissen und Flächen. Der Editor ist raumaufmass.js.
+// Ein Aufmaß hat einen Namen (z. B. Baustelle) und Räume. Gespeichert auf dem Gerät (IndexedDB) und mit Token
+// beim Abgleich im Repo (ra-sync.js); ausgegeben wird ein PDF mit den Grundrissen und Flächen. Der Editor ist raumaufmass.js.
 
 import { openRaumAufmass } from './raumaufmass.js';
 import { zeige3d } from './ansicht3d.js';
 import { materialPlaner, systemListe, systemEditor, systemSpeicherSetzen, alleSysteme } from './material-ui.js';
 import { bedarf, KNAUF_STAND } from './material.js';
 import { baustelleWaehlen, verbunden, tokenSpeichern, abgleichen } from './baustellen.js';
+import { dbOffen, alleProjekte, projektLaden, projektSpeichern, projektLoeschen, repoStand, nichtGesichert } from './ra-speicher.js';
+import * as hauptDb from '../db.js';
 import {
   neuerRaum, berechne, raumKurz, alsSvg, massstabFuer, grenzen, planElemente, gruppeElemente, geschlossen,
   naechsterName, fmt2, verschiebeRaum, grundrissAbgleichen,
 } from './raumgeometrie.js';
 
-const RA_VERSION = '1.16.0';
+const RA_VERSION = '1.17.0';
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -41,33 +43,8 @@ function toast(text, ms = 2600) {
   toastTimer = setTimeout(() => el.classList.remove('show'), ms);
 }
 
-// ---------- Speicher (IndexedDB) ----------
-const dbOffen = new Promise((resolve, reject) => {
-  // Version 2: Store „systeme“ für eigene oder geänderte Material-Systeme
-  const req = indexedDB.open('raumaufmass', 2);
-  req.onupgradeneeded = () => {
-    const db = req.result;
-    if (!db.objectStoreNames.contains('projekte')) db.createObjectStore('projekte', { keyPath: 'id' });
-    if (!db.objectStoreNames.contains('systeme')) db.createObjectStore('systeme', { keyPath: 'id' });
-  };
-  req.onsuccess = () => resolve(req.result);
-  req.onerror = () => reject(req.error);
-});
-async function tx(modus, fn) {
-  const db = await dbOffen;
-  return new Promise((resolve, reject) => {
-    const t = db.transaction('projekte', modus);
-    const erg = fn(t.objectStore('projekte'));
-    t.oncomplete = () => resolve(erg?.result);
-    t.onabort = () => reject(t.error);
-    t.onerror = () => reject(t.error);
-  });
-}
-systemSpeicherSetzen(() => dbOffen);
-const alleProjekte = () => tx('readonly', (s) => s.getAll());
-const projektLaden = (id) => tx('readonly', (s) => s.get(id));
-const projektSpeichern = (p) => tx('readwrite', (s) => s.put({ ...p, geaendert: Date.now() }));
-const projektLoeschen = (id) => tx('readwrite', (s) => s.delete(id));
+// ---------- Speicher (IndexedDB, ra-speicher.js) ----------
+systemSpeicherSetzen(dbOffen);
 
 // ---------- Hilfen ----------
 const fertig = (r) => geschlossen(r) && r.massstabGesetzt;
@@ -110,44 +87,78 @@ const view = $('#view');
 try { if (new URLSearchParams(location.search).get('aus') === 'berichte') sessionStorage.setItem('ra-aus-berichte', '1'); } catch { /* ohne Speicher */ }
 const ausBerichten = () => { try { return sessionStorage.getItem('ra-aus-berichte') === '1'; } catch { return false; } };
 
+// Abgleich: Baustellen (Berichte-App) und Raumaufmaße/Material-Systeme (Sicherung im Repo)
+let zuletztAbgeglichen = 0;
+async function allesAbgleichen() {
+  const s = hauptDb.loadSettings();
+  if (!s.token) return null;
+  zuletztAbgeglichen = Date.now();
+  await abgleichen();
+  const { raumaufmassAbgleichen } = await import('./ra-sync.js');
+  return raumaufmassAbgleichen(s, { alle: s.admin === true });
+}
+
 async function liste() {
   appbar.innerHTML = ausBerichten()
     ? `<a class="icon-btn" id="back" href="../#/aufmass" aria-label="Zurück zur Berichte-App">${ICON.zurueck}</a><h1>Raumaufmaß<span class="sub">Version ${RA_VERSION}</span></h1>`
     : `<h1>Raumaufmaß<span class="sub">Testversion ${RA_VERSION}, getrennt von der Berichte-App</span></h1>`;
   const projekte = (await alleProjekte()).sort((a, b) => (b.geaendert || 0) - (a.geaendert || 0));
+  const stand = repoStand();
+  const offen = projekte.filter((p) => nichtGesichert(p, stand)).length;
+  const settings = hauptDb.loadSettings();
   view.innerHTML = `
     <section class="section">
       <h2>Aufmaße</h2>
       <div class="knoepfe">
-        ${projekte.length ? projekte.map((p) => `<button type="button" class="proj" data-id="${p.id}"><span><b>${esc(p.name)}</b><small>${esc(p.datum)} · ${p.raeume.length} ${p.raeume.length === 1 ? 'Raum' : 'Räume'} · ${fmt2(bodenSumme(p.raeume))} m² Boden netto</small></span>${ICON.zurueck.replace('M15 5l-7 7 7 7', 'M9 5l7 7-7 7')}</button>`).join('') : '<p class="leer">Noch kein Aufmaß. Unten ein neues anlegen.</p>'}
+        ${projekte.length ? projekte.map((p) => `<button type="button" class="proj" data-id="${p.id}"><span><b>${esc(p.name)}</b><small>${esc(p.datum)} · ${p.raeume.length} ${p.raeume.length === 1 ? 'Raum' : 'Räume'} · ${fmt2(bodenSumme(p.raeume))} m² Boden netto${verbunden() && nichtGesichert(p, stand) ? ' · noch nicht gesichert' : ''}</small></span>${ICON.zurueck.replace('M15 5l-7 7 7 7', 'M9 5l7 7-7 7')}</button>`).join('') : '<p class="leer">Noch kein Aufmaß. Unten ein neues anlegen.</p>'}
       </div>
       <div class="knoepfe"><button type="button" class="btn primary block" id="neu">${ICON.plus} Neues Aufmaß</button>
         <button type="button" class="btn ghost block" id="systeme">${ICON.schichten} Systeme für Material (Knauf, eigene)</button></div>
-      <p class="hint">Räume skizzieren, eine Wand messen, Türen, Fenster, Dachschrägen und Körper (Kamin, Säule) setzen, Räume Wand an Wand anbauen. Alles bleibt auf diesem Gerät gespeichert; als PDF ansehen, teilen oder speichern.</p>
+      <p class="hint">Räume skizzieren, eine Wand messen, Türen, Fenster, Dachschrägen und Körper (Kamin, Säule) setzen, Räume Wand an Wand anbauen. Gespeichert auf diesem Gerät und mit Token auch im Repo; als PDF ansehen, teilen oder speichern.</p>
     </section>
     <section class="section">
-      <h2>Baustellen aus der Berichte-App</h2>
-      ${verbunden() ? `<p class="hint">Verbunden: Baustellen kommen aus der Berichte-App, neue Baustellen von hier gehen dorthin.</p>
-        <button type="button" class="btn ghost block" id="bs-abgleich">Baustellen jetzt abgleichen</button>`
-      : `<p class="hint">Auf diesem Gerät ist kein Token eingetragen. Auf dem iPhone hat jede App vom Home-Bildschirm ihren eigenen Speicher; dann hier das Token aus der Berichte-App einfügen (dort Einstellungen › „Token kopieren“).</p>
+      <h2>Sicherung im Repo und Baustellen</h2>
+      ${verbunden() ? `<p class="hint" id="ra-sicherung">${!projekte.length ? 'Neue Aufmaße werden beim Abgleich im Repo gesichert.' : offen ? `${offen} von ${projekte.length} ${projekte.length === 1 ? 'Aufmaß ist' : offen === 1 ? 'Aufmaßen ist' : 'Aufmaßen sind'} noch nicht im Repo gesichert. Das passiert beim nächsten Abgleich mit Netz.` : `${projekte.length === 1 ? 'Das Aufmaß ist' : `Alle ${projekte.length} Aufmaße sind`} im Repo gesichert und ${projekte.length === 1 ? 'kommt' : 'kommen'} auf einem neuen Handy wieder.`}
+        Baustellen kommen aus der Berichte-App, neue Baustellen von hier gehen dorthin.</p>
+        ${settings.author ? '' : `<label class="field"><span>Dein Name (wie in der Berichte-App)</span><input type="text" id="ra-name" autocomplete="name" placeholder="z. B. Max Mustermann"></label>
+        <p class="hint">Mit deinem Namen findet ein neues Handy deine Aufmaße im Repo wieder.</p>`}
+        <button type="button" class="btn ghost block" id="bs-abgleich">Jetzt abgleichen</button>`
+      : `<p class="hint">Auf diesem Gerät ist kein Token eingetragen, deshalb liegen die Aufmaße nur auf diesem Gerät. Auf dem iPhone hat jede App vom Home-Bildschirm ihren eigenen Speicher; dann hier das Token aus der Berichte-App einfügen (dort Einstellungen › „Token kopieren“). Danach werden die Aufmaße im Repo gesichert.</p>
         <label class="field"><span>Token</span><input type="password" id="bs-token" autocomplete="off" placeholder="github_pat_…"></label>
-        <button type="button" class="btn ghost block" id="bs-token-ok">Token speichern und Baustellen holen</button>`}
+        <label class="field"><span>Dein Name (wie in der Berichte-App)</span><input type="text" id="ra-name" autocomplete="name" value="${esc(settings.author || '')}" placeholder="z. B. Max Mustermann"></label>
+        <button type="button" class="btn ghost block" id="bs-token-ok">Token speichern und abgleichen</button>`}
     </section>`;
   $$('.proj', view).forEach((b) => { b.onclick = () => { location.hash = `#/p/${b.dataset.id}`; }; });
   $('#systeme').onclick = () => { location.hash = '#/systeme'; };
-  const holen = async (knopf) => {
-    knopf.disabled = true;
-    try { await abgleichen(); toast('Baustellen abgeglichen.'); } catch (err) { toast(`Abgleich ging nicht (${err.message}).`, 5000); }
-    knopf.disabled = false;
+  const nameUebernehmen = () => {
+    const n = $('#ra-name')?.value.trim();
+    if (n) hauptDb.saveSettings({ ...hauptDb.loadSettings(), author: n });
   };
-  $('#bs-abgleich')?.addEventListener('click', (e) => holen(e.currentTarget));
+  const holen = async (knopf, { still = false } = {}) => {
+    if (knopf) knopf.disabled = true;
+    try {
+      const erg = await allesAbgleichen();
+      if (erg?.kopien) toast(`${erg.kopien} Aufmaß(e) wurden auch auf einem anderen Gerät geändert. Deine Fassung liegt als Kopie daneben.`, 6000);
+      else if (!still) toast(erg?.hochgeladen ? `Abgeglichen, ${erg.hochgeladen} Aufmaß(e) im Repo gesichert.` : 'Abgeglichen.');
+      if ((location.hash || '#/') === '#/' && !document.querySelector('.sheet-backdrop')) {
+        if (!still || erg?.hochgeladen || erg?.geholt || erg?.geloescht || erg?.kopien) liste();
+      }
+    } catch (err) {
+      if (!still) toast(`Abgleich ging nicht (${err.message}).`, 5000);
+    } finally {
+      if (knopf) knopf.disabled = false;
+    }
+  };
+  $('#bs-abgleich')?.addEventListener('click', (e) => { nameUebernehmen(); holen(e.currentTarget); });
   $('#bs-token-ok')?.addEventListener('click', async (e) => {
     const t = $('#bs-token').value.trim();
     if (!t) { toast('Bitte das Token einfügen.'); return; }
     tokenSpeichern(t);
+    nameUebernehmen();
     await holen(e.currentTarget);
-    liste();
   });
+  // im Hintergrund sichern und holen (höchstens einmal pro Minute)
+  if (verbunden() && navigator.onLine && Date.now() - zuletztAbgeglichen > 60000) holen(null, { still: true });
   $('#neu').onclick = async () => {
     const bs = await baustelleWaehlen({ titel: 'Neues Aufmaß: Baustelle' });
     if (bs === undefined) return;
@@ -271,7 +282,7 @@ async function projekt(id) {
       }
     };
     $('#loeschen').onclick = async () => {
-      if (!confirm(`„${p.name}“ mit allen Räumen löschen?`)) return;
+      if (!confirm(`„${p.name}“ mit allen Räumen löschen?${repoStand()[p.id] ? ' Im Repo bleibt eine Sicherung.' : ''}`)) return;
       await projektLoeschen(p.id);
       location.hash = '#/';
     };

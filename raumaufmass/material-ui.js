@@ -5,6 +5,7 @@ import { berechne, fmt2, geschlossen } from './raumgeometrie.js';
 import {
   BEREICHE, SCHICHT_ARTEN, KNAUF_STAND, systemeMischen, flaechenVon, systemFuer, bedarf, neuesSystem, aufbauSvg, parameterVon,
 } from './material.js';
+import { systemGeloeschtMerken } from './ra-speicher.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -28,7 +29,8 @@ async function txSys(modus, fn) {
 }
 export const eigeneSysteme = () => txSys('readonly', (s) => s.getAll());
 const eigenesSpeichern = (s) => txSys('readwrite', (st) => st.put({ ...s, geaendertAm: Date.now() }));
-const eigenesLoeschen = (id) => txSys('readwrite', (st) => st.delete(id));
+// Löschen merken, damit es beim Abgleich auch im Repo und auf anderen Geräten gilt (ra-sync.js)
+const eigenesLoeschen = async (id) => { systemGeloeschtMerken(id); return txSys('readwrite', (st) => st.delete(id)); };
 export async function alleSysteme() { return systemeMischen(await eigeneSysteme()); }
 
 const ICON = {

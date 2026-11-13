@@ -1002,6 +1002,15 @@ export function syncAll(settings, onProgress, { alle = false } = {}) {
         abrechnungError ||= `Zeitplan: ${err.message}`;
       }
     }
+    // Raumaufmaße und eigene Material-Systeme (liegen sonst nur auf dem Gerät)
+    let raumaufmass = null;
+    let raumaufmassError = null;
+    try {
+      const { raumaufmassAbgleichen } = await import('./raumaufmass/ra-sync.js');
+      raumaufmass = await raumaufmassAbgleichen(settings, { alle });
+    } catch (err) {
+      raumaufmassError = err.message;
+    }
     const pending = (await db.allReports()).filter((r) => r.dirty);
     for (const r of pending) {
       onProgress?.({ report: r, ok, failed, total: pending.length });
@@ -1025,9 +1034,12 @@ export function syncAll(settings, onProgress, { alle = false } = {}) {
     } catch (err) {
       ladeFehler = err.message;
     }
-    return { ok, failed, total: pending.length, stammdatenChanged, stammdatenError, stundenError, urlaub, urlaubError, abrechnungError, geladen, ladeFehler };
+    return { ok, failed, total: pending.length, stammdatenChanged, stammdatenError, stundenError, urlaub, urlaubError, abrechnungError, raumaufmass, raumaufmassError, geladen, ladeFehler };
   })().finally(() => {
     running = null;
   });
   return running;
 }
+
+// Für den Abgleich der Raumaufmaße (raumaufmass/ra-sync.js)
+export { client as repoClient, getJson as repoJson, contentsPath };
