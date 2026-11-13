@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.79.2**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.80.0**.
 
 | Was | Wo |
 | --- | --- |
@@ -39,6 +39,8 @@ Im Reiter **Berichte** startet das Plus unten rechts einen neuen Bericht. Er beg
 3. **Art der Arbeit:** Gerüstbau, Putz, Malerarbeiten, Trockenbau (mehrere möglich) plus Freitext.
 4. **Personal:** Personen aus der Liste hinzufügen, jeweils mit Kategorie (Meister, Facharbeiter, Helfer, Lehrling, Büro), Beginn, Ende und Pause. Die Minuten von Beginn und Ende werden auf 5-Minuten-Schritte gerundet; die erste Person startet mit 7:00 bis 16:00, weitere Personen übernehmen die Zeiten der ersten.
 5. **Ausgeführte Arbeiten, Material, Bemerkungen, Wetter** eintragen.
+
+   **Wetter automatisch:** Bei einem neuen Tagesbericht oder Rapport fragt die App nach der Wahl der Art den ungefähren Standort des Handys ab und trägt Wetter (Sonnig, Bewölkt, Regen, Wind, Schnee, Frost) und Temperatur selbst ein. Die Daten kommen vom Deutschen Wetterdienst über den kostenlosen Dienst Bright Sky (ohne Konto); bei einem früheren Datum gilt das Wetter von 7 bis 16 Uhr, die Temperatur um 12 Uhr. Unter dem Wetter steht die Wetterstation; im PDF heißt das Feld dann „Wetter (Quelle DWD)“. Wer danach etwas von Hand ändert, ändert es einfach; der Hinweis „automatisch“ verschwindet dann. Ohne Netz oder ohne Erlaubnis für den Standort bleibt das Wetter leer und wird wie bisher von Hand eingetragen, oder später mit „Wetter vom Standort holen“ nachgeholt. Abschalten unter Einstellungen › Allgemein › „Wetter automatisch eintragen“. Am iPhone muss der Standort für Safari-Websites erlaubt sein (Einstellungen › Datenschutz & Sicherheit › Ortungsdienste › Safari-Websites › „Beim Verwenden der App“). An Bright Sky geht nur der auf etwa 1 km gerundete Standort, kein Name und keine Baustelle; der Standort wird nicht im Bericht gespeichert.
 6. **Rapport zusätzlich:** Maschinen mit Stunden (Schnellauswahl LKW, Transporter) und Unterschrift des Bauherrn mit dem Finger (geht im Hoch- und Querformat; das Handy darf beim Unterschreiben gedreht werden, die Unterschrift bleibt erhalten). Beim Rapport sind Personal mit Zeiten und die ausgeführten Arbeiten Pflicht.
 7. **Fotos und Dokumente:** „Kamera“ oder „Datei“. Fotos werden automatisch verkleinert, Dateien bis 25 MB. Ein Foto antippen öffnet es groß: mit zwei Fingern oder den Knöpfen + und − zoomen, mit einem Finger verschieben, ⤢ zeigt wieder das ganze Foto. Seit 1.78.0 geht das wie in einer Galerie: zur Seite wischen (oder die Pfeile ‹ › antippen) zeigt das nächste oder vorige Foto des Berichts, unten steht z. B. „2 / 4“. Ist ein Foto hineingezoomt, verschiebt ein Finger das Foto; erst nach ⤢ wird wieder geblättert. Seit 1.79.0 gehören auch angehängte PDFs zur Galerie (bei PDFs blättert man nur mit den Pfeilen, seit 1.79.1); wischt man zu einer Datei zurück, steht sie wieder an derselben Stelle und mit demselben Zoom wie beim Verlassen.
 8. **Speichern.** Mit Netz lädt die App den Bericht sofort hoch, sonst sobald wieder Netz da ist.
@@ -177,6 +179,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 13.11.2026 | 1.80.0 | Wetter automatisch: Neue Berichte holen Wetter und Temperatur über den Standort des Handys (Deutscher Wetterdienst über Bright Sky), mit Knopf „Wetter vom Standort holen“ und Schalter in den Einstellungen. Ohne Netz oder Erlaubnis von Hand wie bisher. Im PDF „Wetter (Quelle DWD)“. |
 | 12.11.2026 | 1.79.2 | Stunden: Im Monats-PDF aller Mitarbeiter fehlte der Mitarbeiter, der gerade im Reiter Stunden ausgewählt war; er wurde wie ein Admin aussortiert. Jetzt sind seine Stunden drin. |
 | 05.11.2026 | 1.79.1 | Galerie flüssiger: Foto folgt dem Finger und gleitet hinaus/herein, Nachbarn werden vorab geladen; PDFs und Pläne nur noch mit den Pfeilen blättern, Fotos weiter wischen |
 | 05.11.2026 | 1.79.0 | Galerie auch für angehängte PDFs im Bericht und für Pläne/Bilder der Baustelle; zurückgewischt steht jede Datei wieder an derselben Stelle und mit demselben Zoom; Fotos wechseln schneller |
