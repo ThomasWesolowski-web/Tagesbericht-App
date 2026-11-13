@@ -35,7 +35,7 @@ import {
   planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
 } from './zeitplan.js';
 
-const APP_VERSION = '1.81.1';
+const APP_VERSION = '1.82.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -5319,6 +5319,8 @@ async function runSync(manual) {
   }
   if (location.hash === '#/zeitplan' && !document.querySelector('.sheet-backdrop')) renderZeitplan();
   if (manual && result.abrechnungError) toast(`Abgleich: ${result.abrechnungError}`, 4000);
+  if (manual && result.raumaufmassError) toast(`Raumaufmaße sichern: ${result.raumaufmassError}`, 4000);
+  if (result.raumaufmass?.kopien) toast(`${result.raumaufmass.kopien} Raumaufmaß(e) wurden auch auf einem anderen Gerät geändert. Deine Fassung liegt als Kopie daneben.`, 6000);
 }
 
 // ---------- Start ----------

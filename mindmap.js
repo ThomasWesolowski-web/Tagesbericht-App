@@ -63,7 +63,7 @@ const AESTE = [
     ['Löschen', 'Nur Admin', 'Admin']] },
   { n: 'Abgleich', t: 'Offline & Abgleich', z: [
     ['Läuft auf dem Handy', 'Installierbare Web-App, auch ohne Netz'],
-    ['Abgleich ins Firmen-Archiv', 'Berichte, Stunden, Pläne werden gesichert'],
+    ['Abgleich ins Firmen-Archiv', 'Berichte, Stunden, Pläne, Raumaufmaße werden gesichert'],
     ['Mitarbeiter-Zugang', 'Eigener Schlüssel, sieht nur eigene Berichte'],
     ['Admin holt alles', 'Alle Berichte aller Mitarbeiter', 'Admin'],
     ['Weiteres Gerät', 'Schlüssel anzeigen und kopieren', 'Admin']] },
@@ -84,7 +84,7 @@ const AESTE = [
     ['Räume anheften', 'Angebaute Räume schließen an Nachbarwände an'],
     ['Räume verschieben', 'Antippen, im Raum ziehen, wieder andocken, 90° drehen'],
     ['Updates von selbst', 'Neue Version lädt, sobald nichts offen ist'],
-    ['Nur auf dem Gerät', 'Kein Abgleich, eigenes PDF']] },
+    ['Im Repo gesichert', 'Aufmaße und eigene Systeme, kommen auf neuem Handy wieder']] },
 ];
 
 // Feste Astfarben, mit weißer Schrift in hell und dunkel lesbar
