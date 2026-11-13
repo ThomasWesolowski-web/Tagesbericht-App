@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.81.0**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.81.1**.
 
 | Was | Wo |
 | --- | --- |
@@ -166,7 +166,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 ## Updates, Datenschutz und Grenzen
 
-**Updates kommen von selbst:** Beim Öffnen lädt die App eine neue Version im Hintergrund und lädt sich neu, sobald niemand gerade einen Bericht bearbeitet. Die Version steht unten in den Einstellungen. Dort öffnet „Handbuch zur App“ dieses Handbuch direkt in der App, auch ohne Netz (immer auf Deutsch). Daneben zeigt „Mindmap der App“ alle Funktionen als Bild: Ast antippen, dann klappen die Funktionen dahinter auf.
+**Updates kommen von selbst:** Beim Öffnen lädt die App eine neue Version im Hintergrund und lädt sich neu, sobald niemand gerade einen Bericht bearbeitet. Die Version steht unten in den Einstellungen. Dort öffnet „Handbuch zur App“ dieses Handbuch direkt in der App, auch ohne Netz (immer auf Deutsch). Daneben zeigt „Mindmap der App“ alle Funktionen als Bild: Ast antippen, dann klappen die Funktionen dahinter auf. Seit 1.81.1 hat die App ein neues Symbol (Blau-Grün mit Kamerablende, MT+-Blatt und Pfeil). Ein schon installiertes Symbol auf dem iPhone ändert sich bei einem Update nicht von selbst: vorher abgleichen, dann die App vom Home-Bildschirm entfernen und in Safari über „Teilen“ › „Zum Home-Bildschirm“ neu hinzufügen; danach den Abgleich einmal prüfen.
 
 **Gut zu wissen:**
 
@@ -180,6 +180,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 13.11.2026 | 1.81.1 | Neues App-Symbol für den Home-Bildschirm (Blau-Grün, Kamerablende, MT+-Blatt mit Häkchen und Pfeil), auch als Favicon und rundes Android-Symbol. Auf dem iPhone erscheint es erst, wenn man die App vom Home-Bildschirm entfernt und neu hinzufügt. |
 | 13.11.2026 | 1.81.0 | Bedenkenanmeldung nach § 4 Abs. 3 VOB/B als dritte Art unter „Neuer Bericht“: 12 vorformulierte Anlässe, Frist, Behinderungsanzeige nach § 6 auf Wunsch, eigene Unterschrift, Empfangsbestätigung des Auftraggebers, PDF als Brief mit Briefkopf und Fotos als Anlage. |
 | 13.11.2026 | 1.80.0 | Wetter automatisch: Neue Berichte holen Wetter und Temperatur über den Standort des Handys (Deutscher Wetterdienst über Bright Sky), mit Knopf „Wetter vom Standort holen“ und Schalter in den Einstellungen. Ohne Netz oder Erlaubnis von Hand wie bisher. Im PDF „Wetter (Quelle DWD)“. |
 | 12.11.2026 | 1.79.2 | Stunden: Im Monats-PDF aller Mitarbeiter fehlte der Mitarbeiter, der gerade im Reiter Stunden ausgewählt war; er wurde wie ein Admin aussortiert. Jetzt sind seine Stunden drin. |
