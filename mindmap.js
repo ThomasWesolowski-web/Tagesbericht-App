@@ -4,8 +4,9 @@
 const AESTE = [
   { n: 'Berichte', t: 'Tagesbericht & Rapport', z: [
     ['Baustelle zuerst wählen', 'Vorschläge beim Eintippen, auch aus früheren Berichten'],
-    ['Art wählen', 'Tagesbericht oder Rapport'],
+    ['Art wählen', 'Tagesbericht, Rapport oder Bedenkenanmeldung'],
     ['Rapport', 'Regie oder Pauschal, Maschinen inkl. LKW/Transporter, Unterschrift Bauherr'],
+    ['Bedenkenanmeldung', 'Schreiben nach § 4 Abs. 3 VOB/B mit Vorlagen, Fotos als Anlage, Empfangsbestätigung'],
     ['Personal mit Zeiten', 'Zeit pro Person, Warnung bei doppelt angelegter Person'],
     ['Zeitfelder', '5-Minuten-Schritte, vorbelegt 07:00–16:00'],
     ['Fotos & PDFs anhängen', 'Werden verkleinert, Fotos als Pins auf Plänen'],

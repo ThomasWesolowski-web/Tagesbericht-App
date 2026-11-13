@@ -9,6 +9,7 @@ import { slug } from './media.js';
 import { planElemente, gruppeElemente, massstabFuer, grenzen, berechne as raumBerechne, fmt2 as raumZahl } from './raumgeometrie.js';
 import { sortStunden, summe, kw, hatZeiten, stundenOf, typLabel, monatLabel, tage } from './stunden.js';
 import { zahlText, einheitText, mengeText } from './verbrauch.js';
+import { bedenkenBrief } from './bedenken.js';
 
 let loading;
 function loadJsPdf() {
@@ -194,9 +195,15 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
   const ensure = (h) => { if (y + h > BOTTOM) newPage(); };
 
   const isRapport = r.art === 'rapport';
+  const isBedenken = r.art === 'bedenken';
+  const isAufmass = r.art === 'aufmass';
   const title = artLabel(r);
 
   y = await briefkopf(doc, { W, M, font, color });
+  if (isBedenken) {
+    y = await bedenkenSeite(doc, r, files, author, { y, W, M, CW, BOTTOM, font, color, newPage: () => { doc.addPage(); return M; } });
+    y += 4;
+  } else {
   y += 10;
   font('bold', 22); color(INK);
   doc.text(title, M, y);
@@ -212,7 +219,6 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
 
   // Eckdaten als Kästchen
   const wetter = (r.wetter || []).map((id) => WETTER.find((w) => w.id === id)?.label).filter(Boolean).join(', ');
-  const isAufmass = r.art === 'aufmass';
   const facts = isAufmass ? [
     ['Auftraggeber', r.auftraggeber],
     ['Art der Arbeit', r.arbeitsart],
@@ -243,6 +249,7 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
     });
     y += rows * cellH + 8;
   }
+  } // Ende Kopf Bericht/Rapport/Aufmaß
 
   const heading = (text, extra = 0) => {
     ensure(14 + extra);
@@ -471,7 +478,7 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
   }
 
   // Personal
-  const crew = sortCrew([...crewOf(r)]);
+  const crew = isBedenken ? [] : sortCrew([...crewOf(r)]);
   if (crew.length) {
     heading('Personal und Arbeitszeit', 20);
     table(
@@ -517,9 +524,11 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
     }
     y += 4;
   };
-  textBlock('Ausgeführte Arbeiten', [gewerkeText(r) ? `Art der Arbeit: ${gewerkeText(r)}` : '', r.taetigkeiten].filter((x) => x && x.trim()).join('\n'));
-  textBlock('Material und Geräte', r.material);
-  textBlock('Bemerkungen / Besondere Vorkommnisse', r.bemerkungen);
+  if (!isBedenken) {
+    textBlock('Ausgeführte Arbeiten', [gewerkeText(r) ? `Art der Arbeit: ${gewerkeText(r)}` : '', r.taetigkeiten].filter((x) => x && x.trim()).join('\n'));
+    textBlock('Material und Geräte', r.material);
+    textBlock('Bemerkungen / Besondere Vorkommnisse', r.bemerkungen);
+  }
 
   // Aufmaß: Aufgestellt / Anerkannt wie auf dem Formular
   if (isAufmass) {
@@ -576,7 +585,7 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
     const s = Math.min(CW / img.w, maxH / img.h);
     const w = img.w * s;
     const h = img.h * s;
-    if (i === 0) heading(plaene.length > 1 ? `Pläne (${plaene.length})` : 'Plan', h + 12);
+    if (i === 0) heading(`${isBedenken ? 'Anlage: ' : ''}${plaene.length > 1 ? `Pläne (${plaene.length})` : 'Plan'}`, h + 12);
     else ensure(h + 12);
     doc.addImage(img.data, 'JPEG', M + (CW - w) / 2, y, w, h);
     doc.setDrawColor(...LINE);
@@ -599,7 +608,7 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
     const gap = 6;
     const cellW = (CW - gap) / 2;
     const maxH = 75;
-    heading(`Fotos (${images.length})`, maxH);
+    heading(`${isBedenken ? 'Anlage: ' : ''}Fotos (${images.length})`, maxH);
     for (let i = 0; i < images.length; i += 2) {
       const pair = (await Promise.all(images.slice(i, i + 2).map((f) => toJpeg(f.blob)))).map((img, k) => ({ img, f: images[i + k] }));
       const sizes = pair.map(({ img }) => {
@@ -647,6 +656,134 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
     y += 2;
   }
 
+}
+
+// Bedenkenanmeldung als Brief nach DIN 5008 (vereinfacht): Empfänger, Betreff, Text nach § 4 Abs. 3 VOB/B,
+// Gruß mit Unterschrift und ein Feld für die Empfangsbestätigung. Gibt die y-Position danach zurück.
+async function bedenkenSeite(doc, r, files, author, { y, W, M, CW, BOTTOM, font, color, newPage }) {
+  const fotos = files.filter((f) => f.type?.startsWith('image/') && f.fotoAufmass?.rolle !== 'original' && !f.planMarkierung && !f.raumAufmass).length;
+  const b = bedenkenBrief(r, { fotos });
+  const ensure = (h) => { if (y + h > BOTTOM) y = newPage(); };
+  const absatz = (text, { size = 10.5, style = 'normal', einzug = 0, abstand = 3 } = {}) => {
+    font(style, size); color(INK);
+    for (const line of doc.splitTextToSize(text, CW - einzug)) {
+      ensure(5);
+      doc.text(line, M + einzug, y);
+      y += 5;
+    }
+    y += abstand;
+  };
+
+  // Empfänger links, Ort und Datum rechts
+  y += 9;
+  const top = y;
+  font('bold', 10.5); color(INK);
+  const empf = doc.splitTextToSize(r.auftraggeber || '', 95);
+  doc.text(empf, M, y);
+  y += empf.length * 5;
+  font('normal', 10.5);
+  const anschrift = (r.bdAnschrift || '').split('\n').map((z) => z.trim()).filter(Boolean);
+  for (const z of anschrift) { doc.text(doc.splitTextToSize(z, 95)[0], M, y); y += 5; }
+  font('normal', 10.5); color(INK);
+  doc.text(`Stetten, ${formatDate(r.datum)}`, W - M, top, { align: 'right' });
+  y = Math.max(y, top + 22) + 6;
+
+  // Betreff und Bauvorhaben
+  font('bold', 12); color(INK);
+  doc.text(b.betreff, M, y);
+  y += 6;
+  const bv = [
+    ['Bauvorhaben', [r.baustelle, r.adresse].filter((x) => (x || '').trim()).join(', ')],
+    ['Auftrags-Nr.', r.auftrag],
+    ['Unsere Leistung', r.bdLeistung],
+  ].filter(([, v]) => v && String(v).trim());
+  for (const [k, v] of bv) {
+    font('bold', 10); color(MUTED);
+    doc.text(`${k}:`, M, y);
+    font('normal', 10); color(INK);
+    const lines = doc.splitTextToSize(String(v), CW - 32);
+    doc.text(lines, M + 32, y);
+    y += lines.length * 4.8;
+  }
+  y += 6;
+
+  absatz(b.anrede, { abstand: 2 });
+  for (const a of b.absaetze) {
+    if (a.titel) {
+      ensure(12);
+      font('bold', 10.5); color(ACCENT);
+      doc.text(`${a.titel}:`, M, y);
+      y += 5.5;
+    }
+    if (a.liste) {
+      for (const punkt of a.liste) {
+        font('normal', 10.5); color(INK);
+        const lines = doc.splitTextToSize(punkt, CW - 6);
+        ensure(lines.length * 5);
+        doc.text('•', M + 1, y);
+        doc.text(lines, M + 6, y);
+        y += lines.length * 5;
+      }
+      y += 3;
+    }
+    if (a.text) for (const teil of a.text.split('\n')) absatz(teil, { abstand: a.titel ? 1.5 : 3 });
+    if (a.titel && a.text) y += 1.5;
+  }
+
+  // Gruß, Unterschrift, Name
+  ensure(38);
+  y += 2;
+  font('normal', 10.5); color(INK);
+  doc.text(b.gruss, M, y);
+  y += 5;
+  doc.text('MT+ Füß & Wesolowski GbR', M, y);
+  y += 2;
+  const sig = r.bdSignatur?.dataUrl ? await toJpeg(r.bdSignatur.dataUrl, 900) : null;
+  if (sig) {
+    const w = 55;
+    const h = Math.min(22, (sig.h / sig.w) * w);
+    doc.addImage(sig.data, 'JPEG', M, y, w, h);
+    y += h + 1;
+  } else {
+    y += 14;
+  }
+  doc.setDrawColor(...INK);
+  doc.line(M, y, M + 70, y);
+  y += 4.5;
+  font('normal', 9.5); color(MUTED);
+  doc.text(r.bdUnterzeichner || author || '', M, y);
+  y += 7;
+  if (b.anlagen) {
+    font('normal', 9.5); color(INK);
+    doc.text(b.anlagen, M, y);
+    y += 7;
+  }
+
+  // Empfangsbestätigung des Auftraggebers (vor Ort unterschrieben oder zum Ausfüllen von Hand)
+  ensure(36);
+  y += 2;
+  doc.setDrawColor(...LINE);
+  doc.setFillColor(...SOFT);
+  doc.roundedRect(M, y, CW, 32, 2, 2, 'FD');
+  font('bold', 9.5); color(INK);
+  doc.text('Empfang bestätigt (Auftraggeber / Bauleitung)', M + 4, y + 6);
+  const u = r.unterschrift?.dataUrl ? r.unterschrift : null;
+  const img = u ? await toJpeg(u.dataUrl, 900) : null;
+  if (img) {
+    const w = 50;
+    const h = Math.min(16, (img.h / img.w) * w);
+    doc.addImage(img.data, 'JPEG', M + CW - 4 - w, y + 24 - h, w, h);
+  }
+  font('normal', 10); color(INK);
+  if (u) doc.text(`${u.name || ''}, ${new Date(u.zeit).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })}`, M + 4, y + 23);
+  doc.setDrawColor(...INK);
+  doc.line(M + 4, y + 25, M + CW / 2 - 4, y + 25);
+  doc.line(M + CW / 2 + 4, y + 25, M + CW - 4, y + 25);
+  font('normal', 8); color(MUTED);
+  doc.text('Name, Datum', M + 4, y + 29);
+  doc.text('Unterschrift', M + CW / 2 + 4, y + 29);
+  y += 38;
+  return y;
 }
 
 // Monatlicher Stundennachweis eines Mitarbeiters, immer auf genau einer Seite
