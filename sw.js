@@ -1,6 +1,6 @@
 // Offline-Betrieb: die App-Dateien kommen aus dem Cache und werden im
 // Hintergrund aktualisiert. Anfragen an GitHub laufen nie über den Cache.
-const CACHE = 'tagesberichte-v123';
+const CACHE = 'tagesberichte-v125';
 const SHELL = [
   './',
   'index.html',
@@ -35,10 +35,11 @@ const SHELL = [
   'vendor/pdf.worker.min.js',
   'icons/logo-mt.jpg',
   'manifest.webmanifest',
-  'icons/icon.svg',
+  'icons/favicon-48.png',
   'icons/icon-192.png',
   'icons/icon-512.png',
   'icons/apple-touch-icon.png',
+  'icons/icon-maskable-512.png',
 ];
 
 self.addEventListener('install', (event) => {
