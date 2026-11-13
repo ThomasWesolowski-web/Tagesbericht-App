@@ -176,7 +176,7 @@ function folderPrefix(settings) {
 }
 
 async function chooseRemoteDir(gh, settings, report) {
-  const base = `${report.datum}_${slug(report.baustelle) || 'bericht'}${report.art === 'rapport' ? '_rapport' : report.art === 'aufmass' ? '_aufmass' : ''}`;
+  const base = `${report.datum}_${slug(report.baustelle) || 'bericht'}${report.art === 'rapport' ? '_rapport' : report.art === 'aufmass' ? '_aufmass' : report.art === 'bedenken' ? '_bedenken' : ''}`;
   let dir = base;
   for (let i = 2; await pathExists(gh, settings, folderPrefix(settings) + dir); i++) dir = `${base}-${i}`;
   return dir;
@@ -254,7 +254,7 @@ export async function syncReport(settings, reportId) {
   }
   if (pdf) entries.push({ path: `${dir}/bericht.pdf`, blob: pdf });
   const wanted = new Set([...(pdf ? [`${dir}/bericht.pdf`] : []), `${dir}/bericht.md`, `${dir}/bericht.json`, ...files.map((f) => `${dir}/${f.remoteName}`)]);
-  if ((report.art === 'rapport' || report.art === 'aufmass') && report.unterschrift?.dataUrl) {
+  if (['rapport', 'aufmass', 'bedenken'].includes(report.art) && report.unterschrift?.dataUrl) {
     const blob = await (await fetch(report.unterschrift.dataUrl)).blob();
     entries.push({ path: `${dir}/unterschrift.png`, blob });
     wanted.add(`${dir}/unterschrift.png`);

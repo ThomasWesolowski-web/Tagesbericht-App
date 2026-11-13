@@ -31,6 +31,7 @@ In diesem Repo liegt nur der App-Code. Es enthält keine Berichte und keine Zuga
   Fotos werden auf etwa 1600 Pixel verkleinert
 - Alles wird sofort offline auf dem Handy gespeichert (IndexedDB) und kann jederzeit geändert werden
 - Materialliste aus den Rapporten einer Baustelle: Mengen im Feld „Material und Geräte“ werden erkannt und je Material summiert, als PDF mit Briefkopf und als Excel-Datei (`verbrauch.js`)
+- Bedenkenanmeldung nach § 4 Abs. 3 VOB/B als dritte Art unter „Neuer Bericht“: vorformulierte Anlässe für Putz, Stuck und Trockenbau, PDF als Brief mit Briefkopf, Fotos als Anlage, Empfangsbestätigung (`bedenken.js`, `tests/bedenken.test.mjs`)
 - Pläne und Dokumente an der Baustelle (PDF, Bilder), abgeglichen unter `stammdaten/plaene/`;
   im Bericht einen Plan (bei PDFs eine Seite) markieren: bearbeitete Flächen ausmalen, Stift,
   Pfeil, Text, Zoom mit zwei Fingern, und Fotos als nummerierte Pins an die Stelle setzen, an der

@@ -20,6 +20,7 @@ const SHELL = [
   'wetter.js',
   'fachwoerter.js',
   'abrechnung.js',
+  'bedenken.js',
   'markup.js',
   'plaene.js',
   'tabelle.js',

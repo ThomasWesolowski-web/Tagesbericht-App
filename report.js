@@ -1,5 +1,6 @@
 // Datenmodell eines Tagesberichts und die Markdown-Fassung fürs Repo.
 
+import { bedenkenMarkdown } from './bedenken.js';
 import { raumJson, berechne as raumBerechne, fmt2 as raumZahl } from './raumgeometrie.js';
 
 export const WETTER = [
@@ -14,6 +15,7 @@ export const WETTER = [
 export const ARTEN = [
   { id: 'tagesbericht', label: 'Tagesbericht', hint: 'Täglicher Baustellenbericht' },
   { id: 'rapport', label: 'Rapport', hint: 'Arbeits- bzw. Regierapport' },
+  { id: 'bedenken', label: 'Bedenkenanmeldung', hint: 'Schreiben an den Auftraggeber nach § 4 Abs. 3 VOB/B' },
 ];
 
 export const ABRECHNUNG = [
@@ -36,7 +38,7 @@ export function maschinenStunden(r) {
 }
 
 export function artLabel(r) {
-  return r?.art === 'rapport' ? 'Rapport' : r?.art === 'aufmass' ? 'Aufmaß' : 'Tagesbericht';
+  return r?.art === 'rapport' ? 'Rapport' : r?.art === 'aufmass' ? 'Aufmaß' : r?.art === 'bedenken' ? 'Bedenkenanmeldung' : 'Tagesbericht';
 }
 
 // ---------- Aufmaß ----------
@@ -300,7 +302,8 @@ export function toMarkdown(r, files, author, options = {}) {
     ['Auftragsnummer', r.auftrag],
     ['Art der Arbeit', gewerkeText(r)],
     ['Abrechnung', isRapport ? ABRECHNUNG.find((a) => a.id === (r.abrechnung || 'regie'))?.label : ''],
-    ['Stunden gesamt', r.art === 'aufmass' ? '' : formatHours(workedHours(r))],
+    ['Auftraggeber', r.art === 'bedenken' ? r.auftraggeber : ''],
+    ['Stunden gesamt', r.art === 'aufmass' || r.art === 'bedenken' ? '' : formatHours(workedHours(r))],
     ['Wetter', [wetter, r.temperatur ? `${r.temperatur} °C` : ''].filter(Boolean).join(', ')],
     ['Wetterdaten', wetterQuelle(r)],
     ['Erstellt von', author],
@@ -321,6 +324,12 @@ export function toMarkdown(r, files, author, options = {}) {
     md += `| **Gesamt** | **${crew.length}** | **${formatHours(workedHours(r))}** |\n`;
   }
   if (r.art === 'aufmass') md += aufmassMarkdown(r);
+  if (r.art === 'bedenken') {
+    md += bedenkenMarkdown(r, { fotos: files.filter((f) => f.type?.startsWith('image/') && !f.planMarkierung && !f.raumAufmass && !f.fotoAufmass).length });
+    if (r.unterschrift?.dataUrl) {
+      md += `\n## Empfang bestätigt\n\n${r.unterschrift.name || 'Ohne Namen'}, unterschrieben am ${new Date(r.unterschrift.zeit).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })}\n\n![Unterschrift](unterschrift.png)\n`;
+    }
+  }
   md += block('Ausgeführte Arbeiten', r.taetigkeiten);
   const maschinen = isRapport ? (r.maschinen || []).filter((m) => m.bezeichnung || m.stunden) : [];
   if (maschinen.length) {
@@ -421,7 +430,7 @@ export function toJson(r, files, author) {
         unterschrift: unterschrift?.dataUrl ? { name: unterschrift.name, zeit: new Date(unterschrift.zeit).toISOString(), datei: 'unterschrift.png' } : null,
       }
     : {};
-  if (r.art === 'aufmass') aufmass.unterschrift = unterschrift?.dataUrl ? { name: unterschrift.name, zeit: new Date(unterschrift.zeit).toISOString(), datei: 'unterschrift.png' } : null;
+  if (r.art === 'aufmass' || r.art === 'bedenken') aufmass.unterschrift = unterschrift?.dataUrl ? { name: unterschrift.name, zeit: new Date(unterschrift.zeit).toISOString(), datei: 'unterschrift.png' } : null;
   return JSON.stringify(
     {
       ...data,
