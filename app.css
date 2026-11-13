@@ -252,6 +252,9 @@ input::-webkit-date-and-time-value { text-align: left; }
 .row .field > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .field input { min-width: 0; }
 .hint { font-size: .8rem; color: var(--ink-3); margin: 6px 0 0; }
+#wetter-holen { margin-top: 12px; }
+.wetter-info:empty { display: none; }
+.wetter-fehler { color: var(--danger, #b42318); }
 
 .hours-total {
   display: flex; justify-content: space-between; align-items: center;

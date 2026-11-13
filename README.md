@@ -24,6 +24,9 @@ In diesem Repo liegt nur der App-Code. Es enthält keine Berichte und keine Zuga
 
 - Bericht mit Datum, Baustelle, Auftragsnummer, Personal, Arbeitszeit (Stunden werden
   ausgerechnet), Wetter, ausgeführten Arbeiten, Material und Bemerkungen
+- Wetter automatisch über den Standort des Handys (`wetter.js`): Daten des Deutschen Wetterdienstes
+  über [Bright Sky](https://brightsky.dev) (ohne Konto/Schlüssel); der Standort wird auf etwa 1 km
+  gerundet, nur für die Abfrage benutzt und nicht gespeichert. Ohne Netz oder Erlaubnis von Hand.
 - Fotos mit der Kamera aufnehmen oder Dateien (PDF, Lieferscheine …) anhängen;
   Fotos werden auf etwa 1600 Pixel verkleinert
 - Alles wird sofort offline auf dem Handy gespeichert (IndexedDB) und kann jederzeit geändert werden
