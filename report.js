@@ -142,6 +142,7 @@ export function newReport() {
     mitarbeiter: [],
     wetter: [],
     temperatur: '',
+    wetterAuto: null, // { zeit, datum, station, quelle } wenn das Wetter automatisch geholt wurde
     gewerke: [],
     gewerkFrei: '',
     taetigkeiten: '',
@@ -281,6 +282,13 @@ function block(title, text) {
   return text && text.trim() ? `\n## ${title}\n\n${text.trim()}\n` : '';
 }
 
+// Nachweis, woher das Wetter stammt (nur wenn automatisch geholt und nicht von Hand geändert)
+export function wetterQuelle(r) {
+  const a = r.wetterAuto;
+  if (!a) return '';
+  return `Deutscher Wetterdienst${a.station ? `, Station ${a.station}` : ''} (automatisch)`;
+}
+
 export function toMarkdown(r, files, author, options = {}) {
   const isRapport = r.art === 'rapport';
   const wetter = (r.wetter || [])
@@ -297,6 +305,7 @@ export function toMarkdown(r, files, author, options = {}) {
     ['Auftraggeber', r.art === 'bedenken' ? r.auftraggeber : ''],
     ['Stunden gesamt', r.art === 'aufmass' || r.art === 'bedenken' ? '' : formatHours(workedHours(r))],
     ['Wetter', [wetter, r.temperatur ? `${r.temperatur} °C` : ''].filter(Boolean).join(', ')],
+    ['Wetterdaten', wetterQuelle(r)],
     ['Erstellt von', author],
   ].filter(([, v]) => v && String(v).trim());
 

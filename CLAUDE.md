@@ -26,6 +26,7 @@ Veröffentlicht über GitHub Pages aus `main` (Root): https://thomaswesolowski-w
 | `raumgeometrie.js` | Raumaufmaß-Rechnung, nur noch zum Anzeigen alter Räume in Berichten und PDFs |
 | `raumaufmass/` | Raumaufmaß als eigene App (vorübergehend): `ra-app.js` Liste/PDF, `raumaufmass.js` Editor, `raumgeometrie.js` Rechnung (mit Node testbar), `ansicht3d.js` 3-D-Ansicht (Canvas, ohne Bibliothek), `laser.js` Laser per Bluetooth (Leica, Bosch), eigener `sw.js` (`CACHE` raumaufmass-vN) |
 | `i18n.js` | Oberflächen-Sprachen DE/PL/RO/MK/SQ |
+| `wetter.js` | Wetter über den Standort des Handys holen (Bright Sky = Daten des DWD, ohne Schlüssel), Umrechnung in die Wetter-Knöpfe (`tests/wetter.test.mjs`) |
 | `translate.js` | Freitexte beim Hochladen ins Deutsche übersetzen (MyMemory) |
 | `zeitplan.js` | Baustellen-Zeitplan (nur Admin): Aufträge mit Abschnitten, Gerüst-Standzeit, Auslastung; Repo `planung/zeitplan.json` |
 | `verbrauch.js` | Materialliste aus Rapporten: Mengen im Freitext „Material und Geräte“ erkennen, je Material summieren, Excel-Datei (`tests/verbrauch.test.mjs`) |

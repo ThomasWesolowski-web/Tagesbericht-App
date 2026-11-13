@@ -17,6 +17,7 @@ const SHELL = [
   'zeitplan.js',
   'i18n.js',
   'translate.js',
+  'wetter.js',
   'fachwoerter.js',
   'abrechnung.js',
   'bedenken.js',

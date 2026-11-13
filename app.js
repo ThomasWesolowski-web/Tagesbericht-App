@@ -22,6 +22,7 @@ import { istTabelle, istAltesExcel, tabelleLesen, MAX_ZEILEN, MAX_SPALTEN } from
 import { planReportId, planTauglich, istPdf, pdfSeiten, pdfDokument, planQuelle, formenSkalieren, pinNummern } from './plaene.js';
 import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from './fotoaufmass.js';
 import { raumKurz } from './raumgeometrie.js';
+import { wetterHolen } from './wetter.js';
 import { istAbgerechnet, abgerechnetSetzen, abrechnungLokal } from './abrechnung.js';
 import { GEGEN, ANLAESSE, ANREDE, bedenkenFehlt, fristVorschlag, textDazu, textWeg } from './bedenken.js';
 import {
@@ -519,6 +520,8 @@ async function renderEditor(id) {
         <h2>Wetter</h2>
         <div class="chips" id="wetter">${wetterChips}</div>
         <label class="field" style="margin-top:12px;max-width:160px"><span>Temperatur (°C)</span><input type="number" inputmode="decimal" data-field="temperatur" value="${esc(report.temperatur)}" placeholder="z. B. 14"></label>
+        <button type="button" class="btn soft block" id="wetter-holen">${ICON.pin} Wetter vom Standort holen</button>
+        <div class="hint wetter-info" id="wetter-info"></div>
       </section>
 
       <section class="section bericht-only">
@@ -722,6 +725,7 @@ async function renderEditor(id) {
   $('#site-pick').onclick = chooseSite;
   drawSite();
 
+  let wetterAutomatisch = () => {}; // wird weiter unten beim Wetter gesetzt
   const showRapport = () => {
     const bd = report.art === 'bedenken';
     $$('.rapport-only').forEach((el) => { el.hidden = report.art !== 'rapport'; });
@@ -734,7 +738,9 @@ async function renderEditor(id) {
     if (bd) bedenkenVorbelegen();
   };
   const setArt = (art) => {
+    const ersteWahl = !report.art;
     report.art = art;
+    if (isDraft && ersteWahl) setTimeout(() => wetterAutomatisch(), 0);
     showRapport();
     $$('#art-seg button').forEach((b) => b.setAttribute('aria-checked', b.dataset.art === art));
     $('#head-title').textContent = `${isDraft ? (art === 'bedenken' ? 'Neue ' : 'Neuer ') : ''}${artLabel(report)}`;
@@ -985,9 +991,70 @@ async function renderEditor(id) {
       const w = chip.dataset.wetter;
       report.wetter = report.wetter.includes(w) ? report.wetter.filter((x) => x !== w) : [...report.wetter, w];
       chip.setAttribute('aria-pressed', report.wetter.includes(w));
+      wetterVonHand();
       changed();
     };
   });
+
+  // Wetter über den Standort des Handys holen (Knopf, bei neuen Berichten auch automatisch)
+  function wetterVonHand() {
+    if (!report.wetterAuto) return;
+    report.wetterAuto = null;
+    wetterInfoZeigen();
+  }
+  $('[data-field=temperatur]').addEventListener('input', () => wetterVonHand());
+  const wetterLeer = () => !report.wetter.length && String(report.temperatur ?? '').trim() === '';
+  function wetterInfoZeigen() {
+    const a = report.wetterAuto;
+    $('#wetter-info').innerHTML = a ? `<span>Wetter automatisch eingetragen. Du kannst es ändern.</span>
+      ${a.station ? `<br><span>Wetterstation:</span> <span data-roh>${esc(a.station)}</span>` : ''}
+      <br><span>Quelle: Deutscher Wetterdienst</span>` : '';
+  }
+  const WETTER_FEHLER = {
+    offline: 'Kein Netz. Wetter bitte von Hand eintragen oder später noch einmal holen.',
+    verboten: 'Standort nicht erlaubt. Wetter bitte von Hand eintragen.',
+    'kein-standort': 'Standort nicht gefunden. Wetter bitte von Hand eintragen oder später noch einmal holen.',
+    'kein-geraet': 'Dieses Gerät kann keinen Standort bestimmen. Wetter bitte von Hand eintragen.',
+    dienst: 'Wetterdienst nicht erreichbar. Wetter bitte von Hand eintragen oder später noch einmal holen.',
+    zukunft: 'Für Tage in der Zukunft gibt es noch kein Wetter.',
+  };
+  let wetterLaeuft = false;
+  const wetterAbfragen = async (automatisch) => {
+    if (wetterLaeuft) return;
+    if (!automatisch && !wetterLeer() && !confirm('Neues Wetter übernehmen? Deine Angaben werden ersetzt.')) return;
+    wetterLaeuft = true;
+    const knopf = $('#wetter-holen');
+    knopf.disabled = true;
+    $('#wetter-info').innerHTML = '<span>Wetter wird geholt …</span>';
+    const vorher = JSON.stringify([report.wetter, report.temperatur]);
+    try {
+      const w = await wetterHolen(report.datum);
+      if (!document.body.contains(knopf)) return; // Bericht inzwischen verlassen
+      // automatisch: nichts überschreiben, was in der Zwischenzeit von Hand eingetragen wurde
+      if (automatisch && JSON.stringify([report.wetter, report.temperatur]) !== vorher) { wetterInfoZeigen(); return; }
+      report.wetter = w.wetter;
+      report.temperatur = w.temperatur;
+      report.wetterAuto = { zeit: new Date().toISOString(), datum: report.datum, station: w.station, quelle: 'DWD (Bright Sky)' };
+      $$('#wetter .chip').forEach((c) => c.setAttribute('aria-pressed', report.wetter.includes(c.dataset.wetter)));
+      $('[data-field=temperatur]').value = report.temperatur;
+      wetterInfoZeigen();
+      changed();
+    } catch (err) {
+      if (!document.body.contains(knopf)) return;
+      const text = WETTER_FEHLER[err.art] || WETTER_FEHLER.dienst;
+      const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      $('#wetter-info').innerHTML = `<span class="wetter-fehler">${esc(text)}</span>${err.art === 'verboten' && ios
+        ? '<br><span>iPhone: Einstellungen › Datenschutz & Sicherheit › Ortungsdienste › Safari-Websites › „Beim Verwenden der App“.</span>' : ''}`;
+    } finally {
+      wetterLaeuft = false;
+      knopf.disabled = false;
+    }
+  };
+  $('#wetter-holen').onclick = () => wetterAbfragen(false);
+  wetterInfoZeigen();
+  wetterAutomatisch = () => {
+    if (settings.wetterAuto !== false && report.art !== 'aufmass' && report.art !== 'bedenken' && wetterLeer()) wetterAbfragen(true);
+  };
 
   const drawThumbs = async () => {
     const files = (await db.filesFor(report.id)).filter((f) => !pendingRemovals.has(f.id) && !f.fotoAufmass && !f.planMarkierung && !f.raumAufmass);
@@ -4882,6 +4949,10 @@ async function renderSettings() {
       <div class="field"><span>Ansicht</span>
         <div class="seg seg3" id="ansicht-seg" role="radiogroup" aria-label="Ansicht">${ANSICHTEN.map((x) =>
           `<button type="button" role="radio" data-ansicht="${x.id}" aria-checked="${(s.ansicht || 'auto') === x.id}">${x.label}</button>`).join('')}</div>
+      </div>
+      <div class="toggle" style="margin:4px 0 0">
+        <span><b>Wetter automatisch eintragen</b><small>Bei neuen Berichten über den Standort des Handys</small></span>
+        <label class="switch"><input type="checkbox" data-set="wetterAuto" ${s.wetterAuto !== false ? 'checked' : ''}><i></i></label>
       </div>
     </section>
 

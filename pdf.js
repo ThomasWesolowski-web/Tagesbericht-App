@@ -227,7 +227,8 @@ async function drawReport(doc, r, files, author, { neueSeite = false } = {}) {
   ].filter((f) => f[1] && String(f[1]).trim()) : [
     ['Auftragsnummer', r.auftrag],
     ['Stunden gesamt', formatHours(workedHours(r))],
-    ['Wetter', [wetter, r.temperatur ? `${r.temperatur} °C` : ''].filter(Boolean).join(', ')],
+    // automatisch geholt: Quelle im Titel, damit der Wert selbst in das Kästchen passt
+    [r.wetterAuto ? 'Wetter (Quelle DWD)' : 'Wetter', [wetter, r.temperatur ? `${r.temperatur} °C` : ''].filter(Boolean).join(', ')],
     isRapport ? ['Abrechnung', ABRECHNUNG.find((a) => a.id === (r.abrechnung || 'regie'))?.label] : null,
     ['Erstellt von', author],
   ].filter((f) => f && f[1] && String(f[1]).trim() && f[1] !== '–');
