@@ -13,6 +13,28 @@ const ORDER = ['pl', 'ro', 'mk', 'sq'];
 
 // [Deutsch, Polnisch, Rumänisch, Mazedonisch, Albanisch]
 const ROWS = [
+  // Speichern am PC (Ablage-Ordner)
+  ['Ablage-Ordner am PC', 'Folder zapisu na komputerze', 'Dosar de salvare pe PC', 'Папка за зачувување на компјутерот', 'Dosja e ruajtjes në kompjuter'],
+  ['„Speichern“ unter einem PDF oder einer Excel-Datei legt die Datei in diesem Ordner ab, ohne jedes Mal zu fragen. Von dort lässt sie sich in andere Programme übernehmen.',
+    '„Zapisz” pod plikiem PDF lub Excel zapisuje plik w tym folderze bez pytania za każdym razem. Stamtąd można go przenieść do innych programów.',
+    '„Salvează” sub un PDF sau un fișier Excel pune fișierul în acest dosar, fără să întrebe de fiecare dată. De acolo îl poți folosi în alte programe.',
+    '„Зачувај” под PDF или Excel-датотека ја става датотеката во оваа папка без секогаш да прашува. Оттаму може да се префрли во други програми.',
+    '„Ruaj” nën një PDF ose skedar Excel e vendos skedarin në këtë dosje pa pyetur çdo herë. Prej andej mund të kalohet në programe të tjera.'],
+  ['Ordner wählen', 'Wybierz folder', 'Alege dosarul', 'Избери папка', 'Zgjidh dosjen'],
+  ['Anderen Ordner wählen', 'Wybierz inny folder', 'Alege alt dosar', 'Избери друга папка', 'Zgjidh një dosje tjetër'],
+  ['Ordner ändern', 'Zmień folder', 'Schimbă dosarul', 'Промени папка', 'Ndrysho dosjen'],
+  ['Noch kein Ordner gewählt.', 'Nie wybrano jeszcze folderu.', 'Încă nu ai ales un dosar.', 'Сè уште нема избрана папка.', 'Ende nuk është zgjedhur asnjë dosje.'],
+  ['Aktuell:', 'Obecnie:', 'Acum:', 'Моментално:', 'Aktualisht:'],
+  ['Speichert in den Ordner', 'Zapisuje w folderze', 'Salvează în dosarul', 'Зачувува во папката', 'Ruan në dosjen'],
+  ['Beim ersten Speichern einen Ordner auf dem PC wählen. Danach landet alles dort.',
+    'Przy pierwszym zapisie wybierz folder na komputerze. Potem wszystko trafia tam.',
+    'La prima salvare alege un dosar pe PC. După aceea totul ajunge acolo.',
+    'При првото зачувување избери папка на компјутерот. Потоа сè оди таму.',
+    'Në ruajtjen e parë zgjidh një dosje në kompjuter. Pas kësaj gjithçka shkon atje.'],
+  ['Auch dabei:', 'Również dołączone:', 'Incluse și:', 'Исто така:', 'Gjithashtu:'],
+  ['Ablage-Ordner gemerkt.', 'Folder zapisany.', 'Dosarul a fost reținut.', 'Папката е запаметена.', 'Dosja u ruajt.'],
+  ['Ordner konnte nicht gewählt werden.', 'Nie udało się wybrać folderu.', 'Dosarul nu a putut fi ales.', 'Папката не можеше да се избере.', 'Dosja nuk mund të zgjidhej.'],
+  ['Datei liegt im Ordner „Downloads“.', 'Plik jest w folderze „Pobrane”.', 'Fișierul este în dosarul „Descărcări”.', 'Датотеката е во папката „Преземања”.', 'Skedari është në dosjen „Shkarkime”.'],
   // Bedenkenanmeldung (das Schreiben selbst bleibt deutsch)
   ['Bedenkenanmeldung', 'Zgłoszenie zastrzeżeń', 'Notificare de obiecții', 'Пријава на приговор', 'Njoftim kundërshtimi'],
   ['Neue Bedenkenanmeldung', 'Nowe zgłoszenie zastrzeżeń', 'Notificare de obiecții nouă', 'Нова пријава на приговор', 'Njoftim i ri kundërshtimi'],

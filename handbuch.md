@@ -2,7 +2,7 @@
 
 ## Überblick
 
-Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.82.0**.
+Die Tagesberichte-App ersetzt Zettel und Excel: Mitarbeiter schreiben Tagesberichte, Rapporte und Stunden direkt auf dem Handy, auch ohne Netz, und alles landet automatisch im privaten GitHub-Repo der Firma. Aktuelle Version: **1.83.0**.
 
 | Was | Wo |
 | --- | --- |
@@ -56,7 +56,7 @@ Im Reiter **Berichte** startet das Plus unten rechts einen neuen Bericht. Er beg
 
 **Fotos auf dem Plan:** Jedes Foto bekommt eine Nummer (Foto 1, Foto 2 …). Das Stecknadel-Symbol auf dem Foto öffnet den Plan; ein Tippen setzt dort einen orangen Pin mit der Nummer des Fotos. Alternativ im Plan das Werkzeug „Foto“ wählen und auf die Stelle tippen. Dann ein Foto aus dem Bericht aussuchen, mit „Foto aufnehmen“ direkt die Kamera öffnen oder mit „Vorhandenes Foto“ eines vom Handy wählen. Neue Fotos werden automatisch an den Bericht gehängt und bekommen die nächste Nummer. Im PDF steht der Plan über die ganze Seite mit der Liste der Fotos, die Fotos tragen dieselbe Nummer.
 
-**PDF:** „Als PDF teilen“ im Bericht erstellt das PDF mit Firmenbriefkopf, Fotos und Unterschrift. Es öffnet sich erst als Vorschau, danach „Teilen oder speichern“ (WhatsApp, Mail, Dateien). In der Vorschau vergrößern und verkleinern die Knöpfe + und − oben rechts; vergrößert lässt sich das PDF auch seitlich schieben. Die App selbst lässt sich nicht zoomen oder seitlich verschieben, nur hoch und runter scrollen; zoomen geht nur bei Fotos, Plänen und PDFs in ihren Ansichten.
+**PDF:** „Als PDF teilen“ im Bericht erstellt das PDF mit Firmenbriefkopf, Fotos und Unterschrift. Es öffnet sich erst als Vorschau, danach „Teilen oder speichern“ (WhatsApp, Mail, Dateien). Am PC (App in Chrome oder Edge, seit 1.83.0) stehen dort zwei Knöpfe: „Speichern“ und „Teilen“. „Speichern“ legt die Datei in einen festen Ablage-Ordner auf dem PC, ohne jedes Mal zu fragen; beim ersten Mal fragt die App nach dem Ordner, nach einem Neustart von Chrome einmal „Zugriff erlauben?“. Von dort lässt sich die Datei in andere Programme übernehmen (z. B. das Büroprogramm). Den Ordner ändern: in der Vorschau unter den Knöpfen „Ordner ändern“ oder unter Einstellungen › Ablage-Ordner am PC. Gleich gilt für Excel-Dateien, die Materialliste (PDF und Excel einzeln unter „Auch dabei“), Stundennachweise und das Raumaufmaß (PDF, dort auch SVG und DXF). Gibt es eine Datei mit demselben Namen schon, wird sie ersetzt. Am Handy bleibt alles wie bisher. In der Vorschau vergrößern und verkleinern die Knöpfe + und − oben rechts; vergrößert lässt sich das PDF auch seitlich schieben. Die App selbst lässt sich nicht zoomen oder seitlich verschieben, nur hoch und runter scrollen; zoomen geht nur bei Fotos, Plänen und PDFs in ihren Ansichten.
 
 Gespeicherte Berichte lassen sich jederzeit wieder öffnen, ändern oder löschen (roter Knopf unten links).
 
@@ -182,6 +182,7 @@ Der Admin wird mit einer PIN angemeldet (Einstellungen, „Als Administrator anm
 
 | Datum | Version | Änderung |
 | --- | --- | --- |
+| 18.11.2026 | 1.83.0 / Raumaufmaß 1.18.0 | Am PC: Knopf „Speichern“ unter PDFs und Excel-Dateien legt sie in einen festen Ablage-Ordner (einmal wählen, unter Einstellungen änderbar); vorher öffnete sich am PC nur das Windows-Freigabe-Menü. Am Handy unverändert |
 | 13.11.2026 | 1.82.0 / Raumaufmaß 1.17.0 | Raumaufmaße und eigene Material-Systeme werden beim Abgleich im Repo gesichert und kommen auf einem neuen Handy wieder; nichts wird überschrieben, was ein anderes Gerät geändert hat |
 | 13.11.2026 | 1.81.1 | Neues App-Symbol für den Home-Bildschirm (Blau-Grün, Kamerablende, MT+-Blatt mit Häkchen und Pfeil), auch als Favicon und rundes Android-Symbol. Auf dem iPhone erscheint es erst, wenn man die App vom Home-Bildschirm entfernt und neu hinzufügt. |
 | 13.11.2026 | 1.81.0 | Bedenkenanmeldung nach § 4 Abs. 3 VOB/B als dritte Art unter „Neuer Bericht“: 12 vorformulierte Anlässe, Frist, Behinderungsanzeige nach § 6 auf Wunsch, eigene Unterschrift, Empfangsbestätigung des Auftraggebers, PDF als Brief mit Briefkopf und Fotos als Anlage. |
