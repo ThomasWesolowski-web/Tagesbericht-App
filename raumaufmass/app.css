@@ -529,6 +529,17 @@ body.no-scroll { overflow: hidden; }
 .pdfv-zoom button { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface, transparent); color: var(--ink); font-size: 1.3rem; font-weight: 700; line-height: 1; cursor: pointer; }
 .pdf-pages .hint { color: #e5e7eb; }
 .pdf-view footer { padding: 10px 16px calc(10px + var(--safe-b)); background: var(--bg); border-top: 1px solid var(--line); }
+/* Am PC: „Speichern“ und „Teilen“ nebeneinander */
+.pdfv-knoepfe { display: flex; gap: 10px; }
+.pdfv-knoepfe .btn.primary { flex: 2; }
+.pdfv-knoepfe .btn.ghost { flex: 1; }
+.pdfv-extras { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
+.pdfv-extras small { color: var(--ink-3); font-size: .8rem; }
+.pdfv-extras .btn { min-height: 34px; padding: 5px 10px; font-size: .85rem; gap: 6px; }
+.pdfv-extras .btn svg { width: 16px; height: 16px; }
+.pdfv-ablage { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 4px 10px; margin-top: 6px; text-align: center; }
+.pdfv-ablage small { color: var(--ink-3); font-size: .8rem; }
+.pdfv-ablage .link-btn { font-size: .8rem; background: none; border: 0; color: var(--accent); font-weight: 650; padding: 0; cursor: pointer; }
 .lang-pick .flag { font-size: 1.6rem; line-height: 1; }
 
 /* gesperrte Sync-Einstellungen */

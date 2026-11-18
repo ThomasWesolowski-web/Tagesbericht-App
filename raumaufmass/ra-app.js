@@ -9,12 +9,13 @@ import { bedarf, KNAUF_STAND } from './material.js';
 import { baustelleWaehlen, verbunden, tokenSpeichern, abgleichen } from './baustellen.js';
 import { dbOffen, alleProjekte, projektLaden, projektSpeichern, projektLoeschen, repoStand, nichtGesichert } from './ra-speicher.js';
 import * as hauptDb from '../db.js';
+import { ablageMoeglich, ablageOrdner, ablageWaehlen, speichernAmPc } from '../ablage.js';
 import {
   neuerRaum, berechne, raumKurz, alsSvg, massstabFuer, grenzen, planElemente, gruppeElemente, geschlossen,
   naechsterName, fmt2, verschiebeRaum, grundrissAbgleichen,
 } from './raumgeometrie.js';
 
-const RA_VERSION = '1.17.0';
+const RA_VERSION = '1.18.0';
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -31,6 +32,7 @@ const ICON = {
   teilen: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M5 13v7h14v-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   wuerfel: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
   schichten: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v16M9 4v16M13 4v16M20 4v16M9 8h4M9 16h4" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
+  speichern: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 17v3h14v-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   pdf: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l5 5v13H7z M14 3v5h5 M10 13h6 M10 17h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
 };
 
@@ -317,7 +319,10 @@ async function pdfZeigen(blob, name, titel) {
       <div><b>${esc(titel || name)}</b><small id="pdfv-info">PDF</small></div>
       <div class="pdfv-zoom"><button type="button" data-z="-1" aria-label="Verkleinern">−</button><button type="button" data-z="1" aria-label="Vergrößern">+</button></div></header>
     <div class="pdf-pages" id="pdfv-pages"><p class="hint" style="text-align:center;margin-top:40px">PDF wird geladen …</p></div>
-    <footer><button type="button" class="btn primary block" id="pdfv-share">${ICON.teilen} Teilen oder speichern</button></footer>`;
+    <footer>${ablageMoeglich
+      ? `<div class="pdfv-knoepfe"><button type="button" class="btn primary" id="pdfv-save">${ICON.speichern} Speichern</button>
+        <button type="button" class="btn ghost" id="pdfv-share">${ICON.teilen} Teilen</button></div><div class="pdfv-ablage"></div>`
+      : `<button type="button" class="btn primary block" id="pdfv-share">${ICON.teilen} Teilen oder speichern</button>`}</footer>`;
   document.body.appendChild(ansicht);
   document.body.classList.add('no-scroll');
   let zu = false;
@@ -325,6 +330,9 @@ async function pdfZeigen(blob, name, titel) {
   const schliessen = () => { zu = true; ansicht.remove(); document.body.classList.remove('no-scroll'); dok?.destroy(); };
   $('#pdfv-close', ansicht).onclick = schliessen;
   $('#pdfv-share', ansicht).onclick = () => teilen(blob, name);
+  const speichernEl = $('#pdfv-save', ansicht);
+  if (speichernEl) speichernEl.onclick = async () => { const t = await speichernAmPc(blob, name); if (t) { toast(t, 3500); ablageZeile(ansicht); } };
+  ablageZeile(ansicht);
 
   const seiten = $('#pdfv-pages', ansicht);
   // + und − zeichnen das PDF größer (die App selbst ist nicht zoombar)
@@ -374,6 +382,18 @@ async function pdfZeigen(blob, name, titel) {
     if (zu) return;
     seiten.innerHTML = `<p class="hint" style="text-align:center;margin-top:40px">Vorschau nicht möglich (${esc(err.message)}).<br>Tippe unten auf „Teilen oder speichern“.</p>`;
   }
+}
+
+// Am PC: wohin „Speichern“ legt (gleicher Ordner wie in der Tagesbericht-App), mit „Ordner ändern“
+async function ablageZeile(ansicht) {
+  const el = $('.pdfv-ablage', ansicht);
+  if (!el) return;
+  const ordner = await ablageOrdner();
+  el.innerHTML = ordner
+    ? `<small>Speichert in den Ordner <b>${esc(ordner.name)}</b></small><button type="button" class="link-btn">Ordner ändern</button>`
+    : '<small>Beim ersten Speichern einen Ordner auf dem PC wählen. Danach landet alles dort.</small>';
+  const knopf = $('button', el);
+  if (knopf) knopf.onclick = async () => { try { if (await ablageWaehlen()) ablageZeile(ansicht); } catch { toast('Ordner konnte nicht gewählt werden.'); } };
 }
 
 async function teilen(blob, name) {

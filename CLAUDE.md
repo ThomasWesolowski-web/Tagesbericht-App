@@ -31,6 +31,7 @@ Veröffentlicht über GitHub Pages aus `main` (Root): https://thomaswesolowski-w
 | `zeitplan.js` | Baustellen-Zeitplan (nur Admin): Aufträge mit Abschnitten, Gerüst-Standzeit, Auslastung; Repo `planung/zeitplan.json` |
 | `verbrauch.js` | Materialliste aus Rapporten: Mengen im Freitext „Material und Geräte“ erkennen, je Material summieren, Excel-Datei (`tests/verbrauch.test.mjs`) |
 | `bedenken.js` | Bedenkenanmeldung nach § 4 Abs. 3 VOB/B: Anlässe mit vorformulierten Texten, Brieftext für PDF/Markdown (`tests/bedenken.test.mjs`); Berichtsart `bedenken`, Felder `bd…` |
+| `ablage.js` | Ablage-Ordner am PC (Chrome/Edge): Ordner einmal wählen, Griff in eigener IndexedDB `tagesberichte-ablage`, „Speichern“ schreibt dort hinein; auch von der Raumaufmaß-App benutzt |
 | `abrechnung.js` | Merker „Abgerechnet“ für Rapporte (nur Admin; Repo: `abrechnung/abgerechnet.json`) |
 | `fachwoerter.js` | Fachwörterliste RO/PL/MK/SQ → Deutsch, vor dem Übersetzer angewandt |
 | `handbuch.js`, `handbuch.md` | Handbuch in der App (Kopie des Claude Docs) |
