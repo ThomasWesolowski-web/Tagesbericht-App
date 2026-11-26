@@ -23,6 +23,7 @@ import { planReportId, planTauglich, istPdf, pdfSeiten, pdfDokument, planQuelle,
 import { openFotoAufmass, neuesFotoAufmass, alsPositionen, kurzfassung } from './fotoaufmass.js';
 import { raumKurz } from './raumgeometrie.js';
 import { wetterHolen } from './wetter.js';
+import { ablageMoeglich, ablageOrdner, ablageWaehlen, inAblageSpeichern, sichererName } from './ablage.js';
 import { istAbgerechnet, abgerechnetSetzen, abrechnungLokal } from './abrechnung.js';
 import { GEGEN, ANLAESSE, ANREDE, bedenkenFehlt, fristVorschlag, textDazu, textWeg } from './bedenken.js';
 import {
@@ -35,7 +36,7 @@ import {
   planPersonen, planRechnen, abschnittKonflikte, konfliktText, zeitplanLokal, alleAuftraege, auftragSpeichern, auftragLoeschen, STUNDEN_TAG, GRUND_WOCHEN,
 } from './zeitplan.js';
 
-const APP_VERSION = '1.82.0';
+const APP_VERSION = '1.83.0';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -163,6 +164,7 @@ const ICON = {
   lock: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
   x: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>',
   share: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3m0 0L8 7m4-4 4 4M6 11H5v10h14V11h-1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  save: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 17v3h14v-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   copy: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
   trash: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 16l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
@@ -1689,6 +1691,40 @@ function dateiHerunterladen(file) {
   a.remove();
 }
 
+// Am PC (Chrome/Edge) speichert „Speichern“ in einen festen Ablage-Ordner (ablage.js). Handys haben das
+// nicht (iPhone-Safari, Android): dort bleibt es beim Teilen-Menü.
+const kannSpeichernUnter = ablageMoeglich;
+
+// Datei am PC in den Ablage-Ordner legen; ohne Ordner-Zugriff als Download.
+async function dateiSpeichern(blob, name, nachher) {
+  if (kannSpeichernUnter) {
+    try {
+      const ordner = await inAblageSpeichern(blob, name);
+      if (!ordner) return; // Auswahl abgebrochen
+      toast(`Gespeichert in „${ordner}“: ${sichererName(name)}`, 3500);
+      nachher?.();
+      return;
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+      // Ordner nicht erreichbar: unten als Download speichern
+    }
+  }
+  dateiHerunterladen({ blob, name });
+  toast('Datei liegt im Ordner „Downloads“.', 3500);
+}
+
+// Zeile unter den Knöpfen: wohin gespeichert wird, mit „Ordner ändern“
+async function ablageZeile(view) {
+  const el = $('.pdfv-ablage', view);
+  if (!el) return;
+  const ordner = await ablageOrdner();
+  el.innerHTML = ordner
+    ? `<small>Speichert in den Ordner <b>${esc(ordner.name)}</b></small><button type="button" class="link-btn">Ordner ändern</button>`
+    : '<small>Beim ersten Speichern einen Ordner auf dem PC wählen. Danach landet alles dort.</small>';
+  const knopf = $('button', el);
+  if (knopf) knopf.onclick = async () => { try { if (await ablageWaehlen()) ablageZeile(view); } catch { toast('Ordner konnte nicht gewählt werden.'); } };
+}
+
 // Datei an eine andere App weitergeben (iPhone/Android: Teilen-Menü, z. B. Excel oder Numbers)
 async function dateiWeitergeben(file) {
   const f = new File([file.blob], file.name, { type: file.type || 'application/octet-stream' });
@@ -1711,11 +1747,17 @@ async function dateiAnsicht(file) {
     <div class="tab-inhalt"><p class="hint tab-meldung">${tabelle ? 'Wird geladen …' : istAltesExcel(file)
       ? 'Diese ältere Excel-Datei (.xls) kann die App nicht selbst anzeigen. Unten auf „In anderer App öffnen“ tippen, z. B. mit Excel oder Numbers.'
       : 'Diese Datei kann die App nicht selbst anzeigen. Unten auf „In anderer App öffnen“ tippen.'}</p></div>
-    <footer><button type="button" class="btn primary block" id="tabv-teilen">${ICON.share} In anderer App öffnen</button></footer>`;
+    <footer>${kannSpeichernUnter
+      ? `<div class="pdfv-knoepfe"><button type="button" class="btn primary" id="tabv-speichern">${ICON.save} Speichern</button>
+        <button type="button" class="btn ghost" id="tabv-teilen">${ICON.share} Teilen</button></div><div class="pdfv-ablage"></div>`
+      : `<button type="button" class="btn primary block" id="tabv-teilen">${ICON.share} In anderer App öffnen</button>`}</footer>`;
   document.body.appendChild(view);
   document.body.classList.add('no-scroll');
   $('#tabv-zu', view).onclick = () => { view.remove(); document.body.classList.remove('no-scroll'); };
   $('#tabv-teilen', view).onclick = () => dateiWeitergeben(file);
+  const tabSpeichern = $('#tabv-speichern', view);
+  if (tabSpeichern) tabSpeichern.onclick = () => dateiSpeichern(file.blob, file.name, () => ablageZeile(view));
+  ablageZeile(view);
   if (!tabelle) return;
   const inhalt = $('.tab-inhalt', view);
   let blaetter;
@@ -1825,7 +1867,11 @@ async function sharePdfFile(file, title, extras, { abrechnen = [] } = {}) {
     <div class="pdf-pages" id="pdfv-pages"><p class="hint" style="text-align:center;margin-top:40px">PDF wird geladen …</p></div>
     <footer>${abrechnen.length ? `<div class="toggle pdfv-abg"><span><b>Abgerechnet</b><small>${abrechnen.length === 1 ? 'Dieser Rapport' : `Alle ${abrechnen.length} Rapporte in diesem PDF`}</small></span>
         <label class="switch"><input type="checkbox" id="pdfv-abg" ${abrechnen.every((id) => istAbgerechnet(id)) ? 'checked' : ''}><i></i></label></div>` : ''}
-      <button type="button" class="btn primary block" id="pdfv-share">${ICON.share} Teilen oder speichern</button></footer>`;
+      ${kannSpeichernUnter
+        ? `${extras.length ? `<div class="pdfv-extras"><small>Auch dabei:</small>${extras.map((x, i) => `<button type="button" class="btn ghost" data-extra="${i}">${ICON.save} ${esc(x.name)}</button>`).join('')}</div>` : ''}
+          <div class="pdfv-knoepfe"><button type="button" class="btn primary" id="pdfv-save">${ICON.save} Speichern</button>
+          <button type="button" class="btn ghost" id="pdfv-share">${ICON.share} Teilen</button></div><div class="pdfv-ablage"></div>`
+        : `<button type="button" class="btn primary block" id="pdfv-share">${ICON.share} Teilen oder speichern</button>`}</footer>`;
   document.body.appendChild(view);
   document.body.classList.add('no-scroll');
   let closed = false;
@@ -1837,6 +1883,11 @@ async function sharePdfFile(file, title, extras, { abrechnen = [] } = {}) {
   $('#pdfv-share', view).onclick = async () => {
     try { await share(); } catch (e) { if (e.name !== 'AbortError') toast('Teilen hat nicht geklappt.'); }
   };
+  const speichernEl = $('#pdfv-save', view);
+  const nachSpeichern = () => ablageZeile(view);
+  if (speichernEl) speichernEl.onclick = () => dateiSpeichern(file, file.name, nachSpeichern);
+  $$('[data-extra]', view).forEach((b) => { b.onclick = () => { const x = extras[Number(b.dataset.extra)]; dateiSpeichern(x, x.name, nachSpeichern); }; });
+  ablageZeile(view);
 
   const pages = $('#pdfv-pages', view);
   // Die App selbst ist nicht zoombar; das PDF wird mit + und − größer gezeichnet
@@ -4994,6 +5045,13 @@ async function renderSettings() {
       ${isAdmin() && isConfigured(s) ? `<button class="btn ghost block" id="geraete-btn" style="margin-top:10px">${ICON.people} Wer hat die App eingerichtet?</button>` : ''}
     </section>
 
+    ${ablageMoeglich ? `<section class="section">
+      <h2>Ablage-Ordner am PC</h2>
+      <p class="hint" style="margin-top:0">„Speichern“ unter einem PDF oder einer Excel-Datei legt die Datei in diesem Ordner ab, ohne jedes Mal zu fragen. Von dort lässt sie sich in andere Programme übernehmen.</p>
+      <div id="ablage-name" class="hint">Wird geladen …</div>
+      <button class="btn ghost block" id="ablage-btn">${ICON.doc} Ordner wählen</button>
+    </section>` : ''}
+
     <a class="scard" href="#/handbuch" style="margin-bottom:12px">
       <div class="sicon">${ICON.doc}</div>
       <div class="body"><div class="title">Handbuch zur App</div><div class="meta">Was die App kann und wie man sie bedient</div></div>
@@ -5061,6 +5119,19 @@ async function renderSettings() {
   if (adminOut) adminOut.onclick = () => { setAdmin(false); toast('Abgemeldet.'); renderSettings(); };
   const adminPin = $('#admin-pin');
   if (adminPin) adminPin.onclick = () => changeAdminPin();
+  if (ablageMoeglich) {
+    const zeigeAblage = async () => {
+      const o = await ablageOrdner();
+      const el = $('#ablage-name');
+      if (!el) return;
+      el.innerHTML = o ? `Aktuell: <b>${esc(o.name)}</b>` : 'Noch kein Ordner gewählt.';
+      $('#ablage-btn').lastChild.textContent = o ? ' Anderen Ordner wählen' : ' Ordner wählen';
+    };
+    zeigeAblage();
+    $('#ablage-btn').onclick = async () => {
+      try { if (await ablageWaehlen()) { toast('Ablage-Ordner gemerkt.'); zeigeAblage(); } } catch { toast('Ordner konnte nicht gewählt werden.'); }
+    };
+  }
   const geraeteBtn = $('#geraete-btn');
   if (geraeteBtn) geraeteBtn.onclick = () => openGeraete();
 

@@ -6,6 +6,7 @@
 // ({ daten, svg } je Raum), gesamtSvg = Grundriss gesamt, wenn mehrere Räume zusammengehören.
 // nachbarn = die anderen Räume desselben Grundrisses (gleiche gruppe), namen = alle Raumnamen im Aufmaß.
 
+import { ablageMoeglich, speichernAmPc } from '../ablage.js';
 import {
   STANDARD, RASTER, erkenneKontur, raumAusEcken, geschlossen, wandGeo, wandIndex, berechne, pruefe, setzeMass,
   konfliktLoesen, verschiebeWand, verschiebeEcke, setzeRichtung, richtenAus, teileWand, loescheWand, loescheEcke,
@@ -1201,6 +1202,12 @@ export async function openRaumAufmass(vorlage, { nachbarn = [], namen = [] } = {
     const blob = art === 'svg'
       ? new Blob([alsSvg(was, massstabFuer(was))], { type: 'image/svg+xml' })
       : new Blob([alsDxf(was)], { type: 'application/dxf' });
+    // Am PC (Chrome/Edge) direkt in den Ablage-Ordner, dort holt das CAD-Programm die Datei ab
+    if (ablageMoeglich) {
+      const t = await speichernAmPc(blob, name);
+      if (t) hinweis(p.fehler.length ? `${t} Achtung: Der Raum hat noch Fehler, siehe „Übernehmen“.` : t);
+      return;
+    }
     const datei = new File([blob], name, { type: blob.type });
     try {
       if (navigator.canShare?.({ files: [datei] })) { await navigator.share({ files: [datei], title: name }); return; }

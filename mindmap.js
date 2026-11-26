@@ -18,6 +18,7 @@ const AESTE = [
   { n: 'PDF', t: 'PDFs & Auswertungen', z: [
     ['Bericht als PDF', 'Mit Firmen-Briefkopf'],
     ['Erst Vorschau', 'Danach „Teilen oder speichern“'],
+    ['Am PC speichern', 'Knopf „Speichern“ legt alles in einen festen Ablage-Ordner'],
     ['Zusammenfassung-PDF', 'Mehrere Berichte auf einmal'],
     ['Materialliste', 'Aus Rapporten, Summen je Material, PDF und Excel'],
     ['Stundennachweis', 'Eine Seite pro Mitarbeiter und Monat'],
