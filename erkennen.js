@@ -209,3 +209,403 @@ export function oeffnungFinden(a, p, ms) {
   }
   return { punkte: [[X0, Y0], [X1, Y0], [X1, Y1], [X0, Y1]] };
 }
+
+// Alle Öffnungen (Fenster, Türen, Tore) innerhalb des Perspektiv-Rahmens suchen. Das Foto wird
+// dafür entzerrt (wie von vorne fotografiert), die Wandfarbe geschätzt und alles, was sich deutlich
+// davon abhebt, zu Flächen zusammengefasst. Übrig bleiben rechteckige Flächen in Fenster- oder
+// Türgröße. Liefert [{ X0, Y0, X1, Y1, tuer, punkte }] (Meter, y nach oben; punkte im Foto, im
+// Uhrzeigersinn ab links oben) oder { fehler }.
+export function oeffnungenFinden(a, ms) {
+  if (!ms || ms.fehler || !ms.rahmen) return { fehler: 'Zuerst den Rahmen um die ganze Wand legen und seine Maße eingeben.' };
+  const { w, h, s, rgb } = a;
+  const [B, HM] = ms.groesse;
+  const res = Math.max(0.02, Math.max(B, HM) / 500); // Meter je Rasterpunkt
+  const nx = Math.max(8, Math.round(B / res));
+  const ny = Math.max(8, Math.round(HM / res));
+  const rx = B / nx;
+  const ry = HM / ny;
+  const n = nx * ny;
+  // 1. Entzerren: je Rasterpunkt die Farbe im Foto holen (Zeile 0 = oben)
+  const F = [new Float32Array(n), new Float32Array(n), new Float32Array(n)];
+  const ok = new Uint8Array(n);
+  for (let j = 0; j < ny; j++) {
+    for (let i = 0; i < nx; i++) {
+      const p = ms.inPx([(i + 0.5) * rx, HM - (j + 0.5) * ry]);
+      if (!p) continue;
+      const fx = p[0] / s - 0.5;
+      const fy = p[1] / s - 0.5;
+      if (!(fx >= 0 && fy >= 0 && fx < w - 1 && fy < h - 1)) continue;
+      const x = Math.floor(fx);
+      const y = Math.floor(fy);
+      const u = fx - x;
+      const v = fy - y;
+      const k = j * nx + i;
+      for (let c = 0; c < 3; c++) {
+        const q = (yy, xx) => rgb[(yy * w + xx) * 4 + c];
+        F[c][k] = (q(y, x) * (1 - u) + q(y, x + 1) * u) * (1 - v) + (q(y + 1, x) * (1 - u) + q(y + 1, x + 1) * u) * v;
+      }
+      ok[k] = 1;
+    }
+  }
+  // leicht weichzeichnen (Putzstruktur)
+  const weich = (src) => {
+    const out = new Float32Array(n);
+    for (let j = 0; j < ny; j++) {
+      for (let i = 0; i < nx; i++) {
+        let sum = 0;
+        let z = 0;
+        for (let v = -1; v <= 1; v++) {
+          for (let u = -1; u <= 1; u++) {
+            const x = i + u;
+            const y = j + v;
+            if (x < 0 || y < 0 || x >= nx || y >= ny || !ok[y * nx + x]) continue;
+            sum += src[y * nx + x];
+            z++;
+          }
+        }
+        out[j * nx + i] = z ? sum / z : 0;
+      }
+    }
+    return out;
+  };
+  for (let c = 0; c < 3; c++) F[c] = weich(F[c]);
+  // 2. Wandfarbe: Median in Feldern von etwa 2,5 m (die Wand ist dort in der Mehrheit),
+  // dazwischen weich übergeblendet, damit Licht und Schatten auf der Wand nicht stören
+  const median = (arr) => { if (!arr.length) return 0; arr.sort((x, y) => x - y); return arr[Math.floor(arr.length / 2)]; };
+  const zellen = Math.max(1, Math.round(2.5 / rx));
+  const zx = Math.ceil(nx / zellen);
+  const zy = Math.ceil(ny / Math.max(1, Math.round(2.5 / ry)));
+  const zh = Math.ceil(ny / zy);
+  const zw = Math.ceil(nx / zx);
+  const gesamt = [0, 1, 2].map((c) => median(Array.from(F[c]).filter((_, k) => ok[k])));
+  const wand = [0, 1, 2].map(() => new Float32Array(zx * zy));
+  for (let b = 0; b < zy; b++) {
+    for (let a2 = 0; a2 < zx; a2++) {
+      const werte = [[], [], []];
+      for (let j = b * zh; j < Math.min(ny, (b + 1) * zh); j++) {
+        for (let i = a2 * zw; i < Math.min(nx, (a2 + 1) * zw); i++) {
+          const k = j * nx + i;
+          if (ok[k]) for (let c = 0; c < 3; c++) werte[c].push(F[c][k]);
+        }
+      }
+      for (let c = 0; c < 3; c++) wand[c][b * zx + a2] = werte[c].length > 20 ? median(werte[c]) : gesamt[c];
+    }
+  }
+  const wandBei = (c, i, j) => {
+    const gx = Math.min(zx - 1, Math.max(0, (i + 0.5) / zw - 0.5));
+    const gy = Math.min(zy - 1, Math.max(0, (j + 0.5) / zh - 0.5));
+    const x0 = Math.floor(gx);
+    const y0 = Math.floor(gy);
+    const x1 = Math.min(zx - 1, x0 + 1);
+    const y1 = Math.min(zy - 1, y0 + 1);
+    const u = gx - x0;
+    const v = gy - y0;
+    const W2 = wand[c];
+    return (W2[y0 * zx + x0] * (1 - u) + W2[y0 * zx + x1] * u) * (1 - v) + (W2[y1 * zx + x0] * (1 - u) + W2[y1 * zx + x1] * u) * v;
+  };
+  // 3. Je Punkt: Helligkeit und Farbton im Vergleich zur Wand, dazu Kanten (Fensterrahmen,
+  // Türblätter). Die Grenzen richten sich nach der Streuung auf der Wand selbst.
+  const hell = new Float32Array(n);
+  const ton = new Float32Array(n);
+  const lum = new Float32Array(n);
+  for (let j = 0; j < ny; j++) {
+    for (let i = 0; i < nx; i++) {
+      const k = j * nx + i;
+      if (!ok[k]) continue;
+      const w0 = wandBei(0, i, j);
+      const w1 = wandBei(1, i, j);
+      const w2 = wandBei(2, i, j);
+      const L = (F[0][k] + F[1][k] + F[2][k]) / 3 + 1;
+      const Lw = (w0 + w1 + w2) / 3 + 1;
+      lum[k] = L;
+      hell[k] = Math.abs(L - Lw) / Lw;
+      ton[k] = Math.hypot(F[0][k] / L - w0 / Lw, F[1][k] / L - w1 / Lw, F[2][k] / L - w2 / Lw);
+    }
+  }
+  const kante = new Float32Array(n);
+  for (let j = 1; j < ny - 1; j++) {
+    for (let i = 1; i < nx - 1; i++) {
+      const k = j * nx + i;
+      if (!ok[k - nx - 1] || !ok[k + nx + 1] || !ok[k - nx + 1] || !ok[k + nx - 1]) continue;
+      const gx = lum[k - nx + 1] + 2 * lum[k + 1] + lum[k + nx + 1] - lum[k - nx - 1] - 2 * lum[k - 1] - lum[k + nx - 1];
+      const gy = lum[k + nx - 1] + 2 * lum[k + nx] + lum[k + nx + 1] - lum[k - nx - 1] - 2 * lum[k - nx] - lum[k - nx + 1];
+      kante[k] = Math.hypot(gx, gy) / (lum[k] + 20);
+    }
+  }
+  const grenzeVon = (arr, mindest, faktor = 5) => {
+    const werte = [];
+    for (let k = 0; k < n; k++) if (ok[k]) werte.push(arr[k]);
+    const med = median(werte.slice());
+    const mad = median(werte.map((v) => Math.abs(v - med)));
+    return Math.max(mindest, med + faktor * mad);
+  };
+  const gHell = grenzeVon(hell, 0.15);
+  const gTon = grenzeVon(ton, 0.06, 3.5);
+  const gKante = grenzeVon(kante, 0.35);
+  let maske = new Uint8Array(n);
+  const randM = Math.max(1, Math.round(0.1 / res));
+  for (let j = randM; j < ny - randM; j++) {
+    for (let i = randM; i < nx - randM; i++) {
+      const k = j * nx + i;
+      maske[k] = ok[k] && (hell[k] > gHell || ton[k] > gTon || kante[k] > gKante) ? 1 : 0;
+    }
+  }
+  // 4. Aufräumen: dünne Dinge (Fallrohr, Kabel, Putzflecken) weg, Lücken im Rahmen schließen
+  const schritt = (m, r, wachsen) => {
+    // getrennt waagerecht und senkrecht (Quadrat als Werkzeug)
+    const tmp = new Uint8Array(n);
+    const out = new Uint8Array(n);
+    for (let j = 0; j < ny; j++) {
+      for (let i = 0; i < nx; i++) {
+        let v = wachsen ? 0 : 1;
+        for (let u = -r; u <= r; u++) {
+          const x = i + u;
+          const q = x < 0 || x >= nx ? (wachsen ? 0 : 1) : m[j * nx + x];
+          if (wachsen ? q : !q) { v = wachsen ? 1 : 0; break; }
+        }
+        tmp[j * nx + i] = v;
+      }
+    }
+    for (let j = 0; j < ny; j++) {
+      for (let i = 0; i < nx; i++) {
+        let v = wachsen ? 0 : 1;
+        for (let u = -r; u <= r; u++) {
+          const y = j + u;
+          const q = y < 0 || y >= ny ? (wachsen ? 0 : 1) : tmp[y * nx + i];
+          if (wachsen ? q : !q) { v = wachsen ? 1 : 0; break; }
+        }
+        out[j * nx + i] = v;
+      }
+    }
+    return out;
+  };
+  const r1 = Math.max(1, Math.round(0.08 / res));
+  const r2 = Math.max(1, Math.round(0.06 / res));
+  maske = schritt(schritt(maske, r2, true), r2, false); // schließen
+  // Löcher füllen: was von außen nicht erreichbar ist, gehört zur Öffnung (Glas im Fensterrahmen)
+  const aussen = new Uint8Array(n);
+  const stapel = [];
+  const rein = (k) => { if (!maske[k] && !aussen[k]) { aussen[k] = 1; stapel.push(k); } };
+  for (let i = 0; i < nx; i++) { rein(i); rein((ny - 1) * nx + i); }
+  for (let j = 0; j < ny; j++) { rein(j * nx); rein(j * nx + nx - 1); }
+  while (stapel.length) {
+    const k = stapel.pop();
+    const i = k % nx;
+    const j = (k - i) / nx;
+    if (i > 0) rein(k - 1);
+    if (i < nx - 1) rein(k + 1);
+    if (j > 0) rein(k - nx);
+    if (j < ny - 1) rein(k + nx);
+  }
+  for (let k = 0; k < n; k++) if (!aussen[k]) maske[k] = 1;
+  maske = schritt(schritt(maske, r1, false), r1, true); // öffnen: Dünnes (Fallrohr, Kabel) fällt weg
+  // 5. Zusammenhängende Flächen aufteilen und prüfen. Unten hängt oft etwas an (Treppe, Holz,
+  // Pflanzen), deshalb wird jede Fläche nach ihrer Oberkante in Streifen geteilt: eine Öffnung hat
+  // eine gerade Oberkante, und von dort reicht sie geschlossen nach unten.
+  const marke = new Int32Array(n);
+  const funde = [];
+  let nr = 0;
+  const tol = Math.max(2, Math.round(0.15 / ry));
+  for (let start = 0; start < n; start++) {
+    if (!maske[start] || marke[start]) continue;
+    nr++;
+    let i0 = nx;
+    let i1 = -1;
+    stapel.push(start);
+    marke[start] = nr;
+    while (stapel.length) {
+      const k = stapel.pop();
+      const i = k % nx;
+      const j = (k - i) / nx;
+      if (i < i0) i0 = i;
+      if (i > i1) i1 = i;
+      if (i > 0 && maske[k - 1] && !marke[k - 1]) { marke[k - 1] = nr; stapel.push(k - 1); }
+      if (i < nx - 1 && maske[k + 1] && !marke[k + 1]) { marke[k + 1] = nr; stapel.push(k + 1); }
+      if (j > 0 && maske[k - nx] && !marke[k - nx]) { marke[k - nx] = nr; stapel.push(k - nx); }
+      if (j < ny - 1 && maske[k + nx] && !marke[k + nx]) { marke[k + nx] = nr; stapel.push(k + nx); }
+    }
+    const zaehle = (a0, a1, b0, b1) => {
+      let z = 0;
+      for (let j = b0; j <= b1; j++) for (let i = a0; i <= a1; i++) if (marke[j * nx + i] === nr) z++;
+      return z;
+    };
+    // Oberkante je Spalte
+    const oben = [];
+    for (let i = i0; i <= i1; i++) {
+      let t = -1;
+      for (let j = 0; j < ny; j++) if (marke[j * nx + i] === nr) { t = j; break; }
+      oben.push(t);
+    }
+    // Streifen mit (fast) gleicher Oberkante
+    const streifen = [];
+    let akt = null;
+    for (let i = i0; i <= i1; i++) {
+      const t = oben[i - i0];
+      const mitte = akt ? median(akt.t.slice()) : 0;
+      if (t < 0 || !akt || Math.abs(t - mitte) > tol) {
+        if (akt) streifen.push(akt);
+        akt = t < 0 ? null : { a: i, b: i, t: [t] };
+      } else {
+        akt.b = i;
+        akt.t.push(t);
+      }
+    }
+    if (akt) streifen.push(akt);
+    for (const st of streifen) {
+      let a0 = st.a;
+      let a1 = st.b;
+      if ((a1 - a0 + 1) * rx < 0.35) continue;
+      let b0 = median(st.t.slice());
+      // nach unten, solange die Zeile überwiegend gefüllt ist
+      let b1 = b0;
+      while (b1 + 1 < ny && zaehle(a0, a1, b1 + 1, b1 + 1) >= 0.6 * (a1 - a0 + 1)) b1++;
+      // Ränder abschneiden, die nur wenig Fläche haben
+      for (let runde = 0; runde < 2; runde++) {
+        const bw = a1 - a0 + 1;
+        const bh = b1 - b0 + 1;
+        while (a0 < a1 && zaehle(a0, a0, b0, b1) < 0.5 * bh) a0++;
+        while (a1 > a0 && zaehle(a1, a1, b0, b1) < 0.5 * bh) a1--;
+        while (b0 < b1 && zaehle(a0, a1, b0, b0) < 0.5 * bw) b0++;
+        while (b1 > b0 && zaehle(a0, a1, b1, b1) < 0.5 * bw) b1--;
+      }
+      const bw = (a1 - a0 + 1) * rx;
+      const bh = (b1 - b0 + 1) * ry;
+      const fuell = zaehle(a0, a1, b0, b1) / ((a1 - a0 + 1) * (b1 - b0 + 1));
+      const X0 = a0 * rx;
+      const X1 = (a1 + 1) * rx;
+      const Y1 = HM - b0 * ry;
+      const Y0 = HM - (b1 + 1) * ry;
+      if (bw < 0.35 || bh < 0.4 || bw > 5 || bh > 3.6 || bw * bh < 0.25) continue;
+      if (bw / bh > 4 || bh / bw > 5) continue;
+      if (fuell < 0.75) continue;
+      // Was unten am Boden steht, ist nur dann eine Öffnung, wenn es Türhöhe hat
+      const amBoden = Y0 < 0.3;
+      if (amBoden && bh < 1.6) continue;
+      if (Y1 > HM - 0.15 && bh < 0.8) continue; // Streifen unter dem Dach
+      funde.push({ X0, Y0, X1, Y1, tuer: amBoden || (Y0 < 0.6 && bh >= 1.7) });
+    }
+  }
+  // von links nach rechts, oben vor unten
+  funde.sort((p, q) => (Math.abs(p.Y1 - q.Y1) > 1 ? q.Y1 - p.Y1 : p.X0 - q.X0));
+  const genau = funde.map((grob) => ({ ...grob, ...kantenSchaerfen(a, ms, grob) }));
+  // Fenster in einer Reihe haben fast immer dieselbe Ober- und Unterkante (wie Fassaden-
+  // Programme es nutzen): liegen die Kanten nur wenige Zentimeter auseinander, auf eine Linie legen
+  const angleichen = (key) => {
+    const liste = genau.filter((f) => !f.tuer).sort((p, q) => p[key] - q[key]);
+    let gruppe = [];
+    const fertig = () => {
+      if (gruppe.length > 1) {
+        const m = median(gruppe.map((f) => f[key]));
+        for (const f of gruppe) f[key] = m;
+      }
+      gruppe = [];
+    };
+    for (const f of liste) {
+      if (gruppe.length && f[key] - gruppe[gruppe.length - 1][key] > 0.06) fertig();
+      gruppe.push(f);
+    }
+    fertig();
+  };
+  angleichen('Y1');
+  angleichen('Y0');
+  return genau.map((f) => ({ ...f, punkte: [[f.X0, f.Y1], [f.X1, f.Y1], [f.X1, f.Y0], [f.X0, f.Y0]].map(ms.inPx) }));
+}
+
+// Die vier Kanten einer grob gefundenen Öffnung genau an die Kante im Foto legen (Übergang Wand →
+// Fensterrahmen bzw. Türzarge). Dafür wird der Ausschnitt fein entzerrt (1 cm) und je Kante die
+// gerade Linie gesucht, entlang der sich die Helligkeit am gleichmäßigsten ändert. Von mehreren
+// deutlichen Linien (Rahmen außen, Flügel, Glas) gilt die äußerste: dort endet der Putz.
+export function kantenSchaerfen(a, ms, box) {
+  const { w, h, s, grau } = a;
+  const res = 0.01;
+  const such = 0.18; // Rand des Ausschnitts (Meter)
+  const aussen = 0.07; // die grobe Fläche ist eher etwas zu groß: wenig nach außen suchen
+  const innen = 0.16; // und mehr nach innen
+  let { X0, Y0, X1, Y1 } = box;
+  const ax = X0 - such - 0.03;
+  const ay = Y0 - such - 0.03;
+  const nx = Math.ceil((X1 - X0 + 2 * such + 0.06) / res);
+  const ny = Math.ceil((Y1 - Y0 + 2 * such + 0.06) / res);
+  if (nx * ny > 4e6) return {};
+  // Helligkeit im entzerrten Ausschnitt; Zeile 0 = unten (y nach oben wie in Metern)
+  const L = new Float32Array(nx * ny);
+  const ok = new Uint8Array(nx * ny);
+  for (let j = 0; j < ny; j++) {
+    for (let i = 0; i < nx; i++) {
+      const p = ms.inPx([ax + (i + 0.5) * res, ay + (j + 0.5) * res]);
+      if (!p) continue;
+      const fx = p[0] / s - 0.5;
+      const fy = p[1] / s - 0.5;
+      if (!(fx >= 0 && fy >= 0 && fx < w - 1 && fy < h - 1)) continue;
+      const x = Math.floor(fx);
+      const y = Math.floor(fy);
+      const u = fx - x;
+      const v = fy - y;
+      const g = (yy, xx) => grau[yy * w + xx];
+      L[j * nx + i] = (g(y, x) * (1 - u) + g(y, x + 1) * u) * (1 - v) + (g(y + 1, x) * (1 - u) + g(y + 1, x + 1) * u) * v;
+      ok[j * nx + i] = 1;
+    }
+  }
+  const I = (X) => Math.round((X - ax) / res - 0.5);
+  const J = (Y) => Math.round((Y - ay) / res - 0.5);
+  // Stärke einer senkrechten Kante bei Spalte i zwischen den Zeilen j0..j1: Mittel des
+  // vorzeichenbehafteten Helligkeitssprungs über 2 cm (Putzstruktur hebt sich dabei auf)
+  const senkrecht = (i, j0, j1) => {
+    let sum = 0;
+    let n = 0;
+    for (let j = j0; j <= j1; j++) {
+      const k = j * nx + i;
+      if (i < 2 || i >= nx - 2 || !ok[k - 2] || !ok[k + 2]) continue;
+      sum += L[k + 1] + L[k + 2] - L[k - 1] - L[k - 2];
+      n++;
+    }
+    return n > 5 ? sum / n : 0;
+  };
+  const waagerecht = (j, i0, i1) => {
+    let sum = 0;
+    let n = 0;
+    for (let i = i0; i <= i1; i++) {
+      const k = j * nx + i;
+      if (j < 2 || j >= ny - 2 || !ok[k - 2 * nx] || !ok[k + 2 * nx]) continue;
+      sum += L[k + nx] + L[k + 2 * nx] - L[k - nx] - L[k - 2 * nx];
+      n++;
+    }
+    return n > 5 ? sum / n : 0;
+  };
+  // Stärkste gerade Kante zwischen von (außen) und bis (innen): meist der Sprung vom hellen Putz
+  // (oder der Fasche) auf den dunklen Fensterrahmen
+  const waehle = (von, bis, staerke) => {
+    const schritt = von < bis ? 1 : -1;
+    const werte = [];
+    for (let t = von; t !== bis + schritt; t += schritt) werte.push([t, Math.abs(staerke(t))]);
+    const max = Math.max(...werte.map((x) => x[1]));
+    if (!(max > 0.04)) return null;
+    return werte.find((x) => x[1] === max)[0];
+  };
+  for (let runde = 0; runde < 2; runde++) {
+    const bw = X1 - X0;
+    const bh = Y1 - Y0;
+    const innenX = Math.min(innen, bw / 4);
+    const innenY = Math.min(innen, bh / 4);
+    const weit = runde ? 0.03 : aussen; // zweite Runde nur noch nachjustieren
+    // Linien nur über die mittleren 70 % messen, damit Ecken und Fensterbank nicht stören
+    const j0 = J(Y0 + 0.15 * bh);
+    const j1 = J(Y1 - 0.15 * bh);
+    const i0 = I(X0 + 0.15 * bw);
+    const i1 = I(X1 - 0.15 * bw);
+    const nah = runde ? 0.03 : 1;
+    const l = waehle(I(X0 - weit), I(X0 + Math.min(innenX, nah)), (i) => senkrecht(i, j0, j1));
+    const r = waehle(I(X1 + weit), I(X1 - Math.min(innenX, nah)), (i) => senkrecht(i, j0, j1));
+    const o = waehle(J(Y1 + weit), J(Y1 - Math.min(innenY, nah)), (j) => waagerecht(j, i0, i1));
+    // Türen: unten hängt oft die Treppe oder Schwelle mit dran, dort weiter nach innen suchen
+    const innenU = box.tuer && !runde ? Math.min(0.5, bh / 4) : Math.min(innenY, nah);
+    const u = waehle(J(Y0 - weit), J(Y0 + innenU), (j) => waagerecht(j, i0, i1));
+    // Kante liegt zwischen zwei Rasterpunkten: Spalte i misst den Sprung bei i + 0,5
+    if (l !== null) X0 = ax + (l + 0.5) * res;
+    if (r !== null) X1 = ax + (r + 0.5) * res;
+    if (o !== null) Y1 = ay + (o + 0.5) * res;
+    if (u !== null) Y0 = ay + (u + 0.5) * res;
+  }
+  if (!(X1 - X0 > 0.2 && Y1 - Y0 > 0.2)) return {};
+  return { X0, Y0, X1, Y1 };
+}
