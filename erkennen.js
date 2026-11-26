@@ -405,7 +405,7 @@ export function oeffnungenFinden(a, ms) {
   const marke = new Int32Array(n);
   const funde = [];
   let nr = 0;
-  const tol = Math.max(2, Math.round(0.08 / ry));
+  const tol = Math.max(2, Math.round(0.15 / ry));
   for (let start = 0; start < n; start++) {
     if (!maske[start] || marke[start]) continue;
     nr++;
@@ -487,5 +487,125 @@ export function oeffnungenFinden(a, ms) {
   }
   // von links nach rechts, oben vor unten
   funde.sort((p, q) => (Math.abs(p.Y1 - q.Y1) > 1 ? q.Y1 - p.Y1 : p.X0 - q.X0));
-  return funde.map((f) => ({ ...f, punkte: [[f.X0, f.Y1], [f.X1, f.Y1], [f.X1, f.Y0], [f.X0, f.Y0]].map(ms.inPx) }));
+  const genau = funde.map((grob) => ({ ...grob, ...kantenSchaerfen(a, ms, grob) }));
+  // Fenster in einer Reihe haben fast immer dieselbe Ober- und Unterkante (wie Fassaden-
+  // Programme es nutzen): liegen die Kanten nur wenige Zentimeter auseinander, auf eine Linie legen
+  const angleichen = (key) => {
+    const liste = genau.filter((f) => !f.tuer).sort((p, q) => p[key] - q[key]);
+    let gruppe = [];
+    const fertig = () => {
+      if (gruppe.length > 1) {
+        const m = median(gruppe.map((f) => f[key]));
+        for (const f of gruppe) f[key] = m;
+      }
+      gruppe = [];
+    };
+    for (const f of liste) {
+      if (gruppe.length && f[key] - gruppe[gruppe.length - 1][key] > 0.06) fertig();
+      gruppe.push(f);
+    }
+    fertig();
+  };
+  angleichen('Y1');
+  angleichen('Y0');
+  return genau.map((f) => ({ ...f, punkte: [[f.X0, f.Y1], [f.X1, f.Y1], [f.X1, f.Y0], [f.X0, f.Y0]].map(ms.inPx) }));
+}
+
+// Die vier Kanten einer grob gefundenen Öffnung genau an die Kante im Foto legen (Übergang Wand →
+// Fensterrahmen bzw. Türzarge). Dafür wird der Ausschnitt fein entzerrt (1 cm) und je Kante die
+// gerade Linie gesucht, entlang der sich die Helligkeit am gleichmäßigsten ändert. Von mehreren
+// deutlichen Linien (Rahmen außen, Flügel, Glas) gilt die äußerste: dort endet der Putz.
+export function kantenSchaerfen(a, ms, box) {
+  const { w, h, s, grau } = a;
+  const res = 0.01;
+  const such = 0.18; // Rand des Ausschnitts (Meter)
+  const aussen = 0.07; // die grobe Fläche ist eher etwas zu groß: wenig nach außen suchen
+  const innen = 0.16; // und mehr nach innen
+  let { X0, Y0, X1, Y1 } = box;
+  const ax = X0 - such - 0.03;
+  const ay = Y0 - such - 0.03;
+  const nx = Math.ceil((X1 - X0 + 2 * such + 0.06) / res);
+  const ny = Math.ceil((Y1 - Y0 + 2 * such + 0.06) / res);
+  if (nx * ny > 4e6) return {};
+  // Helligkeit im entzerrten Ausschnitt; Zeile 0 = unten (y nach oben wie in Metern)
+  const L = new Float32Array(nx * ny);
+  const ok = new Uint8Array(nx * ny);
+  for (let j = 0; j < ny; j++) {
+    for (let i = 0; i < nx; i++) {
+      const p = ms.inPx([ax + (i + 0.5) * res, ay + (j + 0.5) * res]);
+      if (!p) continue;
+      const fx = p[0] / s - 0.5;
+      const fy = p[1] / s - 0.5;
+      if (!(fx >= 0 && fy >= 0 && fx < w - 1 && fy < h - 1)) continue;
+      const x = Math.floor(fx);
+      const y = Math.floor(fy);
+      const u = fx - x;
+      const v = fy - y;
+      const g = (yy, xx) => grau[yy * w + xx];
+      L[j * nx + i] = (g(y, x) * (1 - u) + g(y, x + 1) * u) * (1 - v) + (g(y + 1, x) * (1 - u) + g(y + 1, x + 1) * u) * v;
+      ok[j * nx + i] = 1;
+    }
+  }
+  const I = (X) => Math.round((X - ax) / res - 0.5);
+  const J = (Y) => Math.round((Y - ay) / res - 0.5);
+  // Stärke einer senkrechten Kante bei Spalte i zwischen den Zeilen j0..j1: Mittel des
+  // vorzeichenbehafteten Helligkeitssprungs über 2 cm (Putzstruktur hebt sich dabei auf)
+  const senkrecht = (i, j0, j1) => {
+    let sum = 0;
+    let n = 0;
+    for (let j = j0; j <= j1; j++) {
+      const k = j * nx + i;
+      if (i < 2 || i >= nx - 2 || !ok[k - 2] || !ok[k + 2]) continue;
+      sum += L[k + 1] + L[k + 2] - L[k - 1] - L[k - 2];
+      n++;
+    }
+    return n > 5 ? sum / n : 0;
+  };
+  const waagerecht = (j, i0, i1) => {
+    let sum = 0;
+    let n = 0;
+    for (let i = i0; i <= i1; i++) {
+      const k = j * nx + i;
+      if (j < 2 || j >= ny - 2 || !ok[k - 2 * nx] || !ok[k + 2 * nx]) continue;
+      sum += L[k + nx] + L[k + 2 * nx] - L[k - nx] - L[k - 2 * nx];
+      n++;
+    }
+    return n > 5 ? sum / n : 0;
+  };
+  // Stärkste gerade Kante zwischen von (außen) und bis (innen): meist der Sprung vom hellen Putz
+  // (oder der Fasche) auf den dunklen Fensterrahmen
+  const waehle = (von, bis, staerke) => {
+    const schritt = von < bis ? 1 : -1;
+    const werte = [];
+    for (let t = von; t !== bis + schritt; t += schritt) werte.push([t, Math.abs(staerke(t))]);
+    const max = Math.max(...werte.map((x) => x[1]));
+    if (!(max > 0.04)) return null;
+    return werte.find((x) => x[1] === max)[0];
+  };
+  for (let runde = 0; runde < 2; runde++) {
+    const bw = X1 - X0;
+    const bh = Y1 - Y0;
+    const innenX = Math.min(innen, bw / 4);
+    const innenY = Math.min(innen, bh / 4);
+    const weit = runde ? 0.03 : aussen; // zweite Runde nur noch nachjustieren
+    // Linien nur über die mittleren 70 % messen, damit Ecken und Fensterbank nicht stören
+    const j0 = J(Y0 + 0.15 * bh);
+    const j1 = J(Y1 - 0.15 * bh);
+    const i0 = I(X0 + 0.15 * bw);
+    const i1 = I(X1 - 0.15 * bw);
+    const nah = runde ? 0.03 : 1;
+    const l = waehle(I(X0 - weit), I(X0 + Math.min(innenX, nah)), (i) => senkrecht(i, j0, j1));
+    const r = waehle(I(X1 + weit), I(X1 - Math.min(innenX, nah)), (i) => senkrecht(i, j0, j1));
+    const o = waehle(J(Y1 + weit), J(Y1 - Math.min(innenY, nah)), (j) => waagerecht(j, i0, i1));
+    // Türen: unten hängt oft die Treppe oder Schwelle mit dran, dort weiter nach innen suchen
+    const innenU = box.tuer && !runde ? Math.min(0.5, bh / 4) : Math.min(innenY, nah);
+    const u = waehle(J(Y0 - weit), J(Y0 + innenU), (j) => waagerecht(j, i0, i1));
+    // Kante liegt zwischen zwei Rasterpunkten: Spalte i misst den Sprung bei i + 0,5
+    if (l !== null) X0 = ax + (l + 0.5) * res;
+    if (r !== null) X1 = ax + (r + 0.5) * res;
+    if (o !== null) Y1 = ay + (o + 0.5) * res;
+    if (u !== null) Y0 = ay + (u + 0.5) * res;
+  }
+  if (!(X1 - X0 > 0.2 && Y1 - Y0 > 0.2)) return {};
+  return { X0, Y0, X1, Y1 };
 }
