@@ -4,7 +4,7 @@
 // openFotoAufmass(blob, daten) liefert { daten, plan } (plan = Foto mit Maßen als JPEG) oder null.
 
 import { zahl, newZeile } from './report.js';
-import { bildAnalyse, eckeFangen, oeffnungFinden } from './erkennen.js';
+import { bildAnalyse, eckeFangen, oeffnungFinden, oeffnungenFinden } from './erkennen.js';
 
 // Abzugsgrenzen nach VOB/C (Ausgabe 2019): Öffnungen bis zu dieser Einzelgröße werden übermessen.
 export const REGELN = [
@@ -613,6 +613,8 @@ export async function openFotoAufmass(blob, vorlage) {
   try { magnet = localStorage.getItem('fa-magnet') !== 'aus'; } catch { /* ohne Speicher */ }
   let erkennen = false; // nächstes Antippen sucht eine Öffnung um den Finger
   let analyse = null;
+  let autoTeile = []; // zuletzt automatisch gefundene Öffnungen (Rückgängig nimmt sie zusammen weg)
+  let meldung = ''; // Ergebnis von „Öffnungen finden“, bis zur nächsten Aktion
   const bildDaten = () => (analyse ||= bildAnalyse(img));
 
   try { rasterModus = localStorage.getItem('fa-raster') || 'an'; } catch { /* ohne Speicher */ }
@@ -858,14 +860,16 @@ export async function openFotoAufmass(blob, vorlage) {
     } else if (ms.fehler) {
       t = ms.fehler;
     } else {
-      t = 'Fläche, Öffnung oder Strecke tippen: die Form erscheint auf dem Foto und wird über die Ecken angepasst. Ein Teil antippen wählt es aus: Ecken ziehen, am blauen Punkt verschieben, kopieren oder löschen.';
+      t = meldung || `Fläche, Öffnung oder Strecke tippen: die Form erscheint auf dem Foto und wird über die Ecken angepasst. Ein Teil antippen wählt es aus: Ecken ziehen, am blauen Punkt verschieben, kopieren oder löschen.${ms.rahmen ? ' „Öffnungen finden“ legt Fenster und Türen selbst an.' : ''}`;
       if (!ms.beide) t += ' Nur eine Referenz gesetzt: Maßstab gilt dann für beide Richtungen.';
+      if (ms.rahmen) k = knopf('fa-auto', 'Öffnungen finden');
     }
     txt.textContent = t;
     kn.innerHTML = k;
     const an = (cls, fn) => { const b = kn.querySelector(`.${cls}`); if (b) b.onclick = fn; };
     an('fa-verwerfen', () => { entwurf = null; erkennen = false; aktiv = null; fk.hidden = true; neuZeichnen(); });
     an('fa-erkennen', () => { erkennen = !erkennen; neuZeichnen(); });
+    an('fa-auto', () => oeffnungenAnlegen());
     an('fa-schliessen', () => abschliessen());
     an('fa-t-aendern', () => teilFragen(auswahl, false));
     an('fa-ecke-weg', () => { auswahl.punkte.splice(aktiv.i, 1); aktiv = null; fk.hidden = true; geaendert = true; neuZeichnen(); });
@@ -935,6 +939,46 @@ export async function openFotoAufmass(blob, vorlage) {
     let n = 1;
     while (d.teile.some((t) => t.name === `${basisName} ${n}`)) n++;
     return `${basisName} ${n}`;
+  };
+
+  // Alle Fenster und Türen im Rahmen suchen und gleich als Öffnung anlegen. Was schon als Öffnung
+  // eingezeichnet ist, wird nicht doppelt angelegt.
+  const oeffnungenAnlegen = () => {
+    const ms = massstab(d);
+    $('.fa-text').textContent = 'Suche Fenster und Türen …';
+    setTimeout(() => {
+      const funde = oeffnungenFinden(bildDaten(), ms);
+      if (funde.fehler) { meldung = ''; alert(funde.fehler); neuZeichnen(); return; }
+      const box = (pts) => {
+        const m = pts.map(ms.inM);
+        return [Math.min(...m.map((q) => q[0])), Math.min(...m.map((q) => q[1])), Math.max(...m.map((q) => q[0])), Math.max(...m.map((q) => q[1]))];
+      };
+      const vorhanden = d.teile.filter((t) => t.typ === 'oeffnung').map((t) => box(t.punkte));
+      const ueberlappt = (f) => vorhanden.some(([x0, y0, x1, y1]) => {
+        const b = Math.max(0, Math.min(x1, f.X1) - Math.max(x0, f.X0));
+        const h = Math.max(0, Math.min(y1, f.Y1) - Math.max(y0, f.Y0));
+        return b * h > 0.3 * Math.min((x1 - x0) * (y1 - y0), (f.X1 - f.X0) * (f.Y1 - f.Y0));
+      });
+      const neu = [];
+      for (const f of funde) {
+        if (ueberlappt(f) || f.punkte.some((q) => !q)) continue;
+        const stamm = f.tuer ? 'Tür' : 'Fenster';
+        let nr = 1;
+        while (d.teile.some((t) => t.name === `${stamm} ${nr}`)) nr++;
+        const t = { id: neueId(), typ: 'oeffnung', name: `${stamm} ${nr}`, punkte: f.punkte.map(([x, y]) => [Math.min(W, Math.max(0, x)), Math.min(H, Math.max(0, y))]) };
+        d.teile.push(t);
+        neu.push(t);
+      }
+      autoTeile = neu;
+      if (neu.length) geaendert = true;
+      meldung = neu.length
+        ? `${neu.length} ${neu.length === 1 ? 'Öffnung' : 'Öffnungen'} angelegt, bitte prüfen: antippen, Ecken an die Kante ziehen, Falsches löschen. „Rückgängig“ nimmt alle weg.`
+        : 'Keine weiteren Fenster oder Türen gefunden. Bitte von Hand mit „Öffnung“ einzeichnen.';
+      auswahl = null;
+      aktiv = null;
+      fk.hidden = true;
+      neuZeichnen();
+    }, 30);
   };
 
   const teilFragen = (t, neu) => {
@@ -1060,6 +1104,7 @@ export async function openFotoAufmass(blob, vorlage) {
   // Neue Form als Vorschlag mitten im sichtbaren Ausschnitt abstecken
   const abstecken = (typ) => {
     erkennen = false;
+    meldung = '';
     const { c, w, h } = sichtbar();
     const bx = w * 0.3;
     const by = h * 0.3;
@@ -1279,6 +1324,7 @@ export async function openFotoAufmass(blob, vorlage) {
       }
       // Antippen ohne Bewegung: Teil unter dem Finger auswählen, sonst Auswahl aufheben
       if (!entwurf) {
+        meldung = '';
         auswahl = teilUnter(z.p);
         aktiv = null;
         fk.hidden = true;
@@ -1327,8 +1373,13 @@ export async function openFotoAufmass(blob, vorlage) {
   $('.fa-rueck').onclick = () => {
     aktiv = null;
     fk.hidden = true;
+    meldung = '';
     if (entwurf) entwurf = null;
-    else if (d.teile.length) d.teile.pop();
+    else if (d.teile.length && autoTeile.includes(d.teile[d.teile.length - 1])) {
+      for (const t of autoTeile) if (d.teile.includes(t)) d.teile.splice(d.teile.indexOf(t), 1);
+      autoTeile = [];
+      auswahl = null;
+    } else if (d.teile.length) d.teile.pop();
     else if (d.ref.rahmen) delete d.ref.rahmen;
     else if (d.ref.hoehe) delete d.ref.hoehe;
     else delete d.ref.laenge;

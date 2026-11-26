@@ -35,6 +35,7 @@ const AESTE = [
     ['Foto-Aufmaß', 'Foto entzerren mit Rahmen, Raster, Fadenkreuz'],
     ['Formen zeichnen', 'Blauer Schiebepunkt, Kopie-Knopf'],
     ['Ecken-Magnet & Erkennen', 'Funktioniert offline'],
+    ['Öffnungen finden', 'Fenster und Türen im Rahmen automatisch anlegen, offline'],
     ['Fenster-Regel', 'Öffnung B×H, Umlauf, 2× Laibung, 1× Sturz; Laibungen in lfm']] },
   { n: 'Baustellen', t: 'Baustellen & Pläne', z: [
     ['Baustellen anlegen', 'Darf jeder, löschen nur Admin'],
